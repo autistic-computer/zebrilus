@@ -212,7 +212,7 @@ pub struct CommandClient {
     stdin_spent: bool,
     file_grants: Option<Vec<FileGrant>>,
     stderr_handler: Option<fn(&str)>,
-    stdout_handler: Option<fn(&RawText)>,
+    stdout_handler: Option<Arc<dyn Fn(&RawText) + Send + Sync>>,
     link: CommandLink,
     route: CommandRoute,
     server_id: Option<u64>,
@@ -707,8 +707,8 @@ impl CommandClient {
         self.stderr_handler = Some(handler);
     }
 
-    pub fn set_stdout_handler(&mut self, handler: fn(&RawText)) {
-        self.stdout_handler = Some(handler);
+    pub fn set_stdout_handler(&mut self, handler: impl Fn(&RawText) + Send + Sync + 'static) {
+        self.stdout_handler = Some(Arc::new(handler));
     }
 
     pub fn enable_stdin(&mut self) {
@@ -968,7 +968,7 @@ impl CommandClient {
                     payload: zz_protocol::EventPayload::CommandStdout { output },
                     ..
                 }) => {
-                    if let Some(handler) = self.stdout_handler {
+                    if let Some(handler) = &self.stdout_handler {
                         handler(&output);
                     }
                 }
@@ -1164,7 +1164,7 @@ impl CommandClient {
         let request_id = REQUEST_ID.fetch_add(1, Ordering::Relaxed);
         let stdin_enabled = self.stdin_enabled;
         let stderr_handler = self.stderr_handler;
-        let stdout_handler = self.stdout_handler;
+        let stdout_handler = self.stdout_handler.clone();
         let mut stdin_spent = self.stdin_spent;
         let file_grants = self.file_grants.clone();
         let (reader, writer) = self.legacy_link();
@@ -1218,7 +1218,7 @@ impl CommandClient {
                         payload: zz_protocol::EventPayload::CommandStdout { output },
                         ..
                     }) => {
-                        if let Some(handler) = stdout_handler {
+                        if let Some(handler) = &stdout_handler {
                             handler(&output);
                         }
                     }

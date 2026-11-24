@@ -1,7 +1,9 @@
 use std::{
+    fmt,
     io::{self, BufRead as _, IsTerminal as _, Write as _},
     path::{Path, PathBuf},
     process::ExitCode,
+    sync::Arc,
     thread,
     time::{Duration, Instant},
 };
@@ -51,7 +53,7 @@ struct Request {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-enum Daemon {
+pub enum Daemon {
     Missing,
     Running {
         version: Option<Version>,
@@ -63,6 +65,64 @@ enum Daemon {
     },
     OtherEpoch(Option<u16>),
     Unreachable(String),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum HostUpdateError {
+    NoVerb(String),
+    NoRestart(String),
+    Failed(String),
+}
+
+impl fmt::Display for HostUpdateError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let (Self::NoVerb(line) | Self::NoRestart(line) | Self::Failed(line)) = self;
+        formatter.write_str(line)
+    }
+}
+
+pub type HostProgress = Arc<dyn Fn(&RawText) + Send + Sync>;
+
+const NOT_A_HOST: &str = "this machine is not a host";
+
+#[must_use]
+pub fn host_daemon(endpoint: &Endpoint) -> Daemon {
+    endpoint_daemon(endpoint)
+}
+
+pub fn host_install(
+    endpoint: &Endpoint,
+    host: &str,
+    version: &Version,
+    progress: Option<HostProgress>,
+) -> Result<String, HostUpdateError> {
+    let version = version.to_string();
+    match endpoint {
+        Endpoint::Ssh(ssh) => ssh_update(ssh, host, &["--version", &version]),
+        Endpoint::Tailnet(_) => update_server(endpoint, host, &["--version", &version], progress),
+        Endpoint::Local(_) => Err(HostUpdateError::Failed(NOT_A_HOST.to_owned())),
+    }
+}
+
+pub fn host_restart(
+    endpoint: &Endpoint,
+    host: &str,
+    version: &Version,
+) -> Result<String, HostUpdateError> {
+    match endpoint {
+        Endpoint::Ssh(ssh) => ssh_update(
+            ssh,
+            host,
+            &["--version", &version.to_string(), "--restart", "-y"],
+        ),
+        Endpoint::Tailnet(_) => match restart_server(endpoint).map_err(HostUpdateError::Failed)? {
+            Some(version) => Ok(format!("daemon restarted on zz {version}")),
+            None => Err(HostUpdateError::NoRestart(
+                "the daemon there is too old to restart itself, restart it there".to_owned(),
+            )),
+        },
+        Endpoint::Local(_) => Err(HostUpdateError::Failed(NOT_A_HOST.to_owned())),
+    }
 }
 
 enum Machine {
@@ -349,7 +409,9 @@ fn on_machine(run: Run<'_>, target: &Target) -> Result<String, String> {
         (Machine::Ssh(endpoint), Mode::Check) => {
             check_with(&ssh_daemon(endpoint), version, &target.name)
         }
-        (Machine::Ssh(endpoint), Mode::Remove) => ssh_update(endpoint, &target.name, &["--remove"]),
+        (Machine::Ssh(endpoint), Mode::Remove) => {
+            ssh_update(endpoint, &target.name, &["--remove"]).map_err(|error| error.to_string())
+        }
         (Machine::Ssh(endpoint), Mode::Install) => {
             ssh_install(endpoint, &target.name, version, run)
         }
@@ -360,8 +422,9 @@ fn on_machine(run: Run<'_>, target: &Target) -> Result<String, String> {
             &Endpoint::Tailnet(endpoint.clone()),
             &target.name,
             &["--remove"],
-            run.interactive,
-        ),
+            shown_progress(run.interactive),
+        )
+        .map_err(|error| error.to_string()),
         (Machine::Tailnet(endpoint), Mode::Install) => {
             tailnet_install(endpoint, &target.name, version, run)
         }
@@ -597,19 +660,22 @@ fn ssh_install(
     version: &Version,
     run: Run<'_>,
 ) -> Result<String, String> {
-    let version = version.to_string();
-    let mut arguments = vec!["--version", version.as_str()];
-    if run.request.restart {
-        if !run.request.yes {
-            let daemon = ssh_daemon(endpoint);
-            confirm(&restart_notice(host, &daemon, None), false)?;
-        }
-        arguments.extend(["--restart", "-y"]);
+    let route = Endpoint::Ssh(endpoint.clone());
+    if !run.request.restart {
+        return host_install(&route, host, version, None).map_err(|error| error.to_string());
     }
-    ssh_update(endpoint, host, &arguments)
+    if !run.request.yes {
+        let daemon = ssh_daemon(endpoint);
+        confirm(&restart_notice(host, &daemon, None), false)?;
+    }
+    host_restart(&route, host, version).map_err(|error| error.to_string())
 }
 
-fn ssh_update(endpoint: &SshEndpoint, host: &str, arguments: &[&str]) -> Result<String, String> {
+fn ssh_update(
+    endpoint: &SshEndpoint,
+    host: &str,
+    arguments: &[&str],
+) -> Result<String, HostUpdateError> {
     let arguments = remote_arguments(
         endpoint,
         &std::iter::once("update")
@@ -617,17 +683,22 @@ fn ssh_update(endpoint: &SshEndpoint, host: &str, arguments: &[&str]) -> Result<
             .collect::<Vec<_>>(),
     );
     let output = zz_daemon_client::remote_cli_output(endpoint, &arguments)
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| HostUpdateError::Failed(error.to_string()))?;
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
     if output.status.success() {
         return Ok(last_line(&stdout, "done"));
     }
-    Err(too_old(host, &stderr).unwrap_or_else(|| {
-        let line = last_line(&stderr, &output.status.to_string());
-        line.strip_prefix("zz: ")
-            .map_or(line.clone(), str::to_owned)
-    }))
+    Err(too_old(host, &stderr).map_or_else(
+        || {
+            let line = last_line(&stderr, &output.status.to_string());
+            HostUpdateError::Failed(
+                line.strip_prefix("zz: ")
+                    .map_or(line.clone(), str::to_owned),
+            )
+        },
+        HostUpdateError::NoVerb,
+    ))
 }
 
 fn tailnet_install(
@@ -641,12 +712,8 @@ fn tailnet_install(
     if let Daemon::Unreachable(error) = before {
         return Err(error);
     }
-    let head = update_server(
-        &route,
-        host,
-        &["--version", &version.to_string()],
-        run.interactive,
-    )?;
+    let head = host_install(&route, host, version, shown_progress(run.interactive))
+        .map_err(|error| error.to_string())?;
     let after = tailnet_daemon(endpoint);
     let owned = match &after {
         Daemon::Running {
@@ -663,22 +730,26 @@ fn tailnet_install(
         _ => None,
     };
     confirm(&restart_notice(host, &before, epoch), run.request.yes)?;
-    Ok(match restart_server(&route)? {
-        Some(version) => format!("{head}; daemon restarted on zz {version}"),
-        None => format!("{head}; the daemon there is too old to restart itself, restart it there"),
-    })
+    match host_restart(&route, host, version) {
+        Ok(tail) | Err(HostUpdateError::NoRestart(tail)) => Ok(format!("{head}; {tail}")),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+fn shown_progress(interactive: bool) -> Option<HostProgress> {
+    (interactive && io::stderr().is_terminal()).then(|| Arc::new(print_progress) as HostProgress)
 }
 
 fn update_server(
     endpoint: &Endpoint,
     host: &str,
     arguments: &[&str],
-    interactive: bool,
-) -> Result<String, String> {
-    let mut client =
-        CommandClient::connect_endpoint(endpoint, false).map_err(|error| error.to_string())?;
-    if interactive && io::stderr().is_terminal() {
-        client.set_stdout_handler(print_progress);
+    progress: Option<HostProgress>,
+) -> Result<String, HostUpdateError> {
+    let mut client = CommandClient::connect_endpoint(endpoint, false)
+        .map_err(|error| HostUpdateError::Failed(error.to_string()))?;
+    if let Some(progress) = progress {
+        client.set_stdout_handler(move |text| progress(text));
     }
     match client.execute(CommandInvocation::new(
         "update-server",
@@ -687,7 +758,8 @@ fn update_server(
         Ok(output) => Ok(last_line(&output, "done")),
         Err(error) => {
             let error = error.to_string();
-            Err(too_old(host, &error).unwrap_or(error))
+            Err(too_old(host, &error)
+                .map_or(HostUpdateError::Failed(error), HostUpdateError::NoVerb))
         }
     }
 }

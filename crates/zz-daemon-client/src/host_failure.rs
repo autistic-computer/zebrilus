@@ -258,7 +258,6 @@ impl UpdateState {
     #[must_use]
     pub fn of(route: UpdateRoute, seen: HostSeen<'_>, version: &Version, revision: u32) -> Self {
         match seen {
-            HostSeen::Nothing => Self::Unknown,
             HostSeen::Failure(HostFailure::DaemonTooOld { .. }) => Self::Outdated,
             HostSeen::Failure(HostFailure::Incompatible { local, remote }) => match remote {
                 Some(remote) if remote > local => Self::Unknown,
@@ -266,7 +265,7 @@ impl UpdateState {
                 _ if route == UpdateRoute::Daemon => Self::CannotUpdate,
                 _ => Self::Outdated,
             },
-            HostSeen::Failure(_) => Self::Unknown,
+            HostSeen::Nothing | HostSeen::Failure(_) => Self::Unknown,
             HostSeen::Facts(facts) => {
                 let older = facts.version.as_ref().is_none_or(|daemon| daemon < version);
                 let staged = facts.owned.as_ref().is_some_and(|owned| owned >= version);

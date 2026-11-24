@@ -20,7 +20,7 @@ mod fleet;
 mod fork_chat;
 mod list_hosts;
 mod tailnet;
-mod update;
+pub mod update;
 
 #[cfg(test)]
 use std::borrow::Cow;
