@@ -18321,6 +18321,8 @@ impl Shared {
             } else if let Some(value) = option_value("read-file", args, index, &["-n"])? {
                 length = number(&value.value)?.min(FILE_CHUNK_BYTES);
                 index += value.consumed;
+            } else if argument == "--" && path.is_none() && index + 2 == args.len() {
+                index += 1;
             } else if path.is_none() {
                 path = Some(file_path("read-file", argument.as_str())?);
                 index += 1;
@@ -18356,6 +18358,10 @@ impl Shared {
         let (append, rest) = match args {
             [flag, rest @ ..] if flag == "-a" => (true, rest),
             rest => (false, rest),
+        };
+        let rest = match rest {
+            [dashes, rest @ ..] if dashes == "--" => rest,
+            rest => rest,
         };
         let [path, hex] = rest else {
             return Err(usage().into());
@@ -86464,6 +86470,11 @@ set-option -g @alias-mixed-next yes
         Shared::write_file(&words(&["-a", &path, "0a"])).expect("append");
         assert_eq!(std::fs::read(&path).expect("file"), [0, 255, 16, 10]);
         assert_eq!(read(&words(&[&path])), Ok("00ff100a".to_owned()));
+        assert_eq!(
+            read(&words(&["-s", "2", "--", &path])),
+            Ok("100a".to_owned())
+        );
+        Shared::write_file(&words(&["-a", "--", &path, ""])).expect("dashes before the path");
         assert_eq!(
             read(&words(&["-s", "1", "-n", "2", &path])),
             Ok("ff10".to_owned())

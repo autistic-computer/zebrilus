@@ -76,7 +76,7 @@ impl Place {
             }
             Self::There { host, path } => {
                 let offset = offset.to_string();
-                let hex = on_host(host, "read-file", &["-s", &offset, "--", path])?;
+                let hex = on_host(host, "read-file", &["-s", &offset, path])?;
                 file_hex::decode(&hex).ok_or_else(|| format!("{host} sent bytes that are not hex"))
             }
         }
