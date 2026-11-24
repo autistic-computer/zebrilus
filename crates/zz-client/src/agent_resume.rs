@@ -4,7 +4,7 @@ use std::{
 };
 
 use zz_protocol::{
-    AgentSessionOpKind,
+    AgentSessionOpKind, PathEntry, PathKind, PathListRoot,
     agent_stream::{AgentSessionSummary, AgentStreamPayload},
 };
 
@@ -15,11 +15,13 @@ pub const NOTHING_MATCHES: &str = "Nothing matches";
 pub const NO_CHATS_HERE: &str = "No chats here yet";
 pub const OTHER_FOLDERS: &str = "Other folders";
 pub const LOADING: &str = "Loading";
+pub const NO_FOLDER: &str = "No folder there";
 const HERE_CHATS: usize = 8;
 const OTHER_CHATS: usize = 8;
 const PATH_MATCH: usize = 1_000;
 const PAGES: usize = 40;
 const FOUND: usize = 40;
+const BROWSED: usize = 200;
 const TEMP_ROOTS: [&str; 4] = [
     "/tmp",
     "/private/tmp",
@@ -144,12 +146,80 @@ impl ResumeRow {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct Browse {
+    dir: String,
+    root: Option<PathListRoot>,
+    names: Vec<String>,
+    done: bool,
+}
+
+impl Browse {
+    fn rows(&self, leaf: &str, cwd: &Path) -> Vec<ResumeRow> {
+        let Some(root) = &self.root else {
+            return vec![if self.done {
+                ResumeRow::Note(NO_FOLDER)
+            } else {
+                ResumeRow::Loading
+            }];
+        };
+        let row = |folder: String, name: &str, path: &str| ResumeRow::Folder {
+            current: Path::new(&folder) == cwd,
+            cwd: PathBuf::from(folder),
+            name: name.to_owned(),
+            path: path.to_owned(),
+            age: None,
+        };
+        let shown = root.display_root.as_str();
+        let marks = separators(shown);
+        let place = match shown.trim_end_matches(marks) {
+            "" => shown,
+            place => place,
+        };
+        let leaf = leaf.trim_end();
+        let mut rows = Vec::new();
+        if leaf.is_empty() {
+            let (path, name) = match place.rfind(marks) {
+                Some(cut) if cut + 1 < place.len() => (&place[..cut.max(1)], &place[cut + 1..]),
+                _ => ("", place),
+            };
+            rows.push(row(root.root.clone(), name, path));
+            rows.extend(
+                self.names
+                    .iter()
+                    .take(BROWSED)
+                    .map(|name| row(child(&root.root, name), name, place)),
+            );
+        } else {
+            let mut found = self
+                .names
+                .iter()
+                .filter_map(|name| Some((fuzzy_match(leaf, name)?.0, name)))
+                .collect::<Vec<_>>();
+            found.sort_by_key(|(score, _)| *score);
+            rows.extend(
+                found
+                    .into_iter()
+                    .take(FOUND)
+                    .map(|(_, name)| row(child(&root.root, name), name, place)),
+            );
+        }
+        if !self.done {
+            rows.push(ResumeRow::Loading);
+        } else if rows.is_empty() {
+            rows.push(ResumeRow::Note(NOTHING_MATCHES));
+        }
+        rows
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Resume {
     here: Listing,
     recent: Listing,
     menu: Option<Menu>,
     search: String,
     picked: Option<String>,
+    browse: Option<Browse>,
 }
 
 impl Resume {
@@ -229,6 +299,74 @@ impl Resume {
     }
 
     #[must_use]
+    pub fn folder_wanted(&self) -> Option<String> {
+        (self.menu == Some(Menu::Folders))
+            .then(|| typed_folder(&self.search))
+            .flatten()
+            .map(|(dir, _)| dir)
+    }
+
+    #[must_use]
+    pub fn browsing(&self) -> Option<&str> {
+        self.browse.as_ref().map(|browse| browse.dir.as_str())
+    }
+
+    pub fn browse(&mut self, dir: Option<String>) {
+        self.browse = dir.map(|dir| Browse {
+            dir,
+            ..Browse::default()
+        });
+    }
+
+    pub fn browse_root(&mut self, result: Result<PathListRoot, String>) {
+        if let Some(browse) = &mut self.browse {
+            match result {
+                Ok(root) => browse.root = Some(root),
+                Err(_) => browse.done = true,
+            }
+        }
+    }
+
+    pub fn browse_entries(&mut self, entries: &[PathEntry], done: bool) -> bool {
+        let Some(browse) = &mut self.browse else {
+            return true;
+        };
+        if browse.done {
+            return true;
+        }
+        for entry in entries {
+            let name = entry.rel.trim_end_matches('/');
+            if name.contains('/') {
+                browse.done = true;
+                break;
+            }
+            if entry.kind == PathKind::Dir {
+                browse.names.push(name.to_owned());
+            }
+        }
+        browse.done |= done;
+        browse.names.sort_by_cached_key(|name| name.to_lowercase());
+        browse.done
+    }
+
+    #[must_use]
+    pub fn descend(&self, row: &ResumeRow) -> Option<String> {
+        let ResumeRow::Folder { cwd, name, .. } = row else {
+            return None;
+        };
+        let path = cwd.to_string_lossy();
+        if let Some((dir, _)) = typed_folder(&self.search)
+            && let Some(browse) = self.browse.as_ref().filter(|browse| browse.dir == dir)
+        {
+            let root = browse.root.as_ref()?;
+            let mark = dir.chars().next_back()?;
+            return (browse.names.contains(name) && child(&root.root, name) == path)
+                .then(|| format!("{dir}{name}{mark}"));
+        }
+        Some(child(&path, ""))
+    }
+
+    #[must_use]
     pub fn rows(&self, cwd: &Path, session: Option<&str>, now: u64) -> Vec<ResumeRow> {
         match self.menu {
             None => Vec::new(),
@@ -247,6 +385,11 @@ impl Resume {
     }
 
     fn folders(&self, cwd: &Path, now: u64) -> Vec<ResumeRow> {
+        if let Some((dir, leaf)) = typed_folder(&self.search)
+            && let Some(browse) = self.browse.as_ref().filter(|browse| browse.dir == dir)
+        {
+            return browse.rows(leaf, cwd);
+        }
         if self.recent.pages == 0 {
             return vec![ResumeRow::Loading];
         }
@@ -443,6 +586,41 @@ fn list(cwd: Option<PathBuf>, cursor: Option<String>) -> AgentSessionOpKind {
         replace: cursor.is_none(),
         cursor,
     }
+}
+
+fn drive(path: &str) -> bool {
+    let bytes = path.as_bytes();
+    bytes.len() >= 3
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1] == b':'
+        && matches!(bytes[2], b'/' | b'\\')
+}
+
+fn separators(path: &str) -> &'static [char] {
+    if drive(path) { &['/', '\\'] } else { &['/'] }
+}
+
+fn typed_folder(search: &str) -> Option<(String, &str)> {
+    let search = search.trim_start();
+    if !drive(search) && !search.starts_with(['/', '~']) {
+        return None;
+    }
+    Some(match search.rfind(separators(search)) {
+        Some(cut) => (search[..=cut].to_owned(), &search[cut + 1..]),
+        None => ("~/".to_owned(), &search[1..]),
+    })
+}
+
+fn child(root: &str, name: &str) -> String {
+    if root.ends_with(separators(root)) {
+        return format!("{root}{name}");
+    }
+    let mark = if root.contains('\\') && !root.contains('/') {
+        '\\'
+    } else {
+        '/'
+    };
+    format!("{root}{mark}{name}")
 }
 
 fn title(chat: &AgentSessionSummary) -> String {
@@ -814,5 +992,98 @@ mod tests {
         resume.open(Menu::Chats);
         assert_eq!(resume.wanted(cwd), page(Some("/src/zz"), "h50"));
         assert_eq!(resume.wanted(cwd), None);
+    }
+
+    #[test]
+    fn a_typed_path_lists_that_folder_on_the_host_and_goes_deeper() {
+        use zz_protocol::InsertStyle;
+
+        let cwd = Path::new("/");
+        let entry = |rel: &str, kind| PathEntry {
+            rel: rel.to_owned(),
+            kind,
+            symlink: false,
+        };
+        let row = |cwd: &str, name: &str, path: &str| ResumeRow::Folder {
+            cwd: PathBuf::from(cwd),
+            name: name.to_owned(),
+            path: path.to_owned(),
+            age: None,
+            current: false,
+        };
+        let root = |root: &str, shown: &str| PathListRoot {
+            root: root.to_owned(),
+            display_root: shown.to_owned(),
+            cwd: None,
+            insert: InsertStyle::Claude,
+        };
+        let mut resume = Resume::default();
+        resume.set_search("~/dev/");
+        assert_eq!(resume.folder_wanted(), None);
+        resume.open(Menu::Folders);
+        resume.set_search("~/dev/");
+        assert_eq!(resume.folder_wanted().as_deref(), Some("~/dev/"));
+        resume.browse(resume.folder_wanted());
+        assert_eq!(resume.browsing(), Some("~/dev/"));
+        assert_eq!(resume.rows(cwd, None, NOW), [ResumeRow::Loading]);
+        resume.browse_root(Ok(root("/home/me/dev", "~/dev/")));
+        assert!(!resume.browse_entries(
+            &[
+                entry("zz", PathKind::Dir),
+                entry("notes.md", PathKind::File)
+            ],
+            false
+        ));
+        assert!(resume.browse_entries(
+            &[
+                entry("Ala", PathKind::Dir),
+                entry("Ala/src", PathKind::Dir),
+                entry("late", PathKind::Dir)
+            ],
+            false
+        ));
+        let rows = resume.rows(cwd, None, NOW);
+        assert_eq!(
+            rows,
+            [
+                row("/home/me/dev", "dev", "~"),
+                row("/home/me/dev/Ala", "Ala", "~/dev"),
+                row("/home/me/dev/zz", "zz", "~/dev"),
+            ]
+        );
+        assert_eq!(resume.descend(&rows[0]), None);
+        assert_eq!(resume.descend(&rows[2]).as_deref(), Some("~/dev/zz/"));
+
+        resume.set_search("~/dev/z");
+        assert_eq!(resume.folder_wanted().as_deref(), Some("~/dev/"));
+        let rows = resume.rows(cwd, None, NOW);
+        assert_eq!(rows, [row("/home/me/dev/zz", "zz", "~/dev")]);
+        assert_eq!(
+            resume.pick(&rows[0], cwd),
+            Some(AgentSessionOpKind::New {
+                cwd: PathBuf::from("/home/me/dev/zz")
+            })
+        );
+
+        resume.open(Menu::Folders);
+        resume.set_search("E:\\auti");
+        assert_eq!(resume.folder_wanted().as_deref(), Some("E:\\"));
+        resume.browse(resume.folder_wanted());
+        resume.browse_root(Ok(root("E:\\", "E:\\")));
+        assert!(resume.browse_entries(&[entry("autistic-computer", PathKind::Dir)], true));
+        let rows = resume.rows(cwd, None, NOW);
+        assert_eq!(
+            rows,
+            [row("E:\\autistic-computer", "autistic-computer", "E:")]
+        );
+        assert_eq!(
+            resume.descend(&rows[0]).as_deref(),
+            Some("E:\\autistic-computer\\")
+        );
+
+        resume.set_search("/nope/");
+        resume.browse(resume.folder_wanted());
+        resume.browse_root(Err("/nope/ is not a directory".to_owned()));
+        assert_eq!(resume.rows(cwd, None, NOW), [ResumeRow::Note(NO_FOLDER)]);
     }
 }

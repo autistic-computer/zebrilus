@@ -1012,11 +1012,11 @@ the next chat starts in, and Resume, for a chat the CLI already has. Each opens 
   field; Up and Down move the picked row past labels and the spinner and keep it in view; Enter
   picks; Escape clears the search, then closes the menu. In the desktop's folder menu Tab puts
   the picked folder's path and a separator in the search, which lists its subfolders
-  (`Resume::descend`). The first pickable row is picked when nothing else is. Closing puts focus back in the composer; a press outside closes the menu too.
-  The menus are penna `Popover`s the view opens and closes itself (`Popover::open` and
-  `on_toggle`). The thin client's popovers take Up, Down and Enter the same way, but Up from
-  the composer does not open Resume there; while a menu is open the pane's focus target is
-  its search field.
+  (`Resume::descend`). The first pickable row is picked when nothing else is. Closing puts
+  focus back in the composer; a press outside closes the menu too. The menus are penna
+  `Popover`s the view opens and closes itself (`Popover::open` and `on_toggle`). The thin
+  client's popovers take Up, Down and Enter the same way, but Up from the composer does not
+  open Resume there; while a menu is open the pane's focus target is its search field.
 - **The pane's folder.** After a `New` or a `Switch`, the driver answers `SessionSwitched` with
   the session's folder. `AgentController` takes it as the pane's folder, which the folder button
   and the next listings use, and the pane header reads it for an agent pane

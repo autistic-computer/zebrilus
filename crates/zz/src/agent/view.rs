@@ -66,7 +66,10 @@ use crate::{
         AgentPermissionRequest, AgentSessionCapabilities, AgentThreadEntry,
     },
     config::pane_content_radii,
-    mux::client::MuxClient,
+    mux::{
+        client::{HostPathListUpdate, MuxClient, PathPickerUpdate},
+        hosts::HostId,
+    },
     window::corners::{WindowCorners, round_div_radii},
 };
 
@@ -280,11 +283,19 @@ pub(crate) struct AgentView {
     resume_scroll: ScrollHandle,
     focus_search: bool,
     menu_hidden: Option<std::time::Instant>,
+    browse: Option<(HostId, u64)>,
     child_requests: HashMap<u64, PaneId>,
     _subscriptions: Vec<Subscription>,
 }
 
 const CHATS_BUTTON: &str = "chats";
+
+const fn search_placeholder(menu: Menu) -> &'static str {
+    match menu {
+        Menu::Folders => "Search folders or type a path",
+        Menu::Chats | Menu::Switch => menu.placeholder(),
+    }
+}
 const HEADER_MENU_INSET: Pixels = px(8.0);
 const REOPEN_GUARD: std::time::Duration = std::time::Duration::from_millis(250);
 
@@ -412,6 +423,9 @@ impl AgentView {
                 }
             },
         );
+        let listed = cx.subscribe(&mux, |view, _, event: &HostPathListUpdate, cx| {
+            view.browse_listed(event, cx);
+        });
         let mux_observer = cx.observe(&mux, |view, mux, cx| {
             view.observe_login(&mux, cx);
             let floats = zz_client::floating::pane_floats(&mux.read(cx).snapshot(), view.pane);
@@ -490,9 +504,11 @@ impl AgentView {
             resume_scroll: ScrollHandle::new(),
             focus_search: false,
             menu_hidden: None,
+            browse: None,
             child_requests: HashMap::new(),
             _subscriptions: vec![
                 printed,
+                listed,
                 input_observer,
                 input_subscription,
                 reply_subscription,
@@ -758,6 +774,87 @@ impl AgentView {
                 None
             });
         });
+        self.browse_folder(cx);
+    }
+
+    fn browse_folder(&mut self, cx: &mut Context<Self>) {
+        let pane = self.pane;
+        let Some((wanted, same)) = self
+            .controller
+            .read(cx)
+            .pane_resume(pane)
+            .map(|(resume, _)| {
+                let wanted = resume.folder_wanted();
+                let same = wanted.as_deref() == resume.browsing();
+                (wanted, same)
+            })
+        else {
+            return;
+        };
+        if same {
+            return;
+        }
+        let asked = self.mux.update(cx, |mux, _| {
+            if let Some((host, request)) = self.browse.take() {
+                mux.cancel_host_path_list(host, request);
+            }
+            let host = mux.attached_host();
+            let request = mux.request_host_path_list(host, None, wanted.clone()?)?;
+            Some((host, request))
+        });
+        self.browse = asked;
+        self.controller.update(cx, |controller, cx| {
+            controller.update_resume(pane, cx, |resume, _| {
+                let failed = wanted.is_some() && asked.is_none();
+                resume.browse(wanted);
+                if failed {
+                    resume.browse_root(Err(String::new()));
+                }
+                None
+            });
+        });
+    }
+
+    fn browse_listed(&mut self, event: &HostPathListUpdate, cx: &mut Context<Self>) {
+        let Some((host, request)) = self.browse.filter(|(host, _)| *host == event.host) else {
+            return;
+        };
+        let pane = self.pane;
+        let mut finished = false;
+        match &event.update {
+            PathPickerUpdate::Begin { request_id, result } if *request_id == request => {
+                finished = result.is_err();
+                self.controller.update(cx, |controller, cx| {
+                    controller.update_resume(pane, cx, |resume, _| {
+                        resume.browse_root(result.clone());
+                        None
+                    });
+                });
+            }
+            PathPickerUpdate::Chunk {
+                request_id,
+                entries,
+                done,
+                ..
+            } if *request_id == request => {
+                self.controller.update(cx, |controller, cx| {
+                    controller.update_resume(pane, cx, |resume, _| {
+                        finished = resume.browse_entries(entries, *done);
+                        None
+                    });
+                });
+                if finished && !*done {
+                    self.mux
+                        .update(cx, |mux, _| mux.cancel_host_path_list(host, request));
+                }
+            }
+            _ => return,
+        }
+        if finished {
+            self.browse = None;
+        }
+        self.resume_scroll = ScrollHandle::new();
+        cx.notify();
     }
 
     fn clear_search(&self, window: &mut Window, cx: &mut Context<Self>) {
@@ -818,7 +915,7 @@ impl AgentView {
         let pane = self.pane;
         self.clear_search(window, cx);
         self.search.update(cx, |search, cx| {
-            search.set_placeholder(menu.placeholder(), cx);
+            search.set_placeholder(search_placeholder(menu), cx);
         });
         self.resume_scroll = ScrollHandle::new();
         self.focus_search = true;
@@ -828,6 +925,7 @@ impl AgentView {
                 None
             });
         });
+        self.browse_folder(cx);
         cx.notify();
     }
 
@@ -840,6 +938,7 @@ impl AgentView {
                 None
             });
         });
+        self.browse_folder(cx);
         self.menu_hidden = Some(std::time::Instant::now());
         if refocus {
             self.input.update(cx, |input, cx| input.focus(window, cx));
@@ -883,10 +982,11 @@ impl AgentView {
         self.controller.update(cx, |controller, cx| {
             controller.update_resume(pane, cx, |resume, cwd| resume.pick(&row, cwd));
         });
+        self.browse_folder(cx);
         self.clear_search(window, cx);
         if let Some(menu) = self.open_menu(cx) {
             self.search.update(cx, |search, cx| {
-                search.set_placeholder(menu.placeholder(), cx);
+                search.set_placeholder(search_placeholder(menu), cx);
             });
             self.resume_scroll = ScrollHandle::new();
             self.focus_search = true;
@@ -1172,7 +1272,29 @@ impl AgentView {
         }
     }
 
+    fn descend_folder(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        if self.open_menu(cx) != Some(Menu::Folders) {
+            return false;
+        }
+        let (rows, selected) = self.resume(cx);
+        let deeper = selected.and_then(|index| rows.get(index)).and_then(|row| {
+            self.controller
+                .read(cx)
+                .pane_resume(self.pane)
+                .and_then(|(resume, _)| resume.descend(row))
+        });
+        if let Some(deeper) = deeper {
+            self.search
+                .update(cx, |search, cx| search.set_value(deeper, window, cx));
+        }
+        true
+    }
+
     fn complete(&mut self, _: &IndentInline, window: &mut Window, cx: &mut Context<Self>) {
+        if self.descend_folder(window, cx) {
+            cx.stop_propagation();
+            return;
+        }
         if self.completions.is_empty() {
             self.ask_arrow("tab", window, cx);
             return;
@@ -2414,6 +2536,7 @@ mod completion_tests {
                 resume_scroll: ScrollHandle::new(),
                 focus_search: false,
                 menu_hidden: None,
+                browse: None,
                 child_requests: HashMap::new(),
                 _subscriptions: Vec::new(),
             });
@@ -2812,6 +2935,112 @@ mod completion_tests {
             }]
         );
         assert_eq!(cx.update(|_, cx| view.read(cx).attachments.len()), 1);
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[ala::test]
+    fn a_path_in_the_folder_search_lists_that_folder_and_tab_goes_deeper(cx: &mut TestAppContext) {
+        use zz_protocol::{InsertStyle, PathEntry, PathKind, PathListRoot, ProtocolMessage};
+
+        let pane = PaneId(51);
+        let (view, controller, _sink, cx) = wired_view(cx, pane);
+        ready_with_an_image(cx, &view, &controller, pane);
+        let asked = cx.update(|_, cx| {
+            view.read(cx)
+                .mux
+                .clone()
+                .update(cx, |mux, _| mux.record_path_lists_for_test())
+        });
+        let names = |cx: &mut VisualTestContext| {
+            cx.update(|_, cx| {
+                view.read(cx)
+                    .resume(cx)
+                    .0
+                    .into_iter()
+                    .map(|row| match row {
+                        ResumeRow::Folder { cwd, .. } => cwd.to_string_lossy().into_owned(),
+                        row => format!("{row:?}"),
+                    })
+                    .collect::<Vec<_>>()
+            })
+        };
+        let host = |cx: &mut VisualTestContext, message: ProtocolMessage| {
+            cx.update(|_, cx| {
+                view.read(cx)
+                    .mux
+                    .clone()
+                    .update(cx, |mux, cx| mux.handle_message_for_test(message, cx));
+            });
+            cx.run_until_parked();
+        };
+        cx.update(|window, cx| {
+            view.update(cx, |view, cx| view.show_menu(Menu::Folders, window, cx));
+        });
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            _ = window.draw(cx);
+        });
+        cx.run_until_parked();
+
+        cx.simulate_input("~/dev/");
+        cx.run_until_parked();
+        let list = |request_id, dir: &str| ProtocolMessage::PathListRequest {
+            request_id,
+            pane: None,
+            dir: Some(dir.to_owned()),
+        };
+        assert_eq!(
+            &*asked.borrow(),
+            &[
+                list(1, "~/"),
+                ProtocolMessage::PathListCancel { request_id: 1 },
+                list(2, "~/dev/"),
+            ]
+        );
+        assert_eq!(names(cx), ["Loading"]);
+
+        host(
+            cx,
+            ProtocolMessage::PathListBegin {
+                request_id: 2,
+                result: Ok(PathListRoot {
+                    root: "/home/me/dev".to_owned(),
+                    display_root: "~/dev/".to_owned(),
+                    cwd: None,
+                    insert: InsertStyle::Claude,
+                }),
+            },
+        );
+        let entry = |rel: &str| PathEntry {
+            rel: rel.to_owned(),
+            kind: PathKind::Dir,
+            symlink: false,
+        };
+        host(
+            cx,
+            ProtocolMessage::PathListChunk {
+                request_id: 2,
+                entries: vec![entry("zz"), entry("ala"), entry("ala/src")],
+                done: false,
+                truncated: false,
+            },
+        );
+        assert_eq!(
+            names(cx),
+            ["/home/me/dev", "/home/me/dev/ala", "/home/me/dev/zz"]
+        );
+        assert_eq!(
+            asked.borrow().last(),
+            Some(&ProtocolMessage::PathListCancel { request_id: 2 })
+        );
+
+        cx.simulate_keystrokes("down tab");
+        cx.run_until_parked();
+        assert_eq!(
+            cx.update(|_, cx| view.read(cx).search.read(cx).value().to_string()),
+            "~/dev/ala/"
+        );
+        assert_eq!(asked.borrow().last(), Some(&list(3, "~/dev/ala/")));
     }
 
     #[cfg(not(target_os = "macos"))]
