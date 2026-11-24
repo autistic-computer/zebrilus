@@ -2,7 +2,7 @@
 type: Design Plan
 title: Daemon update . a zz-owned headless copy and zz update
 description: "Plan to update the headless zz (CLI and daemon) on any machine without touching the package that installed the desktop app. Each machine keeps one zz-owned copy of the headless binary at a fixed path under its data directory, a packaged zz hands over to it when it is newer, and `zz update` installs it on this machine or on named hosts over the connection zz already has: the remote CLI for ssh hosts, a daemon command for tailnet hosts. Restart stays a separate, explicit step, and an app never restarts a daemon newer than itself. Built, not merged."
-status: Approved 2026-11-23; steps 1 to 6 and 8 built on the daemon-update branch, not merged; step 2 and step 7 landed on main; checked on one Mac with a loopback ssh host, not yet on xps, alienware or win-desktop
+status: Built; on main since 2026-11-23, released in 0.31.0, checked on xps, alienware and win-desktop on 2026-11-24
 tags:
 - update
 - daemon
@@ -360,10 +360,25 @@ Built differently from the text above, or decided where it was silent:
 - `update` and `build-info` are catalogued like `fleet`, so `zz --help` lists them and a daemon
   that receives them says they run in the CLI.
 
-Never run yet: everything on Windows (it is not even compile-checked here; the pipe retry was
-type-checked under the host's configuration only), `update-server` and `restart-server` over a real
-tailnet, a real ssh host (only a loopback ssh stand-in on one Mac), and a desktop app attached to a
-daemon while it restarts.
+Checked on real machines on 2026-11-24 with zz 0.31.0, the first release that carries the headless
+assets, from a Mac on 0.30.0 against three machines whose packaged zz was a 0.30.0 build with this
+feature:
+
+| Machine | Route | Install | Restart |
+| --- | --- | --- | --- |
+| xps (Ubuntu) | ssh, the remote CLI | owned 0.31.0 installed | daemon came back on 0.31.0 |
+| alienware (CachyOS) | tailnet, `update-server` | owned 0.31.0 installed | `restart-server` kept the pid, the daemon runs `owned/zz daemon --start-lock-fd 3`, and the open desktop app stayed attached |
+| win-desktop (Windows 11) | tailnet, `update-server` | owned `zz.exe` 0.31.0 installed | `restart-server` started `owned\zz.exe ... daemon --retry-bind` in the user's session, and the open app attached again |
+
+- The three installs together took 4.1 s, the two Linux restarts 2.1 s, the Windows restart 3.6 s.
+- On both Linux machines `zz --version` printed 0.31.0 after the install and 0.30.0 with
+  `ZZ_OWNED_COPY=0`.
+- Every machine answered `#{zz_version}` with 0.31.0 afterwards with nobody touching it.
+- One command sent to win-desktop three seconds after its restart failed once with a misleading
+  error and worked on the next try. Not looked into.
+
+Still never run: an update across an epoch change, the cross-epoch warning, a restart with an agent
+turn in flight, and `zz update -a` from a machine that also updates itself.
 
 # Open
 
