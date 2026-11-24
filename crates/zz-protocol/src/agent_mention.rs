@@ -387,6 +387,110 @@ fn write_header(
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Sender {
+    Chat {
+        pane: PaneId,
+        provider: AgentProvider,
+    },
+    Command {
+        pane: Option<PaneId>,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SentMessage {
+    pub sender: Sender,
+    pub host: Option<String>,
+    pub text: String,
+}
+
+const SENT_BY_CHAT: &str = "sent this, not the user:";
+const SENT_BY_COMMAND: &str = " sent this:";
+
+impl fmt::Display for SentMessage {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let host = self.host.as_deref();
+        match self.sender {
+            Sender::Chat { pane, provider } => {
+                write_header(formatter, host, pane, provider)?;
+                write!(formatter, " {SENT_BY_CHAT}")?;
+            }
+            Sender::Command { pane } => {
+                formatter.write_str("[zz] a command")?;
+                match (pane, host) {
+                    (Some(pane), _) => write!(formatter, " in {}", written(host, pane))?,
+                    (None, Some(host)) => write!(formatter, " on {host}")?,
+                    (None, None) => {}
+                }
+                formatter.write_str(SENT_BY_COMMAND)?;
+            }
+        }
+        write!(formatter, "\n{}", self.text)
+    }
+}
+
+impl SentMessage {
+    #[must_use]
+    pub fn parse(text: &str) -> Option<Self> {
+        let (line, text) = text.split_once('\n')?;
+        let (sender, host) = if let Some((host, pane, provider, tail)) = header(line) {
+            if tail != SENT_BY_CHAT {
+                return None;
+            }
+            (Sender::Chat { pane, provider }, host)
+        } else {
+            let who = line
+                .trim()
+                .strip_prefix("[zz] a command")?
+                .strip_suffix(SENT_BY_COMMAND)?;
+            let (pane, host) = match who.strip_prefix(" in ") {
+                Some(chat) => {
+                    let (host, pane) = address(chat)?;
+                    (Some(pane), host)
+                }
+                None if who.is_empty() => (None, None),
+                None => (None, Some(who.strip_prefix(" on ")?)),
+            };
+            (Sender::Command { pane }, host)
+        };
+        Some(Self {
+            sender,
+            host: host.filter(|host| !host.is_empty()).map(str::to_owned),
+            text: text.to_owned(),
+        })
+    }
+}
+
+pub const SENDER_VARIABLE: &str = "ZZ_SENDER";
+
+#[must_use]
+pub fn sender_fact(pane: PaneId, agent: Option<&str>, host: Option<&str>) -> String {
+    let word = |word: Option<&str>| {
+        word.filter(|word| {
+            !word.is_empty()
+                && word
+                    .chars()
+                    .all(|character| character.is_ascii_alphanumeric() || "-_.".contains(character))
+        })
+        .unwrap_or("-")
+        .to_owned()
+    };
+    format!("{pane} {} {}", word(agent), word(host))
+}
+
+#[must_use]
+pub fn read_sender_fact(fact: &str) -> Option<(Sender, Option<String>)> {
+    let mut words = fact.split(' ');
+    let pane = words.next()?.parse().ok()?;
+    let sender = match provider(words.next()?) {
+        Some(provider) => Sender::Chat { pane, provider },
+        None => Sender::Command { pane: Some(pane) },
+    };
+    let host = words.next().filter(|host| *host != "-" && !host.is_empty());
+    Some((sender, host.map(str::to_owned)))
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AgentReport {
     Finished {
         pane: PaneId,
@@ -1025,6 +1129,72 @@ mod tests {
                 decision: AgentDecision::Deny,
                 request: None,
             })
+        );
+    }
+
+    #[test]
+    fn a_sent_message_names_its_sender_on_the_first_line() {
+        let claude = Sender::Chat {
+            pane: PaneId(3),
+            provider: AgentProvider::ClaudeCode,
+        };
+        let command = |pane: Option<PaneId>| Sender::Command { pane };
+        for (sender, host, line) in [
+            (
+                claude.clone(),
+                Some("xps"),
+                "[zz] xps:%3 (claude) sent this, not the user:",
+            ),
+            (claude, None, "[zz] %3 (claude) sent this, not the user:"),
+            (
+                command(Some(PaneId(7))),
+                None,
+                "[zz] a command in %7 sent this:",
+            ),
+            (
+                command(Some(PaneId(7))),
+                Some("xps"),
+                "[zz] a command in xps:%7 sent this:",
+            ),
+            (
+                command(None),
+                Some("xps"),
+                "[zz] a command on xps sent this:",
+            ),
+            (command(None), None, "[zz] a command sent this:"),
+        ] {
+            let message = SentMessage {
+                sender,
+                host: host.map(str::to_owned),
+                text: "Handoff: reply with the state.\nSecond line.".to_owned(),
+            };
+            assert_eq!(
+                message.to_string(),
+                format!("{line}\nHandoff: reply with the state.\nSecond line.")
+            );
+            assert_eq!(SentMessage::parse(&message.to_string()), Some(message));
+        }
+        let fact = sender_fact(PaneId(3), Some("claude"), Some("xps"));
+        assert_eq!(fact, "%3 claude xps");
+        assert_eq!(
+            read_sender_fact(&fact),
+            Some((
+                Sender::Chat {
+                    pane: PaneId(3),
+                    provider: AgentProvider::ClaudeCode,
+                },
+                Some("xps".to_owned()),
+            ))
+        );
+        assert_eq!(
+            read_sender_fact(&sender_fact(PaneId(7), None, Some("bad host"))),
+            Some((command(Some(PaneId(7))), None))
+        );
+        assert_eq!(SentMessage::parse("[zz] %3 (codex) finished:\nhi"), None);
+        assert_eq!(SentMessage::parse("a command sent this:\nhi"), None);
+        assert_eq!(
+            AgentReport::parse("[zz] %3 (codex) sent this, not the user:\nhi"),
+            None
         );
     }
 

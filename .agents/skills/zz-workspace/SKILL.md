@@ -25,6 +25,7 @@ rather than held in variables.
 | Variable | Meaning |
 | --- | --- |
 | `ZZ_PANE` | Your own pane, e.g. `%3`. Do not send to yourself. |
+| `ZZ_AGENT` | Set in a chat: the agent it runs (`claude`, `codex`, `agy`, `grok`, `cursor-agent`). |
 | `ZZ_SESSION` | Your daemon session name. |
 | `ZZ_SOCKET` | The daemon endpoint; the CLI honors it. |
 
@@ -141,6 +142,8 @@ Switch the machine's login of the chat's CLI (Claude Code or Codex) to another a
 ### `zz agent-send [-t %N] [--submit | --notify | --wait [--progress] [--timeout SECS] [--on-block wait|fail|allow|deny] [--json | --final]] [--context PATH[:START[-END]]] [TEXT]`
 
 Send TEXT as a prompt to an agent pane (a chat), or to another agent in a terminal pane, typed into its input with Enter only when `--submit` is given. A terminal running Claude Code, Codex, Antigravity or Grok refuses it: flip the pane to chat first. Read stdin when TEXT is omitted: `git diff | zz agent-send -t %3`. `--context` adds a file/line header and fences the payload; text is capped at 1 MiB.
+
+A chat gets the prompt under a first line that names who sent it: `[zz] %N (claude) sent this, not the user:` from a chat, `[zz] a command in %N sent this:` from a terminal pane and `[zz] a command sent this:` from anywhere else. A sender on another machine is written `HOST:%N`, or `a command on HOST` when it has no pane. The chat's clients draw it as a message from that sender, not as the user's prompt.
 
 `--submit` sends now and prints the chosen pane. `--wait`, `--notify`, `--final`, `--json` and `--on-block` follow the chat's turn. `--notify` runs from inside another terminal pane and, when the target's turn ends, posts its reply back into the calling pane; from a chat it is a plain send, since the reply comes back anyway. `--wait` waits for the turn and prints its reply on stdout (pane ID on stderr). A terminal pane falls back to waiting on `@agent_state`, and `--notify`, `--final` and `--on-block allow|deny` exit 2 there. Failure, cancellation, hand-back, or timeout exits non-zero. The timeout defaults to 600 seconds; `0` waits forever. A timeout leaves the turn running. `--json` prints one object with turn facts, `final_text`, and `transcript`. `--final` prints only the text after the last tool call or tool update. Both require `--wait`; combining them is a usage error. `--on-block wait` waits for permission. `--on-block fail` prints the pending permission JSON and exits 3 while the turn continues. `--on-block allow` approves the pending permission and `--on-block deny` rejects it.
 

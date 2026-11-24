@@ -66,6 +66,7 @@ fn is_environment_assignment(token: &str) -> bool {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct AgentWorkspaceEnvironment {
     pub(crate) pane: Option<String>,
+    pub(crate) agent: Option<String>,
     pub(crate) session: Option<String>,
     pub(crate) socket: Option<String>,
     pub(crate) tmux: Option<String>,
@@ -81,6 +82,9 @@ impl AgentWorkspaceEnvironment {
         if pane.pane.is_some() {
             self.pane.clone_from(&pane.pane);
         }
+        if pane.agent.is_some() {
+            self.agent.clone_from(&pane.agent);
+        }
         if pane.session.is_some() {
             self.session.clone_from(&pane.session);
         }
@@ -95,6 +99,7 @@ impl AgentWorkspaceEnvironment {
     pub(crate) fn entries(&self) -> impl Iterator<Item = (&'static str, &str)> {
         [
             ("ZZ_PANE", self.pane.as_deref()),
+            ("ZZ_AGENT", self.agent.as_deref()),
             ("ZZ_SESSION", self.session.as_deref()),
             ("ZZ_SOCKET", self.socket.as_deref()),
             ("TMUX", self.tmux.as_deref()),

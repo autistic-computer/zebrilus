@@ -1628,7 +1628,7 @@ impl Draw<'_, '_> {
         let label = run_label(&sent.run.label);
         let chip = peer_chip(
             SharedString::from(format!("chat-peer-chip-{}", first.as_str())),
-            &sent.peer,
+            peer_face(&sent.peer, self.hooks),
             sent_attention(sent.state),
             self.hooks,
             cx,
@@ -1674,13 +1674,17 @@ impl Draw<'_, '_> {
         let expanded = body.is_some() && self.open.runs.contains(&note.item);
         let chip = peer_chip(
             SharedString::from(format!("chat-peer-from-{}", note.item.as_str())),
-            &note.peer,
-            note_attention(note.state),
+            note_face(note, self.hooks),
+            match note.message {
+                PeerMessage::Sent { .. } => Attention::None,
+                _ => note_attention(note.state),
+            },
             self.hooks,
             cx,
         );
         let (word, tint) = match &note.message {
             PeerMessage::Replied { .. } => (Some("Reply from"), None),
+            PeerMessage::Sent { .. } => (Some("Message from"), None),
             PeerMessage::Stopped { .. } => (Some("Stopped"), None),
             PeerMessage::Failed { .. } => (Some("Failed"), Some(theme.danger)),
             PeerMessage::Closed | PeerMessage::Asks { .. } => (None, None),
@@ -2133,6 +2137,17 @@ fn agent_tile(
     vendor: Option<&'static Program>,
     attention: Attention,
     ground: penna::Ground,
+    size: f32,
+    cx: &App,
+) -> Div {
+    tile(vendor, IconName::Bot, attention, ground, size, cx)
+}
+
+fn tile(
+    vendor: Option<&'static Program>,
+    glyph: IconName,
+    attention: Attention,
+    ground: penna::Ground,
     tile: f32,
     cx: &App,
 ) -> Div {
@@ -2153,7 +2168,7 @@ fn agent_tile(
                     .and_then(|program| {
                         crate::program::program_mark(program, mark, cx.theme().foreground, None)
                     })
-                    .unwrap_or_else(|| Icon::new(IconName::Bot).size(mark).into_any_element()),
+                    .unwrap_or_else(|| Icon::new(glyph).size(mark).into_any_element()),
             ),
     };
     tile.relative()
@@ -2301,7 +2316,34 @@ fn peer_text(text: &str, shrink: f32) -> Option<Div> {
 struct PeerFace {
     title: String,
     program: Option<&'static Program>,
+    glyph: IconName,
     target: Option<crate::target::ResolvedTarget>,
+}
+
+fn note_face(note: &PeerNote, hooks: &ChatHooks<'_>) -> PeerFace {
+    let command = PeerFace {
+        title: "a command".to_owned(),
+        program: None,
+        glyph: IconName::Terminal,
+        target: None,
+    };
+    match (&note.peer, &note.message) {
+        (Some(peer), PeerMessage::Sent { .. }) if peer.agent.is_none() => PeerFace {
+            glyph: IconName::Terminal,
+            ..peer_face(peer, hooks)
+        },
+        (Some(peer), _) => peer_face(peer, hooks),
+        (
+            None,
+            PeerMessage::Sent {
+                host: Some(host), ..
+            },
+        ) => PeerFace {
+            title: format!("a command · {host}"),
+            ..command
+        },
+        (None, _) => command,
+    }
 }
 
 fn peer_face(peer: &Peer, hooks: &ChatHooks<'_>) -> PeerFace {
@@ -2340,19 +2382,19 @@ fn peer_face(peer: &Peer, hooks: &ChatHooks<'_>) -> PeerFace {
             pane.and_then(|pane| pane.program.as_deref())
                 .and_then(Program::by_id)
         }),
+        glyph: IconName::Bot,
         target,
     }
 }
 
 fn peer_chip(
     id: impl Into<ala::ElementId>,
-    peer: &Peer,
+    face: PeerFace,
     attention: Attention,
     hooks: &ChatHooks<'_>,
     cx: &App,
 ) -> Stateful<Div> {
     let theme = cx.theme();
-    let face = peer_face(peer, hooks);
     let ground = hooks.ground.unwrap_or_else(|| theme.ground());
     let chip = h_flex()
         .id(id)
@@ -2368,7 +2410,14 @@ fn peer_chip(
         .text_color(theme.foreground)
         .role(ala::Role::Link)
         .aria_label(face.title.clone())
-        .child(agent_tile(face.program, attention, ground, PEER_TILE, cx))
+        .child(tile(
+            face.program,
+            face.glyph,
+            attention,
+            ground,
+            PEER_TILE,
+            cx,
+        ))
         .child(
             Label::new(
                 if hooks.touch {

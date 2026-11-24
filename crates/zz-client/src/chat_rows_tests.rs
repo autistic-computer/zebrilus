@@ -1656,11 +1656,11 @@ fn a_childs_messages_fold_into_its_card_after_the_call_that_opened_it() {
             vec![
                 Unit::Peer(Box::new(crate::peer::PeerNote {
                     item: ItemId::new("u6"),
-                    peer: crate::peer::Peer {
+                    peer: Some(crate::peer::Peer {
                         host: None,
                         pane: PaneId(9),
                         agent: Some(codex),
-                    },
+                    }),
                     waited: None,
                     state: crate::peer::PeerState::Closed,
                     message: crate::peer::PeerMessage::Closed,
@@ -1803,6 +1803,73 @@ fn exchange(turns: &[(&str, String, Option<(&str, String, String)>)]) -> ChatVie
 }
 
 #[test]
+fn a_message_another_agent_sent_reads_as_a_note_from_it_not_as_the_users_prompt() {
+    use crate::chat_rows::child_fold;
+    use crate::peer::{Peer, PeerMessage, PeerNote, PeerState};
+    use zz_protocol::{
+        AgentProvider, PaneId,
+        agent_mention::{Sender, SentMessage},
+    };
+
+    let sent = |sender, host: Option<&str>| {
+        SentMessage {
+            sender,
+            host: host.map(str::to_owned),
+            text: "Handoff: reply with the state.".to_owned(),
+        }
+        .to_string()
+    };
+    let chat = Sender::Chat {
+        pane: PaneId(3),
+        provider: AgentProvider::ClaudeCode,
+    };
+    let view = exchange(&[
+        ("u1", sent(chat.clone(), Some("xps")), None),
+        ("u2", sent(chat, None), None),
+        (
+            "u3",
+            sent(Sender::Command { pane: None }, Some("xps")),
+            None,
+        ),
+        ("u4", "Handoff: reply with the state.".to_owned(), None),
+    ]);
+    let fold = child_fold(&view);
+    let leads = view
+        .turns
+        .iter()
+        .map(|turn| turn_rows(&view, turn, 0, &fold).shown.swap_remove(0))
+        .collect::<Vec<_>>();
+    let peer = |host: Option<&str>| {
+        Some(Peer {
+            host: host.map(str::to_owned),
+            pane: PaneId(3),
+            agent: Some(AgentProvider::ClaudeCode),
+        })
+    };
+    let note = |item: &str, peer, host: Option<&str>| {
+        Unit::Peer(Box::new(PeerNote {
+            item: ItemId::new(item),
+            peer,
+            waited: None,
+            state: PeerState::Replied,
+            message: PeerMessage::Sent {
+                host: host.map(str::to_owned),
+                text: "Handoff: reply with the state.".to_owned(),
+            },
+        }))
+    };
+    assert_eq!(
+        leads,
+        [
+            note("u1", peer(Some("xps")), Some("xps")),
+            note("u2", peer(None), None),
+            note("u3", None, Some("xps")),
+            Unit::User(ItemId::new("u4")),
+        ]
+    );
+}
+
+#[test]
 fn a_message_to_a_chat_this_chat_never_opened_reads_as_a_sent_row_and_a_reply_row() {
     use crate::chat_rows::{Run, child_fold};
     use crate::peer::{Peer, PeerMessage, PeerNote, PeerSent, PeerState};
@@ -1869,7 +1936,7 @@ fn a_message_to_a_chat_this_chat_never_opened_reads_as_a_sent_row_and_a_reply_ro
             vec![
                 Unit::Peer(Box::new(PeerNote {
                     item: ItemId::new("u2"),
-                    peer,
+                    peer: Some(peer),
                     waited: Some(2000),
                     state: PeerState::Replied,
                     message: PeerMessage::Replied {
@@ -1957,7 +2024,7 @@ fn a_message_to_a_chat_on_another_host_keeps_that_host_on_both_rows() {
             vec![
                 Unit::Peer(Box::new(PeerNote {
                     item: ItemId::new("u2"),
-                    peer,
+                    peer: Some(peer),
                     waited: Some(2000),
                     state: PeerState::Replied,
                     message: PeerMessage::Replied {

@@ -34,12 +34,13 @@ pub enum PeerMessage {
     Failed { message: String },
     Closed,
     Asks { title: String },
+    Sent { host: Option<String>, text: String },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PeerNote {
     pub item: ItemId,
-    pub peer: Peer,
+    pub peer: Option<Peer>,
     pub waited: Option<u64>,
     pub state: PeerState,
     pub message: PeerMessage,
@@ -62,7 +63,7 @@ impl PeerMessage {
     #[must_use]
     pub const fn state(&self) -> PeerState {
         match self {
-            Self::Replied { .. } => PeerState::Replied,
+            Self::Replied { .. } | Self::Sent { .. } => PeerState::Replied,
             Self::Stopped { .. } => PeerState::Stopped,
             Self::Failed { .. } => PeerState::Failed,
             Self::Closed => PeerState::Closed,
@@ -83,7 +84,7 @@ impl PeerNote {
     #[must_use]
     pub fn line(&self) -> Option<&str> {
         let text = match &self.message {
-            PeerMessage::Replied { reply } => reply,
+            PeerMessage::Replied { reply } | PeerMessage::Sent { text: reply, .. } => reply,
             PeerMessage::Stopped { reason, .. } => reason,
             PeerMessage::Failed { message } => message,
             PeerMessage::Asks { title } => title,
@@ -95,7 +96,9 @@ impl PeerNote {
     #[must_use]
     pub fn body(&self) -> Option<&str> {
         match &self.message {
-            PeerMessage::Replied { reply } | PeerMessage::Stopped { reply, .. } => Some(reply),
+            PeerMessage::Replied { reply }
+            | PeerMessage::Stopped { reply, .. }
+            | PeerMessage::Sent { text: reply, .. } => Some(reply),
             PeerMessage::Failed { message } => Some(message),
             PeerMessage::Closed | PeerMessage::Asks { .. } => None,
         }

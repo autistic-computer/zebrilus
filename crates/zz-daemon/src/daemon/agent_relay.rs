@@ -48,7 +48,19 @@ impl Shared {
         else {
             return Err(declined("takes a plain send to -t %N from a chat"));
         };
-        let payload = parsed.payload()?;
+        let payload = {
+            use zz_protocol::agent_mention::{Sender, SentMessage};
+            let here = self.inner.lock().engine.format_host_short().to_owned();
+            SentMessage {
+                sender: Sender::Chat {
+                    pane: caller,
+                    provider: self.agent_provider_of(caller),
+                },
+                host: Some(here).filter(|here| !here.is_empty()),
+                text: parsed.payload()?,
+            }
+            .to_string()
+        };
         let limit = crate::agent::fanout::MAX_SENDS_SINCE_USER;
         if self
             .open_agent_runtime()
