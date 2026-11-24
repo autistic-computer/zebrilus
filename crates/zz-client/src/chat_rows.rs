@@ -6,7 +6,7 @@ use crate::child_card::{ChildAsk, ChildCard, ChildState, Decision, Verdict};
 use crate::peer::{Peer, PeerMessage, PeerNote, PeerSent, PeerState};
 use zz_protocol::{
     AgentProvider, PaneId,
-    agent_mention::{AgentAsk, AgentReport, AgentRespond, ReplyNotice, wait_command},
+    agent_mention::{AgentAsk, AgentReport, AgentRespond, RemoteReport, ReplyNotice, wait_command},
     chat::{
         Answer, Ask, ChatView, ItemId, ItemKind, ItemStatus, ItemView, RequestClose, RequestId,
         RequestView, TurnId, TurnOutcome, TurnView,
@@ -520,7 +520,7 @@ fn units(
                 let peer = fold
                     .sent
                     .get(&item.id)
-                    .map(|&(peer, state)| {
+                    .map(|(peer, state)| {
                         Unit::Sent(Box::new(PeerSent {
                             run: Run {
                                 items: vec![item.id.clone()],
@@ -530,8 +530,8 @@ fn units(
                                     done_label(view, std::slice::from_ref(&item.id))
                                 },
                             },
-                            peer,
-                            state,
+                            peer: peer.clone(),
+                            state: *state,
                         }))
                     })
                     .or_else(|| {
@@ -646,9 +646,11 @@ pub fn child_fold(view: &ChatView) -> ChildFold {
     for item in items {
         if item.kind == ItemKind::User {
             let text = &item.body.text;
-            if let Some(report) = AgentReport::parse(text) {
+            if let Some(remote) = RemoteReport::parse(text) {
+                peers.report(item, Some(remote.host), remote.report);
+            } else if let Some(report) = AgentReport::parse(text) {
                 let Some(exchange) = open.get(&report.pane()).map(|at| &mut exchanges[*at]) else {
-                    peers.report(item, report);
+                    peers.report(item, None, report);
                     continue;
                 };
                 hidden.insert(item.id.clone());
@@ -722,8 +724,12 @@ pub fn child_fold(view: &ChatView) -> ChildFold {
         };
         let (pane, provider) = match notice {
             ReplyNotice::Opened { pane, provider, .. } => (pane, Some(provider)),
+            ReplyNotice::Relayed { host, pane } => {
+                peers.send(item, (Some(host), pane));
+                continue;
+            }
             ReplyNotice::Sent { pane, .. } if !open.contains_key(&pane) => {
-                peers.send(item, pane);
+                peers.send(item, (None, pane));
                 continue;
             }
             ReplyNotice::Sent { pane, .. } => (pane, None),
@@ -782,71 +788,94 @@ fn worked(item: &ItemView) -> bool {
 struct Peers {
     sent: HashMap<ItemId, (Peer, PeerState)>,
     notes: HashMap<ItemId, PeerNote>,
-    last: HashMap<PaneId, u64>,
-    waiting: HashMap<PaneId, Vec<ItemId>>,
-    asking: HashMap<PaneId, Vec<ItemId>>,
+    last: HashMap<PeerChat, u64>,
+    waiting: HashMap<PeerChat, Vec<ItemId>>,
+    asking: HashMap<PeerChat, Vec<ItemId>>,
 }
 
+type PeerChat = (Option<String>, PaneId);
+
 impl Peers {
-    fn send(&mut self, item: &ItemView, pane: PaneId) {
+    fn send(&mut self, item: &ItemView, chat: PeerChat) {
         let agent = self
             .notes
             .values()
-            .find(|note| note.peer.pane == pane)
+            .find(|note| note.peer.host == chat.0 && note.peer.pane == chat.1)
             .and_then(|note| note.peer.agent);
+        let peer = Peer {
+            host: chat.0.clone(),
+            pane: chat.1,
+            agent,
+        };
         self.sent
-            .insert(item.id.clone(), (Peer { pane, agent }, PeerState::Working));
-        self.last.insert(pane, item.started_at);
-        self.waiting.entry(pane).or_default().push(item.id.clone());
+            .insert(item.id.clone(), (peer, PeerState::Working));
+        self.last.insert(chat.clone(), item.started_at);
+        self.waiting.entry(chat).or_default().push(item.id.clone());
     }
 
-    fn note(&mut self, item: &ItemView, pane: PaneId, agent: AgentProvider, message: PeerMessage) {
+    fn note(
+        &mut self,
+        item: &ItemView,
+        chat: PeerChat,
+        agent: AgentProvider,
+        message: PeerMessage,
+    ) {
         let state = message.state();
-        self.answered(pane);
+        self.answered(&chat);
         if state == PeerState::Asking {
-            self.asking.entry(pane).or_default().push(item.id.clone());
+            self.asking
+                .entry(chat.clone())
+                .or_default()
+                .push(item.id.clone());
         } else {
-            for id in self.waiting.remove(&pane).unwrap_or_default() {
+            for id in self.waiting.remove(&chat).unwrap_or_default() {
                 if let Some((_, held)) = self.sent.get_mut(&id) {
                     *held = state;
                 }
             }
         }
         for (peer, _) in self.sent.values_mut() {
-            if peer.pane == pane && peer.agent.is_none() {
+            if peer.host == chat.0 && peer.pane == chat.1 && peer.agent.is_none() {
                 peer.agent = Some(agent);
             }
         }
+        let waited = self
+            .last
+            .get(&chat)
+            .map(|sent| item.started_at.saturating_sub(*sent));
         self.notes.insert(
             item.id.clone(),
             PeerNote {
                 item: item.id.clone(),
                 peer: Peer {
-                    pane,
+                    host: chat.0,
+                    pane: chat.1,
                     agent: Some(agent),
                 },
-                waited: self
-                    .last
-                    .get(&pane)
-                    .map(|sent| item.started_at.saturating_sub(*sent)),
+                waited,
                 state,
                 message,
             },
         );
     }
 
-    fn report(&mut self, item: &ItemView, report: AgentReport) {
+    fn report(&mut self, item: &ItemView, host: Option<String>, report: AgentReport) {
         let (pane, agent) = (report.pane(), report_provider(&report));
-        self.note(item, pane, agent, PeerMessage::of(report));
+        self.note(item, (host, pane), agent, PeerMessage::of(report));
     }
 
     fn ask(&mut self, item: &ItemView, ask: &AgentAsk) {
         let title = ChildAsk::of(ask).title;
-        self.note(item, ask.pane, ask.provider, PeerMessage::Asks { title });
+        self.note(
+            item,
+            (None, ask.pane),
+            ask.provider,
+            PeerMessage::Asks { title },
+        );
     }
 
-    fn answered(&mut self, pane: PaneId) {
-        for id in self.asking.remove(&pane).unwrap_or_default() {
+    fn answered(&mut self, chat: &PeerChat) {
+        for id in self.asking.remove(chat).unwrap_or_default() {
             if let Some(note) = self.notes.get_mut(&id) {
                 note.state = PeerState::Answered;
             }
@@ -855,7 +884,7 @@ impl Peers {
 
     fn respond(&mut self, item: &ItemView, pane: PaneId) {
         if worked(item) {
-            self.answered(pane);
+            self.answered(&(None, pane));
         }
     }
 
@@ -864,15 +893,15 @@ impl Peers {
             return;
         }
         let command = command_of(item);
-        let Some(pane) = self
+        let Some(chat) = self
             .waiting
             .keys()
-            .copied()
-            .find(|pane| command == wait_command(*pane))
+            .find(|(host, pane)| host.is_none() && command == wait_command(*pane))
+            .cloned()
         else {
             return;
         };
-        for id in self.waiting.remove(&pane).unwrap_or_default() {
+        for id in self.waiting.remove(&chat).unwrap_or_default() {
             if let Some((_, held)) = self.sent.get_mut(&id) {
                 *held = PeerState::Replied;
             }

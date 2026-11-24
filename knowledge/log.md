@@ -1,6 +1,7 @@
 # Update Log
 
 ## 2026-11-24
+* **Update**: A chat that messages a chat on another machine gets the reply back as a message ([agent panes](/concepts/agent-panes.md), [zz-cli](/crates/zz-cli.md)). `zz --host NAME agent-send -t %N TEXT` from a chat is relayed by the caller's own daemon (`daemon/agent_relay.rs`): it sends with `--wait --json` on that host and delivers `[zz] NAME:%N (codex) finished:` to the calling chat, drawn as peer rows that carry the host. The composer now writes a pane on the chat's own host as `@local:%N`, so a chat on a remote host that mentions its neighbour no longer depends on that machine knowing its own fleet name.
 * **Fix**: Working with a chat or a shell on another machine no longer points an agent at its own ([agent panes](/concepts/agent-panes.md), [zz-cli](/crates/zz-cli.md), [commands](/tmux/commands.md)). The note for an `@HOST:%N` mention of a chat on another host gives `zz --host HOST agent-send -t %N 'TEXT'` and no longer promises a reply that cannot be routed back. The CLI adds `--host NAME` to the commands in hints and errors a host sends (`with_host_commands`). `run-pane` with several COMMAND words quotes each one, so `run-pane -- printf '%s|' 'a b' c` prints `a b|c|`; one word is still a command line run as written. The `--host` refusal for a `run-pane` with no `-t` names `run-shell`, which needs no pane.
 
 ## 2026-11-23

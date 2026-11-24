@@ -358,8 +358,9 @@ The user tagged codex: codex does this task, not you. Write it a brief that stan
 @macbook:%2 is another chat, not you, on macbook: run zz --host macbook agent-send -t %2 'TEXT'. The command prints how its reply reaches you; do what it says.
 ```
 
-  The second form is for any host but `local` (2026-11-24): pane ids are per host, and a host's
-  daemon cannot route a reply back to a chat on another machine.
+  The second form is for any host but `local` (2026-11-24): pane ids are per host. The composer
+  writes the chat's own host as `local`, and the caller's daemon relays a send to any other host
+  and brings the reply back ([agent panes](/concepts/agent-panes.md)).
 
 # Host chat
 

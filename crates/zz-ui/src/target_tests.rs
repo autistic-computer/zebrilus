@@ -583,7 +583,7 @@ fn the_picker_follows_the_composer_and_owns_its_keys(cx: &mut TestAppContext) {
     let said = "ask @work › agents · ubuntu @main › shell ";
     assert_eq!(value(cx), said);
     assert_eq!(
-        picker.update(cx, |picker, _| picker.raw_text(said)),
+        picker.update(cx, |picker, cx| picker.raw_text(said, cx)),
         "ask @ubuntu:work:2 @macbook:main:1 ",
         "a target here goes out with its host"
     );
@@ -934,7 +934,7 @@ fn a_directory_mention_keeps_its_slash(cx: &mut TestAppContext) {
     let value = input.read_with(cx, |input, _| input.value().to_string());
     assert_eq!(value, "ask @dev/ · ubuntu ");
     assert_eq!(
-        picker.update(cx, |picker, _| picker.raw_text(&value)),
+        picker.update(cx, |picker, cx| picker.raw_text(&value, cx)),
         "ask @ubuntu:~/dev/ "
     );
 }
@@ -1188,7 +1188,7 @@ fn an_agent_mention_leaves_as_a_plus_token_with_its_model(cx: &mut TestAppContex
     cx.simulate_input("fix it");
     assert_eq!(value(cx), "@codex fix it");
     assert_eq!(
-        picker.update(cx, |picker, _| picker.raw_text("@codex fix it")),
+        picker.update(cx, |picker, cx| picker.raw_text("@codex fix it", cx)),
         "@+codex fix it"
     );
 
@@ -1254,7 +1254,7 @@ fn an_agent_mention_leaves_as_a_plus_token_with_its_model(cx: &mut TestAppContex
     let shown = value(cx);
     assert_eq!(shown, "@codex/gpt-6.1-sol fix it");
     assert_eq!(
-        picker.update(cx, |picker, _| picker.raw_text(&shown)),
+        picker.update(cx, |picker, cx| picker.raw_text(&shown, cx)),
         "@+codex/gpt-6.1-sol fix it"
     );
     assert_eq!(calls.borrow().len(), 2);
@@ -1305,4 +1305,13 @@ fn a_session_named_like_an_agent_is_reached_by_its_id() {
         resolve_target("macbook:$6", &hosts).map(|target| target.target),
         Some(RefTarget::Session(SessionId(6)))
     );
+}
+
+#[test]
+fn a_prompt_names_a_pane_on_its_chats_own_host_as_local() {
+    let hosts = hosts();
+    let typed = "ask @macbook:%5 and @ubuntu:%9 about @macbook:/tmp/a.rs and @macbook:main:1, not me@macbook:%5";
+    let sent = "ask @local:%5 and @ubuntu:%9 about @macbook:/tmp/a.rs and @macbook:main:1, not me@macbook:%5";
+    assert_eq!(rename_hosts(typed, &hosts, HostNames::Chat), sent);
+    assert_eq!(rename_hosts(sent, &hosts, HostNames::Client), typed);
 }

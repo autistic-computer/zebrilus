@@ -236,6 +236,10 @@ pub enum ReplyNotice {
         pane: PaneId,
         route: ReplyRoute,
     },
+    Relayed {
+        host: String,
+        pane: PaneId,
+    },
 }
 
 #[must_use]
@@ -277,6 +281,9 @@ impl fmt::Display for ReplyNotice {
                 "agent-send: read {pane}'s reply with: {}",
                 wait_command(*pane)
             ),
+            Self::Relayed { host, pane } => {
+                write!(formatter, "agent-send: {host}:{pane}'s {REPLY_TAIL}")
+            }
         }
     }
 }
@@ -297,10 +304,16 @@ impl ReplyNotice {
                     route: ReplyRoute::Read,
                 });
             }
-            let pane = rest.strip_suffix(&format!("'s {REPLY_TAIL}"))?;
-            return Some(Self::Sent {
-                pane: pane.parse().ok()?,
-                route: ReplyRoute::Back,
+            let chat = rest.strip_suffix(&format!("'s {REPLY_TAIL}"))?;
+            return Some(match address(chat)? {
+                (Some(host), pane) => Self::Relayed {
+                    host: host.to_owned(),
+                    pane,
+                },
+                (None, pane) => Self::Sent {
+                    pane,
+                    route: ReplyRoute::Back,
+                },
             });
         }
         let (verb, rest) = line.split_once(": opened ")?;
@@ -330,19 +343,47 @@ fn provider(name: &str) -> Option<AgentProvider> {
         .find(|provider| provider.command_name() == name || provider.as_str() == name)
 }
 
-fn header(line: &str) -> Option<(PaneId, AgentProvider, &str)> {
+fn address(chat: &str) -> Option<(Option<&str>, PaneId)> {
+    match chat.rsplit_once(':') {
+        Some((host, pane)) if !host.is_empty() => Some((Some(host), pane.parse().ok()?)),
+        Some(_) => None,
+        None => Some((None, chat.parse().ok()?)),
+    }
+}
+
+fn written(host: Option<&str>, pane: PaneId) -> String {
+    host.map_or_else(|| pane.to_string(), |host| format!("{host}:{pane}"))
+}
+
+fn send_command(host: Option<&str>, pane: PaneId) -> String {
+    let host = host
+        .map(|host| format!("--host {host} "))
+        .unwrap_or_default();
+    format!("zz {host}agent-send -t {pane} 'TEXT'")
+}
+
+type Header<'a> = (Option<&'a str>, PaneId, AgentProvider, &'a str);
+
+fn header(line: &str) -> Option<Header<'_>> {
     let rest = line.trim().strip_prefix("[zz] ")?;
-    let (pane, rest) = rest.split_once(" (")?;
+    let (chat, rest) = rest.split_once(" (")?;
     let (name, rest) = rest.split_once(") ")?;
-    Some((pane.parse().ok()?, provider(name)?, rest))
+    let (host, pane) = address(chat)?;
+    Some((host, pane, provider(name)?, rest))
 }
 
 fn write_header(
     formatter: &mut fmt::Formatter<'_>,
+    host: Option<&str>,
     pane: PaneId,
     provider: AgentProvider,
 ) -> fmt::Result {
-    write!(formatter, "[zz] {pane} ({})", provider.command_name())
+    write!(
+        formatter,
+        "[zz] {} ({})",
+        written(host, pane),
+        provider.command_name()
+    )
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -371,23 +412,59 @@ pub enum AgentReport {
 
 const CLOSED_TAIL: &str = "was closed before it replied. Tell the user; do not open it again.";
 
-fn follow_up(pane: PaneId) -> String {
+fn follow_up(host: Option<&str>, pane: PaneId) -> String {
     format!(
-        "If this answers the user, answer the user now and send nothing to {pane}. Only if something is missing: zz agent-send -t {pane} 'TEXT'"
+        "If this answers the user, answer the user now and send nothing to {}. Only if something is missing: {}",
+        written(host, pane),
+        send_command(host, pane)
     )
 }
 
-fn try_again(pane: PaneId) -> String {
-    format!("Tell the user, or try again with: zz agent-send -t {pane} 'TEXT'")
+fn try_again(host: Option<&str>, pane: PaneId) -> String {
+    format!(
+        "Tell the user, or try again with: {}",
+        send_command(host, pane)
+    )
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RemoteReport {
+    pub host: String,
+    pub report: AgentReport,
+}
+
+impl fmt::Display for RemoteReport {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.report.write(formatter, Some(&self.host))
+    }
+}
+
+impl RemoteReport {
+    #[must_use]
+    pub fn parse(text: &str) -> Option<Self> {
+        match AgentReport::parse_from(text)? {
+            (Some(host), report) => Some(Self { host, report }),
+            (None, _) => None,
+        }
+    }
 }
 
 impl fmt::Display for AgentReport {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.write(formatter, None)
+    }
+}
+
+impl AgentReport {
+    fn write(&self, formatter: &mut fmt::Formatter<'_>, host: Option<&str>) -> fmt::Result {
+        let write_header = |formatter: &mut fmt::Formatter<'_>, pane, provider| {
+            write_header(formatter, host, pane, provider)
+        };
         let body = |formatter: &mut fmt::Formatter<'_>, pane: PaneId, text: &str| {
             if !text.is_empty() {
                 write!(formatter, "\n{text}")?;
             }
-            write!(formatter, "\n\n{}", follow_up(pane))
+            write!(formatter, "\n\n{}", follow_up(host, pane))
         };
         match self {
             Self::Finished {
@@ -415,7 +492,7 @@ impl fmt::Display for AgentReport {
                 message,
             } => {
                 write_header(formatter, *pane, *provider)?;
-                write!(formatter, " failed: {message}\n{}", try_again(*pane))
+                write!(formatter, " failed: {message}\n{}", try_again(host, *pane))
             }
             Self::Closed { pane, provider } => {
                 write_header(formatter, *pane, *provider)?;
@@ -438,12 +515,29 @@ impl AgentReport {
 
     #[must_use]
     pub fn parse(text: &str) -> Option<Self> {
+        match Self::parse_from(text)? {
+            (None, report) => Some(report),
+            (Some(_), _) => None,
+        }
+    }
+
+    fn parse_from(text: &str) -> Option<(Option<String>, Self)> {
         let text = text.trim();
         let (line, rest) = text.split_once('\n').unwrap_or((text, ""));
-        let (pane, provider, tail) = header(line)?;
-        let rest = rest.trim_end();
+        let (host, pane, provider, tail) = header(line)?;
+        let report = Self::parse_body(host, pane, provider, tail, rest.trim_end())?;
+        Some((host.map(str::to_owned), report))
+    }
+
+    fn parse_body(
+        host: Option<&str>,
+        pane: PaneId,
+        provider: AgentProvider,
+        tail: &str,
+        rest: &str,
+    ) -> Option<Self> {
         let reply = || {
-            let follow = follow_up(pane);
+            let follow = follow_up(host, pane);
             rest.strip_suffix(follow.as_str())
                 .unwrap_or(rest)
                 .trim()
@@ -460,7 +554,7 @@ impl AgentReport {
             return Some(Self::Closed { pane, provider });
         }
         if let Some(message) = tail.strip_prefix("failed: ") {
-            let again = try_again(pane);
+            let again = try_again(host, pane);
             let rest = rest.strip_suffix(again.as_str()).unwrap_or(rest).trim_end();
             let message = if rest.is_empty() {
                 message.to_owned()
@@ -508,7 +602,7 @@ pub struct AgentAsk {
 impl fmt::Display for AgentAsk {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let pane = self.pane;
-        write_header(formatter, pane, self.provider)?;
+        write_header(formatter, None, pane, self.provider)?;
         write!(formatter, " asks: {}", self.what)?;
         let respond = |decision| AgentRespond {
             pane,
@@ -540,7 +634,9 @@ impl AgentAsk {
     #[must_use]
     pub fn parse(text: &str) -> Option<Self> {
         let mut lines = text.trim().lines().map(str::trim);
-        let (pane, provider, tail) = header(lines.next()?)?;
+        let (None, pane, provider, tail) = header(lines.next()?)? else {
+            return None;
+        };
         let what = tail.strip_prefix("asks: ")?.to_owned();
         let rest = lines.collect::<Vec<_>>();
         let request = AgentRespond::parse(rest.last()?)?.request;
@@ -784,6 +880,37 @@ mod tests {
             assert_eq!(report.to_string(), text);
             assert_eq!(AgentReport::parse(&format!("\n  {text}\n")), Some(report));
         }
+        let remote = [
+            (
+                AgentReport::Finished {
+                    pane,
+                    provider: codex,
+                    text: "all green".to_owned(),
+                },
+                "[zz] macbook:%4 (codex) finished:\nall green\n\nIf this answers the user, answer the user now and send nothing to macbook:%4. Only if something is missing: zz --host macbook agent-send -t %4 'TEXT'",
+            ),
+            (
+                AgentReport::Failed {
+                    pane,
+                    provider: codex,
+                    message: "lost the connection".to_owned(),
+                },
+                "[zz] macbook:%4 (codex) failed: lost the connection\nTell the user, or try again with: zz --host macbook agent-send -t %4 'TEXT'",
+            ),
+        ];
+        for (report, text) in remote {
+            let report = RemoteReport {
+                host: "macbook".to_owned(),
+                report,
+            };
+            assert_eq!(report.to_string(), text);
+            assert_eq!(AgentReport::parse(text), None);
+            assert_eq!(RemoteReport::parse(text), Some(report));
+        }
+        assert_eq!(
+            RemoteReport::parse("[zz] %4 (codex) finished:\nall green"),
+            None
+        );
         let asks = [
             (
                 AskAnswers::AllowDeny,
@@ -858,6 +985,13 @@ mod tests {
                     route: ReplyRoute::Read,
                 },
                 "agent-send: read %4's reply with: zz agent-send -t %4 --wait ''",
+            ),
+            (
+                ReplyNotice::Relayed {
+                    host: "macbook".to_owned(),
+                    pane,
+                },
+                "agent-send: macbook:%4's reply comes back to you as a message; end your turn now",
             ),
         ];
         for (notice, line) in notices {

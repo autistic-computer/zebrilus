@@ -560,8 +560,22 @@ impl CommandClient {
     }
 
     pub fn connect_endpoint(endpoint: &Endpoint, read_only: bool) -> Result<Self, DaemonError> {
+        Self::connect_endpoint_as(endpoint, read_only, false)
+    }
+
+    pub fn connect_endpoint_unattended(endpoint: &Endpoint) -> Result<Self, DaemonError> {
+        Self::connect_endpoint_as(endpoint, false, true)
+    }
+
+    fn connect_endpoint_as(
+        endpoint: &Endpoint,
+        read_only: bool,
+        unattended: bool,
+    ) -> Result<Self, DaemonError> {
         #[cfg(not(all(unix, not(any(target_os = "ios", target_os = "android")))))]
         let _ = read_only;
+        #[cfg(not(all(any(unix, windows), not(any(target_os = "ios", target_os = "android")))))]
+        let _ = unattended;
         match endpoint {
             Endpoint::Local(path) => Self::connect_route(CommandRoute {
                 socket: path.clone(),
@@ -601,8 +615,13 @@ impl CommandClient {
                 }
                 #[cfg(all(any(unix, windows), not(any(target_os = "ios", target_os = "android"))))]
                 {
+                    let login = if unattended {
+                        SshLogin::Unattended
+                    } else {
+                        SshLogin::Prompts(None)
+                    };
                     let (mut client, ssh_forward) =
-                        connect_kept(endpoint, SshLogin::Prompts(None), true, |socket, stream| {
+                        connect_kept(endpoint, login, true, |socket, stream| {
                             Ok(Self::with_link(
                                 CommandRoute {
                                     socket: socket.to_path_buf(),

@@ -71,6 +71,12 @@ written. `with_host_commands` puts `--host NAME` after every `zz` that a catalog
 in the stderr a host command relays (`print_command_error`) and in its error message
 (`with_host_hint`); stdout is left alone, since it carries pane and chat text.
 
+A plain `zz --host NAME agent-send -t %N TEXT` run inside a pane (`ZZ_PANE` set) is offered to the
+local daemon first as `agent-send --relay NAME ...` (`relay_agent_send`), with piped stdin read
+into TEXT beforehand so both routes get it. A usage error back means the daemon did not take it
+(an older daemon, a caller that is no chat, a host it cannot reach unattended), and the CLI goes
+on to the host itself; any other answer is the command's result.
+
 Over `--host`, `untargeted_host_input` exits 2 for any command without `-t` whose spec mutates and
 whose `-t` names a pane, window or session (input verbs, `kill-*`, `respawn-*`, `split-window`,
 `pipe-pane`, `html`, `set-option -p`/`-w` and the rest), since nothing there is the caller's; the

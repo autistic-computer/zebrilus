@@ -12,7 +12,9 @@ use zz_protocol::{
 
 use crate::{
     mention::{ref_end, ref_highlight, ref_spans},
-    target::{RefTarget, ResolvedTarget, TargetHost, drive_path, resolve_target},
+    target::{
+        HostNames, RefTarget, ResolvedTarget, TargetHost, drive_path, rename_hosts, resolve_target,
+    },
     text::{InlineLink, InlineSource, LinkClick, TextLinks},
 };
 
@@ -46,7 +48,8 @@ impl ChatRefs {
     }
 
     fn resolve(&self, token: &str) -> Option<ResolvedTarget> {
-        resolve_target(token, &self.hosts)
+        let token = rename_hosts(&format!("@{token}"), &self.hosts, HostNames::Client);
+        resolve_target(&token[1..], &self.hosts)
             .filter(|target| !matches!(target.target, RefTarget::Agent { .. }))
     }
 

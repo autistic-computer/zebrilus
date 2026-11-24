@@ -2309,23 +2309,31 @@ fn peer_face(peer: &Peer, hooks: &ChatHooks<'_>) -> PeerFace {
     let pane = refs.and_then(|refs| {
         refs.hosts
             .iter()
-            .filter(|host| host.here)
+            .filter(|host| match &peer.host {
+                Some(name) => host.name == *name,
+                None => host.here,
+            })
             .flat_map(|host| &host.sessions)
             .flat_map(|session| &session.windows)
             .flat_map(|window| &window.panes)
             .find(|pane| pane.id == peer.pane)
     });
+    let written = match &peer.host {
+        Some(host) => format!("@{host}:{}", peer.pane),
+        None => peer.pane.to_string(),
+    };
     let target = refs
         .zip(pane)
-        .and_then(|(refs, _)| {
-            refs.resolve_link(&format!("{}{}", super::refs::REF_SCHEME, peer.pane))
-        })
+        .and_then(|(refs, _)| refs.resolve_link(&format!("{}{written}", super::refs::REF_SCHEME)))
         .filter(|target| target.target == crate::target::RefTarget::Pane(peer.pane));
     let title = target
         .as_ref()
         .map(|target| target.label.clone())
         .filter(|title| !title.trim().is_empty())
-        .unwrap_or_else(|| peer.pane.to_string());
+        .unwrap_or_else(|| match &peer.host {
+            Some(host) => format!("{} · {host}", peer.pane),
+            None => peer.pane.to_string(),
+        });
     PeerFace {
         title,
         program: peer.agent.and_then(provider_program).or_else(|| {

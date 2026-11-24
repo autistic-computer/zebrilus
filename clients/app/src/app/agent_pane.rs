@@ -1104,7 +1104,9 @@ impl AgentPane {
 
     fn submit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let shown = self.input.read(cx).value().to_string();
-        let text = self.mention.update(cx, |picker, _| picker.raw_text(&shown));
+        let text = self
+            .mention
+            .update(cx, |picker, cx| picker.raw_text(&shown, cx));
         let settings = self
             .connection
             .read(cx)

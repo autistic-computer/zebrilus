@@ -151,10 +151,31 @@ messages.` (with `--model MODEL` when the token names one; a note recorded befor
 another chat, not you: run zz agent-send -t %2 'TEXT' and end your turn. Its reply comes back to
 you as a message.`, and for a chat on any other host, `@macbook:%2 is another chat, not you, on
 macbook: run zz --host macbook agent-send -t %2 'TEXT'. The command prints how its reply reaches
-you; do what it says.` That host's daemon sees no calling chat, so nothing routes the reply back:
-its stderr line gives the `--wait ''` command that reads it, with `--host` added by the CLI. The
-host name is the one the composing client wrote, so a chat on a remote host that mentions a chat
-on the client's own machine still gets the `local` form and the wrong pane. A chat opened by a chat gets a second note with its brief
+you; do what it says.` The composer writes a pane on the chat's own host as `local` and every
+other host by the name the client has for it, its own machine by hostname
+(`zz_ui::target::rename_hosts`, `HostNames::Chat` on send and `HostNames::Client` when a chat
+resolves a token for display), so `local` means the same pane to the daemon as to every client.
+
+A send to a chat on another host is relayed by the caller's own daemon, because that host's daemon
+sees no calling chat. `zz --host macbook agent-send -t %2 'TEXT'` run from a chat goes to the local
+daemon first as `agent-send --relay macbook -t %2 TEXT` (`zz_cli::relay_agent_send`,
+`daemon/agent_relay.rs`). The daemon dials the host with no login prompts, checks that the pane is
+a chat (`display-message -p '#{pane_kind} #{pane_current_command}'`), answers the command with
+`agent-send: macbook:%2's reply comes back to you as a message; end your turn now`
+(`ReplyNotice::Relayed`), then runs `agent-send -t %2 --wait --timeout 0 --json -- TEXT` there on a
+`zz-agent-relay` thread and delivers the result to the calling chat as a `RemoteReport`:
+`[zz] macbook:%2 (codex) finished:`, the reply, and `zz --host macbook agent-send -t %2 'TEXT'` as
+the follow-up. The remote side needs nothing new, so any host that has `agent-send --wait --json`
+works. The relay counts toward the same 8 sends between two user prompts. It declines with a usage
+error, and the CLI then sends directly and prints the `--wait ''` hint, when the caller is not a
+chat, the send is not a plain one (`--wait`, `--notify`, `--submit`), the host cannot be reached
+without a prompt within 20 s, or the pane holds no chat. The remote chat's permission asks are not
+relayed: they wait in that chat. A lost connection is delivered as
+`failed: lost the connection to macbook (...)` with the `capture-pane` command that reads the
+reply. The clients draw both lines as peer rows keyed by host and pane (`zz_client::peer::Peer`
+has `host`), so `macbook:%2` never folds into a local `%2`.
+
+A chat opened by a chat gets a second note with its brief
 (`child_note`): `%P (NAME) opened this chat. Your final message is sent to it as your reply, so
 finish with the answer. You cannot open other agents or message %P; if you need something, say so
 in your reply.`, and for a Codex child `If a command fails with "Operation not permitted", rerun it

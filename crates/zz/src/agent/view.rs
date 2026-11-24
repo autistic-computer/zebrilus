@@ -1440,7 +1440,9 @@ impl AgentView {
 
     fn submit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let shown = self.input.read(cx).value().to_string();
-        let value = self.mention.update(cx, |picker, _| picker.raw_text(&shown));
+        let value = self
+            .mention
+            .update(cx, |picker, cx| picker.raw_text(&shown, cx));
         if value.trim().is_empty() && self.attachments.is_empty() {
             return;
         }

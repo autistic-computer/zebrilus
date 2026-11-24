@@ -1657,6 +1657,7 @@ fn a_childs_messages_fold_into_its_card_after_the_call_that_opened_it() {
                 Unit::Peer(Box::new(crate::peer::PeerNote {
                     item: ItemId::new("u6"),
                     peer: crate::peer::Peer {
+                        host: None,
                         pane: PaneId(9),
                         agent: Some(codex),
                     },
@@ -1844,6 +1845,7 @@ fn a_message_to_a_chat_this_chat_never_opened_reads_as_a_sent_row_and_a_reply_ro
         .map(|turn| turn_rows(&view, turn, 0, &fold).shown)
         .collect::<Vec<_>>();
     let peer = Peer {
+        host: None,
         pane,
         agent: Some(AgentProvider::ClaudeCode),
     };
@@ -1859,7 +1861,7 @@ fn a_message_to_a_chat_this_chat_never_opened_reads_as_a_sent_row_and_a_reply_ro
                             summary: "Ran zz agent-send -t %12 'four findings'".to_owned(),
                         },
                     },
-                    peer,
+                    peer: peer.clone(),
                     state: PeerState::Replied,
                 })),
                 Unit::Text(ItemId::new("a1")),
@@ -1883,6 +1885,89 @@ fn a_message_to_a_chat_this_chat_never_opened_reads_as_a_sent_row_and_a_reply_ro
         Some(("Sent findings to ", " now"))
     );
     assert_eq!(crate::peer::around_pane("Ran %123", pane), None);
+}
+
+#[test]
+fn a_message_to_a_chat_on_another_host_keeps_that_host_on_both_rows() {
+    use crate::chat_rows::{Run, child_fold};
+    use crate::peer::{Peer, PeerMessage, PeerNote, PeerSent, PeerState};
+    use zz_protocol::{
+        AgentProvider, PaneId,
+        agent_mention::{AgentReport, RemoteReport, ReplyNotice},
+    };
+
+    let pane = PaneId(12);
+    let host = "macbook".to_owned();
+    let view = exchange(&[
+        (
+            "u1",
+            "ask the mac".to_owned(),
+            Some((
+                "send",
+                "zz --host macbook agent-send -t %12 'status?'".to_owned(),
+                ReplyNotice::Relayed {
+                    host: host.clone(),
+                    pane,
+                }
+                .to_string(),
+            )),
+        ),
+        (
+            "u2",
+            RemoteReport {
+                host: host.clone(),
+                report: AgentReport::Finished {
+                    pane,
+                    provider: AgentProvider::Codex,
+                    text: "all green".to_owned(),
+                },
+            }
+            .to_string(),
+            None,
+        ),
+    ]);
+    let fold = child_fold(&view);
+    let shown = view
+        .turns
+        .iter()
+        .map(|turn| turn_rows(&view, turn, 0, &fold).shown)
+        .collect::<Vec<_>>();
+    let peer = Peer {
+        host: Some(host),
+        pane,
+        agent: Some(AgentProvider::Codex),
+    };
+    assert_eq!(
+        shown,
+        [
+            vec![
+                Unit::User(ItemId::new("u1")),
+                Unit::Sent(Box::new(PeerSent {
+                    run: Run {
+                        items: ids(&["send"]),
+                        label: RunLabel::Done {
+                            summary: "Ran zz --host macbook agent-send -t %12 'status?'".to_owned(),
+                        },
+                    },
+                    peer: peer.clone(),
+                    state: PeerState::Replied,
+                })),
+                Unit::Text(ItemId::new("a1")),
+            ],
+            vec![
+                Unit::Peer(Box::new(PeerNote {
+                    item: ItemId::new("u2"),
+                    peer,
+                    waited: Some(2000),
+                    state: PeerState::Replied,
+                    message: PeerMessage::Replied {
+                        reply: "all green".to_owned(),
+                    },
+                })),
+                Unit::Text(ItemId::new("a2")),
+            ],
+        ]
+    );
 }
 
 #[test]

@@ -787,6 +787,43 @@ pub struct ResolvedTarget {
     pub target: RefTarget,
 }
 
+pub const LOCAL_HOST: &str = "local";
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HostNames {
+    Chat,
+    Client,
+}
+
+#[must_use]
+pub fn rename_hosts(text: &str, hosts: &[TargetHost], names: HostNames) -> String {
+    let Some(here) = hosts.iter().find(|host| host.here) else {
+        return text.to_owned();
+    };
+    let (from, to) = match names {
+        HostNames::Chat => (here.name.as_str(), LOCAL_HOST),
+        HostNames::Client => (LOCAL_HOST, here.name.as_str()),
+    };
+    let mut out = String::with_capacity(text.len());
+    let mut last = 0;
+    for span in crate::mention::ref_spans(text) {
+        let Some(pane) = text[span.start + 1..span.end]
+            .strip_prefix(from)
+            .and_then(|rest| rest.strip_prefix(':'))
+            .filter(|pane| pane.parse::<PaneId>().is_ok())
+        else {
+            continue;
+        };
+        out.push_str(&text[last..=span.start]);
+        out.push_str(to);
+        out.push(':');
+        out.push_str(pane);
+        last = span.end;
+    }
+    out.push_str(&text[last..]);
+    out
+}
+
 #[must_use]
 pub fn resolve_target(body: &str, hosts: &[TargetHost]) -> Option<ResolvedTarget> {
     let body = unescape(body);
@@ -1801,9 +1838,13 @@ impl TargetPicker {
         self.rows = (rows.max(1.0) as usize).min(TARGET_VISIBLE_ROWS);
     }
 
-    pub fn raw_text(&mut self, text: &str) -> String {
+    pub fn raw_text(&mut self, text: &str, cx: &App) -> String {
         self.mentions.follow(text);
-        self.mentions.raw()
+        rename_hosts(
+            &self.mentions.raw(),
+            &self.backend.hosts(cx),
+            HostNames::Chat,
+        )
     }
 
     fn follow(&mut self, window: &mut Window, cx: &mut Context<Self>) {

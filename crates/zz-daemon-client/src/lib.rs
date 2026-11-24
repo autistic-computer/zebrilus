@@ -89,7 +89,7 @@ pub use fleet_hosts::{
     write_fleet_host,
 };
 #[cfg(all(any(unix, windows), not(any(target_os = "ios", target_os = "android"))))]
-pub use fleet_hosts::{fleet_hosts_with_tailnet, tailnet_hosts_beside};
+pub use fleet_hosts::{fleet_hosts_with_tailnet, host_endpoint, tailnet_hosts_beside};
 #[cfg(any(unix, windows))]
 pub use fleet_sync::{SyncLine, TrustReport, sync_fleet, trust_fleet_key};
 pub use host_failure::{DaemonBehind, HostFailure, InstallOffer, session_count, update_prompt};

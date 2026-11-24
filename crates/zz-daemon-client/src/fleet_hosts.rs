@@ -45,6 +45,17 @@ pub fn fleet_hosts_with_tailnet() -> io::Result<(Vec<HostEntry>, Vec<RejectedHos
 }
 
 #[cfg(all(any(unix, windows), not(any(target_os = "ios", target_os = "android"))))]
+pub fn host_endpoint(name: &str) -> Result<Endpoint, String> {
+    let (mut hosts, _) =
+        configured_fleet_hosts().map_err(|error| format!("could not read zz/config: {error}"))?;
+    if !hosts.iter().any(|host| host.name == name) && !name.contains(['@', ':', '/']) {
+        let found = tailnet_hosts_beside(&hosts);
+        hosts.extend(found);
+    }
+    resolve_fleet_host(&hosts, name)
+}
+
+#[cfg(all(any(unix, windows), not(any(target_os = "ios", target_os = "android"))))]
 #[must_use]
 pub fn tailnet_hosts_beside(configured: &[HostEntry]) -> Vec<HostEntry> {
     let settings = discover_config_path(&config_candidates())

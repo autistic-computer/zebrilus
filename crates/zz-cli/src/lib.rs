@@ -1391,11 +1391,62 @@ fn with_host_commands(host: &str, text: &str) -> String {
     out
 }
 
+fn relay_declined(error: &DaemonError) -> bool {
+    match error {
+        DaemonError::Server(error) => error.is_command_parse(),
+        DaemonError::CommandFailed { error, .. } => relay_declined(error),
+        _ => false,
+    }
+}
+
+fn relay_agent_send(
+    socket_path: &Path,
+    host: &str,
+    command_chain: &mut [CommandInvocation],
+) -> Option<ExitCode> {
+    let [invocation] = command_chain else {
+        return None;
+    };
+    if canonical_command(&invocation.name) != "agent-send" || std::env::var_os("ZZ_PANE").is_none()
+    {
+        return None;
+    }
+    if zz_daemon::command_stdin_sink("agent-send", &invocation.args).is_some() {
+        if io::stdin().is_terminal() {
+            return None;
+        }
+        let mut piped = Vec::new();
+        io::Read::read_to_end(&mut io::stdin().lock(), &mut piped).ok()?;
+        zz_daemon::append_stdin_payload(
+            "agent-send",
+            &mut invocation.args,
+            String::from_utf8_lossy(&piped).into_owned(),
+        );
+    }
+    let arguments = ["--relay", host]
+        .into_iter()
+        .map(RawText::from)
+        .chain(invocation.args.iter().cloned());
+    let mut client = CommandClient::connect(socket_path).ok()?;
+    match client.execute_streams(CommandInvocation::new("agent-send", arguments)) {
+        Ok(outcome) => {
+            print_command_output(&outcome.stdout);
+            print_command_error(&outcome.stderr);
+            Some(ExitCode::from(outcome.exit_code))
+        }
+        Err(error) if relay_declined(&error) => None,
+        Err(error) => {
+            eprintln!("{}", command_error_message(&error));
+            Some(exit_code_for(CliFailure::Daemon(&error)))
+        }
+    }
+}
+
 fn run_host_command_chain(
     routing: &ChainRouting<'_>,
     host: &str,
     socket_source: SocketSelectionSource,
-    command_chain: Vec<CommandInvocation>,
+    mut command_chain: Vec<CommandInvocation>,
     progress_target: Option<&str>,
 ) -> ExitCode {
     if command_chain_uses_tui(&command_chain) || attach_prefix_uses_tui(routing.command) {
@@ -1403,6 +1454,9 @@ fn run_host_command_chain(
     }
     if matches!(routing.command, "attach" | "attach-session") {
         return run_native_attach(routing, None, command_chain, None);
+    }
+    if let Some(exit) = relay_agent_send(routing.socket_path, host, &mut command_chain) {
+        return exit;
     }
     if let Some(error) =
         tmux_label_creation_error(routing.socket_path, socket_source, routing.start_server)
@@ -2947,13 +3001,7 @@ fn connect_host_command_client(name: &str, read_only: bool) -> Result<CommandCli
 }
 
 pub(crate) fn configured_host_endpoint(name: &str) -> Result<Endpoint, String> {
-    let (mut hosts, _) = zz_daemon_client::configured_fleet_hosts()
-        .map_err(|error| format!("could not read zz/config: {error}"))?;
-    if !hosts.iter().any(|host| host.name == name) && !name.contains(['@', ':', '/']) {
-        let found = zz_daemon_client::tailnet_hosts_beside(&hosts);
-        hosts.extend(found);
-    }
-    zz_daemon_client::resolve_fleet_host(&hosts, name)
+    zz_daemon_client::host_endpoint(name)
 }
 
 fn host_connect_failure(name: &str, error: &DaemonError) -> String {

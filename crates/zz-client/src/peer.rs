@@ -2,8 +2,9 @@ use zz_protocol::{AgentProvider, PaneId, agent_mention::AgentReport, chat::ItemI
 
 use crate::chat_rows::{Run, duration};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Peer {
+    pub host: Option<String>,
     pub pane: PaneId,
     pub agent: Option<AgentProvider>,
 }

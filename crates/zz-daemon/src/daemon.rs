@@ -31,6 +31,8 @@ mod agent_inbox;
 mod agent_login;
 #[cfg(feature = "agent")]
 mod agent_publisher;
+#[cfg(feature = "agent")]
+mod agent_relay;
 mod agent_waits;
 mod artifacts;
 mod chooser_presentation;
@@ -17274,6 +17276,15 @@ impl Shared {
         args: &[RawText],
     ) -> Result<Execution, DaemonError> {
         let parsed = parse_agent_send_args(args)?;
+        if let Some(host) = &parsed.relay {
+            #[cfg(feature = "agent")]
+            return self.relay_agent_send(client, kind, context, host, &parsed);
+            #[cfg(not(feature = "agent"))]
+            return Err(ServerError::NativeCommandParse(format!(
+                "agent-send: --relay {host} needs agent support"
+            ))
+            .into());
+        }
         let payload = if parsed.wait_only() {
             String::new()
         } else {
@@ -51902,6 +51913,7 @@ struct ParsedAgentSend {
     notify: bool,
     timeout: Option<Duration>,
     context: Option<ContextReference>,
+    relay: Option<String>,
     text: Vec<String>,
 }
 
@@ -52991,11 +53003,15 @@ const MAX_AGENT_NOTIFY_BYTES: usize = 64 * 1024;
 
 #[cfg(feature = "agent")]
 fn agent_reply_tail(reply: &crate::agent::host::AgentTurnReply) -> String {
-    let text = if reply.final_text.trim().is_empty() {
+    reply_tail(if reply.final_text.trim().is_empty() {
         &reply.text
     } else {
         &reply.final_text
-    };
+    })
+}
+
+#[cfg(feature = "agent")]
+fn reply_tail(text: &str) -> String {
     let mut start = text.len().saturating_sub(MAX_AGENT_NOTIFY_BYTES);
     while !text.is_char_boundary(start) {
         start += 1;
@@ -53217,6 +53233,11 @@ fn parse_agent_send_args(args: &[RawText]) -> Result<ParsedAgentSend, ServerErro
         }
         if let Some(value) = option_value("agent-send", args, index, &["--context"])? {
             parsed.context = Some(ContextReference::parse(&value.value)?);
+            index += value.consumed;
+            continue;
+        }
+        if let Some(value) = option_value("agent-send", args, index, &["--relay"])? {
+            parsed.relay = Some(value.value);
             index += value.consumed;
             continue;
         }
@@ -53461,7 +53482,7 @@ Run a command in another pane with `zz run-pane -t %N -- CMD` (prints its output
 
 Give a task to another agent with `zz new-pane -d --kind agent claude|codex|agy|grok|cursor [--model M] [--effort E] 'BRIEF'`: it opens a chat on the brief and prints how its reply reaches you. zz passes `--model` and `--effort` to that agent's CLI unchecked, so write them the way that CLI names them.
 
-Other machines: `zz list-hosts` names them and `zz --host NAME VERB -t %N` runs a verb there; pane IDs are per host. Run `zz tools --skill` for the full guide.
+Other machines: `zz list-hosts` names them and `zz --host NAME VERB -t %N` runs a verb there (pane IDs are per host), `zz --host NAME run-shell 'CMD'` a command with no pane. Run `zz tools --skill` for the full guide.
 "#;
 
 const AGENT_PANE_CONTEXT: &str = concat!(
@@ -53628,7 +53649,7 @@ Open a new chat as a float. `split-window` and `new-window` take the same `--kin
 
 Run from a chat, the new chat is yours: `#{agent_parent}` names your pane, its reply to the brief comes back to you as a message once its turn ends, and it approves its own tool calls unless `agent-auto-approve` is `off`, so only a question it asks comes to you, with the `agent-respond` lines that answer it. Do not wait or poll. The chat you open gets a note with its brief, kept out of its transcript, saying which chat opened it and that its final message is its reply. It cannot open chats of its own (it is told to do the work itself or say what it needs), and closing your pane closes it and every pane it opened. If the user closes it and opens it again, `zz agent-send -t %N` still reaches it by the id you were given; while it stays closed, the send fails with `%N was closed; open a new chat with: zz new-pane -d --kind agent codex 'BRIEF'`. A message reads `[zz] %N (codex) finished:` or `stopped (REASON):`, then the reply and `If this answers the user, answer the user now and send nothing to %N. Only if something is missing: zz agent-send -t %N 'TEXT'`; `failed: MESSAGE` and `Tell the user, or try again with: zz agent-send -t %N 'TEXT'`; or `was closed before it replied. Tell the user; do not open it again.`; an ask reads `[zz] %N (codex) asks: KIND TITLE` and lists the `zz agent-respond` commands that answer it, one `--option ID REQUEST_ID  # LABEL` line per choice of a question and `--answer 'TEXT' REQUEST_ID` for one that wants typed text; each line ends with the id of the request it answers, so once that request is answered or gone it fails with `has no pending request` instead of answering another one.
 
-A prompt the user wrote that names an agent with `@+claude`, `@+codex`, `@+agy`, `@+grok`, `@+cursor` or `@+codex/MODEL`, or a running chat with `@HOST:%N`, comes with a note, kept out of the transcript, that tells you to hand the task over with the exact command (`zz new-pane -d --kind agent codex 'BRIEF'`, or `zz agent-send -t %N 'TEXT'` for a chat) and end your turn. For a chat on another machine the command is `zz --host HOST agent-send -t %N 'TEXT'`, and its reply does not come back on its own: the command prints `agent-send: read %N's reply with: zz --host HOST agent-send -t %N --wait ''`, which waits for the turn and prints the reply.
+A prompt the user wrote that names an agent with `@+claude`, `@+codex`, `@+agy`, `@+grok`, `@+cursor` or `@+codex/MODEL`, or a running chat with `@HOST:%N`, comes with a note, kept out of the transcript, that tells you to hand the task over with the exact command (`zz new-pane -d --kind agent codex 'BRIEF'`, or `zz agent-send -t %N 'TEXT'` for a chat) and end your turn. For a chat on another machine the command is `zz --host HOST agent-send -t %N 'TEXT'`. Run from a chat, its reply comes back to you as a message too: stderr says `agent-send: HOST:%N's reply comes back to you as a message; end your turn now`, and the message reads `[zz] HOST:%N (codex) finished:` with `zz --host HOST agent-send -t %N 'TEXT'` as its follow-up. That chat's permission asks stay with it and are answered there. When the reply cannot be routed (the command runs from a terminal, or this machine cannot log in to HOST without asking), stderr says `agent-send: read %N's reply with: zz --host HOST agent-send -t %N --wait ''`, which waits for the turn and prints the reply.
 
 A chat answers the same reads as a terminal. `#{pane_current_command}` is `claude`, `codex`, `agy`, `grok` or `cursor-agent`. `#{agent_state}` is `starting`, `idle`, `working`, `needs-approval`, `needs-input` or `failed`, and `#{agent_pending_permission}` is the pending request ID or empty, in `list-panes -F`, `display-message -p` and `inspect`. `capture-pane -p -t %N` prints the chat's last turn as text: `> ` and the prompt, one line per tool call (its kind and title), then the reply; `-S -` prints the whole chat, and an empty chat prints nothing. While a turn runs, stderr says `capture-pane: %N's turn is still running`. `wait-pane` on a chat fails with `%N is an agent chat; wait for its turn with: zz agent-send -t %N --wait ''`, and `show-last-output` with `%N is an agent chat; read it with: zz capture-pane -p -t %N`. Typing into a chat fails and names the verb to use: `send-keys`, `send-text`, `paste-buffer` and `run-pane` fail with `%N is an agent chat; send with: zz agent-send -t %N TEXT`, and `pipe-pane` with `%N is an agent chat; read it with: zz capture-pane -p -t %N`.
 
@@ -125706,6 +125727,62 @@ bind - split-window -v -c "#{pane_current_path}"
             assert_eq!(
                 capture(&["-p", "-J", "-t", "%1", "-S", "-"]),
                 "> one\n\nturn 0\n\n> two\n\nturn 1\n"
+            );
+        }
+
+        #[test]
+        fn a_send_relayed_to_another_daemon_brings_its_reply_back_to_the_calling_chat() {
+            use super::super::agent_relay::{Gate, Relay};
+
+            let here = workspace(Behavior::Chunk);
+            let there = workspace(Behavior::Chunk);
+            let remote = |command: CommandInvocation| {
+                let stderr = || take_stderr(&there, ClientId(97));
+                stderr();
+                let mut context = ExecutionContext::default();
+                let ran =
+                    there
+                        .shared
+                        .execute(ClientId(97), ClientKind::Command, &mut context, &command);
+                let (stdout, exit_code) = match ran {
+                    Ok(execution) => (execution.output, 0),
+                    Err(DaemonError::CommandExit { output, exit_code }) => (output, exit_code),
+                    Err(error) => return Err(error),
+                };
+                Ok(zz_daemon_client::CommandOutcome {
+                    stdout,
+                    stderr: stderr(),
+                    exit_code,
+                    stdout_claim: zz_protocol::StdoutClaim::default(),
+                    client_exit: false,
+                })
+            };
+            let relay = |pane| Relay {
+                shared: Arc::downgrade(&here.shared),
+                caller: here.agent,
+                host: "macbook".to_owned(),
+                pane,
+                payload: "status?".to_owned(),
+                gate: Arc::new(Mutex::new(Gate::Opening)),
+            };
+            let (opened, taken) = crossbeam_channel::bounded(2);
+            relay(there.agent).run_on(remote, &opened.clone().into());
+            assert_eq!(taken.try_recv(), Ok(Ok(())));
+            wait_until("the reply in the calling chat", || {
+                !received(&here, here.agent).is_empty()
+            });
+            assert_eq!(
+                received(&here, here.agent),
+                [
+                    "[zz] macbook:%1 (codex) finished:\nturn 0\n\nIf this answers the user, answer the user now and send nothing to macbook:%1. Only if something is missing: zz --host macbook agent-send -t %1 'TEXT'"
+                ]
+            );
+            assert_eq!(received(&there, there.agent), ["status?"]);
+            assert_eq!(here.runtime.sends_since_user(here.agent, there.agent), 1);
+            relay(PaneId(9)).run_on(remote, &opened.into());
+            assert_eq!(
+                taken.try_recv(),
+                Ok(Err("found no chat in that pane".to_owned()))
             );
         }
 
