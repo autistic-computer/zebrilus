@@ -1365,8 +1365,36 @@ fn with_host_hint(host: Option<&str>, message: String) -> String {
             "{message}\nzz --host {host}: name the session with -t NAME (zz --host {host} \
              list-sessions, or make one with zz --host {host} new-session -d -s NAME)"
         ),
-        _ => message,
+        Some(host) => host_commands(host, &message),
+        None => message,
     }
+}
+
+fn host_commands(host: &str, text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find("zz ") {
+        let (before, after) = rest.split_at(at);
+        let after = &after[3..];
+        let opens = before
+            .chars()
+            .next_back()
+            .is_none_or(|before| !before.is_alphanumeric() && !"-_./".contains(before));
+        let verb = after
+            .split(|character: char| !character.is_ascii_alphanumeric() && character != '-')
+            .next()
+            .unwrap_or_default();
+        out.push_str(before);
+        out.push_str("zz ");
+        if opens && catalog_command_spec(canonical_command(verb)).is_some() {
+            out.push_str("--host ");
+            out.push_str(host);
+            out.push(' ');
+        }
+        rest = after;
+    }
+    out.push_str(rest);
+    out
 }
 
 fn run_host_command_chain(
@@ -1421,7 +1449,12 @@ fn run_host_command_chain(
         None
     };
     prepare_command_client(&mut client);
-    match client.exec_chain(ExecChain::new(command_chain), emit_chain_outcome) {
+    let emit = |outcome: &CommandOutcome| {
+        let status = print_chain_output(&outcome.stdout, raw_command_output(outcome.stdout_claim));
+        print_command_error(&host_commands(host, &outcome.stderr));
+        status
+    };
+    match client.exec_chain(ExecChain::new(command_chain), emit) {
         Ok(ExecChainEnd::Ran { exit_code }) => ExitCode::from(exit_code),
         Ok(ExecChainEnd::Rejected(error)) => {
             eprintln!(
@@ -4960,6 +4993,21 @@ mod tests {
                 Err(ApplicationArgumentError::Message(message)) if message.contains("must not start with `-`")
             ));
         }
+    }
+
+    #[test]
+    fn a_hint_printed_for_a_host_names_that_host() {
+        assert_eq!(
+            super::host_commands(
+                "macbook",
+                "agent-send: read %5's reply with: zz agent-send -t %5 --wait ''\n\
+                 %5 has no running turn; read its last reply with: zz capture-pane -p -t %5\n\
+                 zz: fizz buzz, zz nonsense",
+            ),
+            "agent-send: read %5's reply with: zz --host macbook agent-send -t %5 --wait ''\n\
+             %5 has no running turn; read its last reply with: zz --host macbook capture-pane -p -t %5\n\
+             zz: fizz buzz, zz nonsense"
+        );
     }
 
     #[test]

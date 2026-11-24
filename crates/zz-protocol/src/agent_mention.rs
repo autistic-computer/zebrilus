@@ -113,8 +113,7 @@ const AGENT_REPLIES_BEFORE: &str =
     "Its reply and any permission asks come back to you as messages.";
 
 impl Mention {
-    #[must_use]
-    pub fn instruction(&self) -> String {
+    fn instruction(&self, away: bool) -> String {
         match self {
             Self::Agent { provider, model } => {
                 let name = provider.command_name();
@@ -126,6 +125,9 @@ impl Mention {
                     "The user tagged {name}: {name} does this task, not you. Write it a brief that stands on its own, run zz new-pane -d --kind agent {name}{model} 'BRIEF' and end your turn. Do not do the task yourself. {AGENT_REPLIES}"
                 )
             }
+            Self::Chat { host, pane } if away => format!(
+                "@{host}:{pane} is a chat on {host}, not you: run zz --host {host} agent-send -t {pane} --wait 'TEXT'. Its reply prints when its turn ends; if the command stops first, run zz --host {host} agent-send -t {pane} --wait ''."
+            ),
             Self::Chat { host, pane } => format!(
                 "@{host}:{pane} is another chat, not you: run zz agent-send -t {pane} 'TEXT' and end your turn. Its reply comes back to you as a message."
             ),
@@ -134,10 +136,11 @@ impl Mention {
 }
 
 #[must_use]
-pub fn mention_note(text: &str) -> Option<String> {
+pub fn mention_note(text: &str, away: &dyn Fn(&str) -> bool) -> Option<String> {
     let mut lines = Vec::<String>::new();
     for mention in mentions(text) {
-        let line = mention.instruction();
+        let far = matches!(&mention, Mention::Chat { host, .. } if away(host));
+        let line = mention.instruction(far);
         if !lines.contains(&line) {
             lines.push(line);
         }
@@ -159,11 +162,11 @@ pub fn child_note(parent: PaneId, parent_provider: AgentProvider, child: AgentPr
 }
 
 #[must_use]
-pub fn hidden_note(text: &str, extra: Option<&str>) -> Option<String> {
+pub fn hidden_note(text: &str, extra: Option<&str>, away: &dyn Fn(&str) -> bool) -> Option<String> {
     let notes = extra
         .map(str::to_owned)
         .into_iter()
-        .chain(mention_note(text))
+        .chain(mention_note(text, away))
         .collect::<Vec<_>>();
     (!notes.is_empty()).then(|| notes.join("\n"))
 }
@@ -184,13 +187,18 @@ fn note_line(line: &str) -> bool {
             .split_once(&marker)
             .and_then(|(_, rest)| rest.split_once(" 'BRIEF'"))
             .map(|(model, _)| model.to_owned());
-        let current = Mention::Agent { provider, model }.instruction();
+        let current = Mention::Agent { provider, model }.instruction(false);
         return current == line || current.replace(AGENT_REPLIES, AGENT_REPLIES_BEFORE) == line;
     }
-    if let Some((token, _)) = line.split_once(" is another chat, not you") {
-        return Mention::parse(token)
-            .filter(|mention| matches!(mention, Mention::Chat { .. }))
-            .is_some_and(|mention| mention.instruction() == line);
+    for (marker, away) in [
+        (" is another chat, not you", false),
+        (" is a chat on ", true),
+    ] {
+        if let Some((token, _)) = line.split_once(marker) {
+            return Mention::parse(token)
+                .filter(|mention| matches!(mention, Mention::Chat { .. }))
+                .is_some_and(|mention| mention.instruction(away) == line);
+        }
     }
     let Some((opener, _)) = line.split_once(" opened this chat.") else {
         return false;
@@ -900,9 +908,16 @@ mod tests {
         let codex = "The user tagged codex: codex does this task, not you. Write it a brief that stands on its own, run zz new-pane -d --kind agent codex 'BRIEF' and end your turn. Do not do the task yourself. Its reply and any questions come back to you as messages.";
         let claude = "The user tagged claude: claude does this task, not you. Write it a brief that stands on its own, run zz new-pane -d --kind agent claude --model opus 'BRIEF' and end your turn. Do not do the task yourself. Its reply and any questions come back to you as messages.";
         let chat = "@macbook:%2 is another chat, not you: run zz agent-send -t %2 'TEXT' and end your turn. Its reply comes back to you as a message.";
-        assert_eq!(mention_note("@+codex fix it").as_deref(), Some(codex));
-        let both = mention_note("@+claude/opus and @+codex, ask @macbook:%2 and @+codex again")
-            .expect("note");
+        let here = |_: &str| false;
+        assert_eq!(
+            mention_note("@+codex fix it", &here).as_deref(),
+            Some(codex)
+        );
+        let both = mention_note(
+            "@+claude/opus and @+codex, ask @macbook:%2 and @+codex again",
+            &here,
+        )
+        .expect("note");
         assert_eq!(both, format!("{claude}\n{codex}\n{chat}"));
         let child = child_note(PaneId(1), AgentProvider::ClaudeCode, AgentProvider::Codex);
         assert_eq!(
@@ -913,9 +928,17 @@ mod tests {
             child_note(PaneId(1), AgentProvider::Codex, AgentProvider::ClaudeCode),
             "%1 (codex) opened this chat. Your final message is sent to it as your reply, so finish with the answer. You cannot open other agents or message %1; if you need something, say so in your reply."
         );
-        let hidden = hidden_note("@+claude/opus and @macbook:%2", Some(&child)).expect("note");
+        let hidden =
+            hidden_note("@+claude/opus and @macbook:%2", Some(&child), &here).expect("note");
         assert_eq!(hidden, format!("{child}\n{claude}\n{chat}"));
         assert!(is_hidden_note(&hidden));
+        let far =
+            mention_note("ask @macbook:%2 and @local:%3", &|host| host == "macbook").expect("note");
+        assert_eq!(
+            far,
+            "@macbook:%2 is a chat on macbook, not you: run zz --host macbook agent-send -t %2 --wait 'TEXT'. Its reply prints when its turn ends; if the command stops first, run zz --host macbook agent-send -t %2 --wait ''.\n@local:%3 is another chat, not you: run zz agent-send -t %3 'TEXT' and end your turn. Its reply comes back to you as a message."
+        );
+        assert!(is_hidden_note(&far));
         assert!(is_hidden_note(
             "The user tagged codex: codex does this task, not you. Write it a brief that stands on its own, run zz new-pane -d --kind agent codex 'BRIEF' and end your turn. Do not do the task yourself. Its reply and any permission asks come back to you as messages."
         ));
@@ -930,7 +953,7 @@ mod tests {
             "@+gemini hi",
             "no tokens",
         ] {
-            assert_eq!(mention_note(plain), None, "{plain}");
+            assert_eq!(mention_note(plain, &here), None, "{plain}");
         }
     }
 }

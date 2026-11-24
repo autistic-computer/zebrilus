@@ -282,10 +282,34 @@ pub(crate) enum PromptSource {
 impl PromptSource {
     fn note(self, text: &str, extra: Option<&str>) -> Option<String> {
         match self {
-            Self::Composer | Self::Command => zz_protocol::agent_mention::hidden_note(text, extra),
+            Self::Composer | Self::Command => {
+                zz_protocol::agent_mention::hidden_note(text, extra, &other_host)
+            }
             Self::Chat | Self::Injected => extra.map(str::to_owned),
         }
     }
+}
+
+fn other_host(name: &str) -> bool {
+    if name == "local" {
+        return false;
+    }
+    let Ok((hosts, _)) = zz_daemon_client::configured_fleet_hosts() else {
+        return false;
+    };
+    let named = |hosts: &[zz_daemon_client::HostEntry]| {
+        hosts.iter().any(|host| {
+            host.name == name && !matches!(host.endpoint, zz_daemon_client::Endpoint::Local(_))
+        })
+    };
+    if named(&hosts) {
+        return true;
+    }
+    #[cfg(all(any(unix, windows), not(any(target_os = "ios", target_os = "android"))))]
+    if named(&zz_daemon_client::tailnet_hosts_beside(&hosts)) {
+        return true;
+    }
+    false
 }
 
 impl QueuedPrompt {

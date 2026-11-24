@@ -1247,7 +1247,8 @@ mod tests {
             text: text.to_owned(),
             ..Default::default()
         };
-        let note = zz_protocol::agent_mention::mention_note("@+codex fix it").expect("note");
+        let note =
+            zz_protocol::agent_mention::mention_note("@+codex fix it", &|_| false).expect("note");
         let input = crate::agent::codex::turn_input(&prompt("@+codex fix it"), Some(&note));
         assert_eq!(
             input,
