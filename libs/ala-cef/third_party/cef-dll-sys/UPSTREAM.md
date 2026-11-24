@@ -71,7 +71,5 @@ initialized CEF, dispatched sandboxed subprocesses, painted a 640 × 480 local
 HTML page through off-screen rendering, received browser closure, and shut down
 with exit status zero. The adapter uses `RTLD_LOCAL`.
 
-The scratch source and logs are in
-`target/profiles/linux-trim-20260922/cef-loader-probe/`. This probe covers the CEF
-loader and readback callbacks; the ala integration and shared GPU texture path
-still require the app's native smoke tests.
+The probe exercised the CEF loader and readback callbacks. Checking ala integration
+and shared GPU textures requires running browser panes in the native app.
