@@ -1,92 +1,48 @@
 ---
 type: Playbook
 title: Toolchain and system prerequisites
-description: The exact toolchain versions and per-platform system libraries required to build zz, pinned by rust-toolchain.toml, mise.toml, and CI.
+description: Toolchain pins, native build dependencies and platform packaging requirements.
 resource: .github/workflows/ci.yml
 tags: [prerequisites, toolchain, setup, rust, zig, cmake, linux, macos, windows, pacman]
-timestamp: 2026-10-04T23:00:00-03:00
+timestamp: 2026-11-24T00:00:00Z
 ---
 
-# Overview
+Use just 1.52 or newer. From the checkout, `rustup toolchain install` reads
+`rust-toolchain.toml` (Rust 1.99.0, minimal, Clippy and rustfmt). With mise active,
+`mise install` installs Zig 0.16.0 for the vendored terminal engine. The same Zig pin is
+in `mise.toml`, `.zigversion` and `scripts/just/settings.just`. Native desktop builds also
+need a C++ compiler, CMake 3.21 or newer (the distribution's `CMakeLists.txt`) and Ninja.
 
-zz mixes a Rust workspace, a Zig-built terminal engine (`libghostty-vt`), and a CEF C++ wrapper
-compiled from a downloaded Chromium distribution. Each has its own toolchain pin, and Linux needs
-several system libraries for ala's Wayland/X11 backends and libghostty.
+## Linux
 
-**This file is the source of truth for what to install.** Every row below is checked against a file
-in the repo; when a pin moves, it moves here too. See [running zz](/playbooks/running-zz.md) for the
-build/run commands and [building a CEF bundle](/playbooks/build-cef-bundle.md) for the CEF-specific
-flow that consumes CMake/Ninja.
-
-# Schema
-
-| Requirement | Pin / version | Checked against | Why it's needed |
-| --- | --- | --- | --- |
-| just | `1.52` or newer | `scripts/just/settings.just` (`default-list`), `Justfile` (`mod`) | Lists command groups and runs their recipes |
-| Rust | `1.99.0`, minimal profile, `clippy` + `rustfmt` components | `rust-toolchain.toml`; `workspace.package.rust-version = "1.99"` in `Cargo.toml` | Toolchain auto-selected by `rustup` when present |
-| Zig | `0.16.0` | `mise.toml`, mirrored in `.zigversion`; `mlugg/setup-zig@v2.2.1` with `version: 0.16.0` in CI | Builds `libghostty-vt` from the vendored Ghostty in `third_party/ghostty`, whose zz commits include removing unused C-host signal-stack storage |
-| CMake | `3.21` or newer | `cmake_minimum_required(VERSION 3.21)` in the CEF distribution's own `CMakeLists.txt`; `cmake` in the CI apt list | Configures the CEF C++ wrapper build invoked by `xtask`/`cef::build_util` |
-| Ninja | any recent | `ninja-build` in the CI apt list | Build backend for the CEF C++ wrapper |
-| Linux system libs | see the apt line below | CI `apt-get install` list | Font discovery plus ala's dual Wayland/X11 backend (`ala_platform` features `["wayland", "x11"]`) |
-| Linux kernel | unprivileged user namespaces enabled | `cef_runtime.rs` appends only `disable-setuid-sandbox` | Chromium's user-namespace sandbox stays on; only the legacy setuid layer is disabled, and zz never passes `--no-sandbox` |
-| Ubuntu 24.04+ | an AppArmor profile granting `userns` for the launched executable, or `kernel.apparmor_restrict_unprivileged_userns=0` | `packaging/deb/zz.apparmor`, installed as `/etc/apparmor.d/zz` | The distribution denies unprivileged user namespaces to unprofiled binaries, which kills the browser panes' zygote; the `.deb` carries a profile, an AppImage or dev bundle needs one written for its own path |
-| AppImage packaging | `appimagetool` `1.9.1` + type-2 runtime `20251108`, with per-architecture SHA-256 checksums verified at download | `scripts/fetch-appimage-tools.sh` (`APPIMAGETOOL_VERSION`, `APPIMAGE_RUNTIME_VERSION`, the four `*_SHA256` values). CI only runs that script | Converts the validated Linux AppDir into a pinned-runtime type-2 AppImage; `desktop-file-utils` validates its desktop entry |
-| Arch packaging | `makepkg` + Pacman; `base-devel` is the normal package-building prerequisite | `packaging/arch/PKGBUILD`, `Justfile` | Converts the validated Linux CEF bundle into a dependency-declared native package and optionally installs it |
-| macOS | Xcode, plus the Metal Toolchain component on Xcode versions that ship it separately (`xcodebuild -downloadComponent MetalToolchain`) | `ala_platform::macos`'s build script shells out to `xcrun metal`/`metallib` | C/C++ toolchain for the CEF wrapper, and ala compiles its Metal shaders at build time |
-| macOS packaging | system `ditto`, `hdiutil`, and `codesign` | Xcode/macOS command-line tools | Preserves the app bundle, creates/verifies the DMG, and re-checks the mounted app signature |
-| Windows | MSVC Rust toolchain + Visual Studio C++ build tools | CI runs the `windows-2025` image | C/C++ toolchain for the CEF wrapper; produces `zz.exe`/`zz.dll` (see [xtask](/crates/zz-xtask.md)) |
-
-Linux system packages, as installed in CI (`.github/workflows/ci.yml`, `ubuntu-24.04`):
+For the full Ubuntu 24.04 CI job, including the tmux reference, packaging and software Vulkan tests,
+install the dependencies from the **Install Linux dependencies** step in `.github/workflows/ci.yml`:
 
 ```sh
 sudo apt-get update
-sudo apt-get install --yes \
-  cmake curl desktop-file-utils ninja-build libfontconfig-dev libwayland-dev \
-  libx11-xcb-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev
+sudo apt-get install --yes autoconf automake bison cmake curl desktop-file-utils dpkg-dev \
+  libevent-dev libfontconfig-dev libncurses-dev libwayland-dev libx11-xcb-dev libxcb1-dev \
+  libxkbcommon-dev libxkbcommon-x11-dev mesa-vulkan-drivers ninja-build pkg-config
 ```
 
-# Examples
+CEF uses unprivileged user namespaces on Linux. The Debian package installs
+`/etc/apparmor.d/zz` for the packaged executable. When Ubuntu restricts unprivileged user
+namespaces, an AppImage or dev build needs permission for its executable path. See
+`packaging/deb/zz.apparmor` and the `disable-setuid-sandbox` switch in
+`libs/ala-cef/src/cef_runtime.rs`.
 
-For local raw Cargo commands, activate mise in the shell and install the repository pin:
+For Arch packaging install `base-devel` and use `makepkg`. For AppImage packaging,
+`scripts/fetch-appimage-tools.sh` fetches the pinned `appimagetool` and type-2 runtime and
+checks the SHA-256 for the build host's architecture.
 
-```sh
-mise install
-zig version # 0.16.0 inside this repository
-```
+## macOS and Windows
 
-CI installs the same Zig release explicitly:
+On macOS install Xcode. If `xcrun metal` or `metallib` is missing, install the Metal
+Toolchain with `xcodebuild -downloadComponent MetalToolchain`. The shader build invokes
+both tools in `libs/ala/crates/ala-platform/build.rs`. Local packaging uses `ditto`,
+`codesign` and `hdiutil`. Public signing additionally needs a Developer ID identity and
+a notary profile. [Release setup](/playbooks/releasing.md)
 
-```yaml
-- uses: mlugg/setup-zig@v2.2.1
-  with:
-    version: 0.16.0
-```
-
-Rust toolchain requires no manual action if `rustup` is installed; `rust-toolchain.toml` at the
-repo root pins the channel automatically:
-
-```toml
-[toolchain]
-channel = "1.99.0"
-profile = "minimal"
-components = ["clippy", "rustfmt"]
-```
-
-# Key files
-
-| File | Role |
-| --- | --- |
-| `rust-toolchain.toml` | Pins the Rust channel and required components |
-| `mise.toml` | Selects Zig 0.16.0 for raw local Cargo commands when mise is active |
-| `.zigversion` | Mirrors the Zig pin for compatible Zig-specific tooling |
-| `Cargo.toml` | `workspace.package.rust-version = "1.99"`; `libghostty-vt` as a path dependency on the vendored wrapper in `third_party/rust/libghostty-vt`, which uses the adjacent `libghostty-vt-sys` snapshot |
-| `third_party/rust/libghostty-vt-sys/UPSTREAM.md` | Records the wrapper commit, the vendored Ghostty's upstream base and the former `e482b036` fork pin (`zz-2026-10-04`), its eight commits (signal stack, spare pages, history-erase trim, copy snapshots, used-size active page copies, row cell copies, render state clip, trimmed row copies), generated bindings, and removal condition |
-| `.github/workflows/ci.yml` | Authoritative list of Linux system packages and the Zig setup action, run across `ubuntu-24.04`, `macos-15`, `windows-2025` |
-| `packaging/arch/PKGBUILD` | Native Arch package metadata and filesystem layout for the validated Linux bundle |
-
-# Related
-
-- [Running zz](/playbooks/running-zz.md) . what to run once prerequisites are satisfied
-- [Build/verify a CEF bundle](/playbooks/build-cef-bundle.md) . where CMake/Ninja get exercised
-- [xtask crate](/crates/zz-xtask.md) . the tool that drives the CEF build
-- [CEF artifact pin](/references/cef-artifacts.md) . the CEF version these prerequisites build
+On Windows use the native MSVC Rust toolchain and Visual Studio C++ build tools.
+The just recipes use Bash under MINGW/MSYS. The release installer also uses Inno Setup.
+For the native launch and verification commands, see [building a CEF bundle](/playbooks/build-cef-bundle.md).

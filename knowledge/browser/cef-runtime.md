@@ -4,22 +4,16 @@ title: CEF runtime & subprocess dispatch
 description: CEF Alloy OSR bootstrap with deferred loading and initialization, platform-specific subprocess dispatch, frame-rate policy, external BeginFrames, message pumping, and safe foreground command dispatch.
 resource: libs/ala-cef/src/cef_runtime.rs
 tags: [browser, cef, runtime, subprocess, begin-frame, frame-pacing]
-timestamp: 2026-11-12T15:40:00Z
+timestamp: 2026-11-24T00:00:00Z
 ---
 
 # Overview
 
-The CEF runtime subsystem is `cef_runtime.rs` plus the crate root `lib.rs`. It owns
-the one-time global CEF Alloy initialization, the platform-specific Chromium
-subprocess entry points, and the **external message pump** that steps CEF from ala's
-foreground executor instead of a CEF-owned loop. CEF is pinned to Rust package
-`156.3.0+156.0.15`, backed by **Chromium `156.0.8078.80`**; upgrading is an
-explicit dependency bump requiring all platform bundle smoke tests
-(see [updating CEF](/playbooks/updating-cef.md)).
-
-CEF binding types never cross the crate boundary. The runtime translates CEF
-callbacks into browser-neutral [`BrowserEvent`](/browser/lifecycle.md) values and
-publishes owned frames into a [mailbox](/browser/osr-rendering.md).
+`libs/ala-cef/src/cef_runtime.rs` owns CEF Alloy initialization, subprocess dispatch
+and the external message pump. The desktop schedules pump work on ala's foreground
+executor. Callbacks produce [session events](/browser/lifecycle.md) and publish
+frames into the [mailbox](/browser/osr-rendering.md). See the
+[artifact reference](/references/cef-artifacts.md) for the CEF and Chromium pin.
 
 # Subprocess dispatch
 
@@ -38,13 +32,12 @@ For paths that call `execute_process`, the result determines dispatch:
 
 `run_subprocess(&config)` is the dedicated helper entry point (used by the macOS helper
 app, which initializes a `cef::sandbox::Sandbox` and loads the framework via
-`LibraryLoader`). On Windows, `bootstrap_windows(&config, instance, sandbox_info)` routes
+`LibraryLoader`). On Windows, `bootstrap_windows(&config, instance, sandbox_info, profile_paths)` routes
 through CEF's sandbox bootstrap executable and the exported `RunWinMain` entry.
 
 Every entry point takes a `RuntimeConfig`: the local page scheme and the page
 global for replies, the frame-rate override, GPU, shared-texture and BeginFrame
-switches, and a remote debugging port that wins over the setting. The crate reads
-no environment; zz builds the config from `ZZ_BROWSER_*` in
+switches, and a remote debugging port that wins over the setting. zz builds these options from `ZZ_BROWSER_*` in
 `crates/zz/src/browser/environment.rs`. Subprocesses need the same scheme, since
 custom schemes register in every process.
 
@@ -104,7 +97,8 @@ documented in `libs/ala-cef/third_party/cef-dll-sys/UPSTREAM.md`.
 | `root_cache_path` | profile `root` | Parent of every persistent zz profile (see [profile](/browser/profile.md)). |
 | `persist_session_cookies` | `1` | Keep session cookies across restarts. |
 | `log_severity` | `WARNING` | Quiet CEF's own logging. |
-| `background_color` | `0xff101318` | Opaque dark backdrop matching the app theme. |
+| `background_color` | Runtime backdrop, initially `0xff101318` | Used for global settings and as the default for newly created browsers. |
+| `disable_signal_handlers` | `1` | The desktop handles [Unix quit signals](/browser/lifecycle.md#runtime-control-browserruntime). |
 
 `on_before_command_line_processing` appends switches to every process
 (`no-first-run`, `no-default-browser-check`, `disable-component-update`,
@@ -135,7 +129,7 @@ zz's Wayland-hosted fixture, so the application keeps Ozone selection automatic.
 
 | Variable | Default | Effect |
 | --- | --- | --- |
-| `ZZ_BROWSER_FPS=1..240` | Unset | Explicit per-session OSR ceiling. An unset value uses the fastest attached display: `NSScreen` on macOS, ala display refresh rates elsewhere. Missing display rates and invalid explicit values fall back to 60. |
+| `ZZ_BROWSER_FPS=1..240` | Unset | Explicit per-session OSR ceiling. An unset value uses the fastest attached display: `NSScreen` on macOS, ala display refresh rates elsewhere. Invalid overrides are ignored. An unavailable display rate falls back to 60. |
 | `ZZ_BROWSER_GPU=0` | GPU enabled | Disables Chromium GPU rendering/compositing and therefore shared-texture OSR. |
 | `ZZ_BROWSER_SHARED_TEXTURE=0` | Shared textures enabled | Keeps Chromium GPU content acceleration but selects the universal `on_paint` readback tier. On Linux, each visible shared-texture session gets a two-second first-frame guard. Any delivered frame cancels the guard, and hiding the pane pauses it. If the guard expires, zz recreates only that session in readback mode while keeping the GPU process enabled. This covers failures before CEF emits either paint callback. On the tested NVIDIA host, CEF 151's default GL path hit that failure; native Vulkan produced frames but failed resize stress under Chromium's unsupported Ozone/Wayland combination. See the [NVIDIA accelerated OSR investigation](/research/2026-08-07-nvidia-cef-accelerated-osr.md). |
 | `ZZ_BROWSER_EXTERNAL_BEGIN_FRAME` | macOS on; Linux/FreeBSD off | On macOS, exact `0` restores CEF's internal BeginFrame timer. On Linux/FreeBSD, exact `1` opts into zz-driven BeginFrames; all other values leave them off. |
@@ -313,24 +307,11 @@ session and reused by the [element picker](/browser/element-picker.md).
 
 # Examples
 
-```rust
-// Executable entry: dispatch subprocess or take the main runtime.
-match browser_core::bootstrap()? {
-    BrowserBootstrap::SubprocessExit(code) => std::process::exit(code),
-    BrowserBootstrap::Runtime(runtime) => start_gpui_with(runtime),
-}
-
-// Dedicated helper/subprocess entry (macOS helper app):
-std::process::exit(browser_core::run_subprocess());
-```
-
-```rust
-pub enum RuntimeSignal {
-    ContextInitialized,
-    RequestContextInitialized { profile: Arc<str> },
-    ScheduleMessagePump(i64), // delay in ms; a new positive delay replaces the pending wake
-}
-```
+The desktop entry in `crates/zz/src/lib.rs` passes
+`ala_cef::bootstrap(&browser_runtime_config(), browser::profile_paths)` to
+`finish_bootstrap`. The macOS helper in `crates/zz/src/bin/zz_helper.rs` installs
+the early malloc zone, then exits with the status from
+`ala_cef::run_subprocess(&zz::browser_runtime_config())`.
 
 # Page zoom and OSR scale
 
@@ -356,7 +337,7 @@ See [remote browser egress](/designs/remote-browser-egress.md).
 | --- | --- |
 | `src/cef_runtime.rs` | Bootstrap, subprocess dispatch, `RuntimeApp`, detached main-thread command/pump handles, BeginFrame host calls, all CEF handlers, and session control. |
 | `src/metal_osr.rs` | macOS Metal-IOSurface accelerated-frame producer. |
-| `src/frame.rs` | Readback, Linux wgpu, and macOS `IOSurface` mailbox variants. |
+| `src/frame.rs` | `OsrFrame` variants for BGRA readback, wgpu, macOS IOSurface and Windows D3D11. |
 | `src/lib.rs` | Re-exports `bootstrap`, `run_subprocess`, `BrowserRuntime`, `BrowserSession`, `BrowserCommandSink`, `BrowserError`, and `RuntimeSignal` under `cef-runtime`. |
 
 # Related

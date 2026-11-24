@@ -8,7 +8,7 @@ tags:
 - cef
 - cdp
 - agents
-timestamp: 2026-09-09T21:28:59Z
+timestamp: 2026-11-24T00:00:00Z
 ---
 
 # Enable the endpoint
@@ -22,8 +22,9 @@ browser-remote-debugging-port = 9222
 Leave the key unset or use `0` to disable CDP. Valid enabled ports are `1024..=65535`.
 Invalid file values produce a config diagnostic and retain the preceding/default value.
 Set `ZZ_BROWSER_REMOTE_DEBUGGING_PORT` in the client process environment to override the file.
-An environment value of `0` disables CDP even when the file enables it; invalid values prevent
-CEF initialization with a browser configuration error. The TUI uses the environment override.
+An environment value of `0` disables CDP. A value from 1 through 1023 fails CEF
+initialization. If the value cannot be parsed as a `u16`, the client logs a warning
+and uses the configured port. The TUI browser provider also reads the environment override.
 
 Open a browser pane to initialize CEF and start listening. The GUI reads the file value before
 that first initialization. After CEF starts, restart the client to change or disable the port.

@@ -1,300 +1,82 @@
 ---
 type: Concept
-title: Session persistence & daemon lifecycle
-description: Why mux state and terminals outlive ala windows, which GUI state is disk-backed, which browser descriptors can restore, what the agent lens rebuilds, and how attach, detach, eviction, per-client state, and local transport work when several devices share one session.
+title: Session persistence and daemon lifecycle
+description: What survives detach, which state belongs to each viewer and what ends when the daemon restarts.
 resource: crates/zz-daemon/src/daemon.rs
-tags: [daemon, persistence, attach, detach, transport, lifecycle, multi-client]
-timestamp: 2026-11-23T00:00:00-03:00
+tags: [daemon, persistence, attach, detach, lifecycle]
+timestamp: 2026-11-24T00:00:00Z
 ---
 
-# Overview
+## Lifetime
 
-Session persistence is the property that makes zz a multiplexer rather than a terminal window: the
-[zz-daemon daemon](/crates/zz-daemon.md) is the **sole authority for mux state** and owns every terminal
-pane's [PTY worker](/concepts/pty-worker.md), so sessions, windows, binary split-pane layouts, and
-the processes running inside them survive after every ala window is closed. Closing the last window
-merely **detaches** that client; it never stops the terminals, and it never disturbs another device
-attached to the same session.
+Sessions live in the daemon's memory. A client can detach, lose its connection or
+quit while another client watches the same session and its terminals and native
+chats keep working. Restarting the daemon, killing it or rebooting ends the mux
+sessions and their PTYs. A new daemon can run its startup configuration and
+create a numeric session on its first default interactive attach.
 
-For mux sessions, persistence means daemon-lifetime, in-memory persistence. There is **no on-disk
-session restoration**: a daemon crash, `kill-server`, logout, or reboot destroys PTYs, and a fresh
-daemon starts empty. Its first default Interactive attach lazily creates numeric session `0`; a
-Command client does not. Client-owned state such as browser storage, recent pages,
-and main-window bounds is separately persisted to disk as called out below.
+| State | Across client detach | Across daemon restart |
+|---|---|---|
+| Sessions, windows, layout, pane IDs, paste buffers and runtime options | Retained in the daemon | A new daemon starts fresh and loads config |
+| PTY process, screen and scrollback | Continue in the terminal actor | Lost |
+| Native chat descriptor, host, pending turn and permission | Continue in the daemon | The mux pane and runtime end. Vendor sessions can be resumed where supported. |
+| Chat history | A client can replay the stream when it returns | The CLI can retain its session, and zz's optional disk journal can retain replay data keyed by provider and session. Neither restores the mux layout. |
+| Browser tabs, URLs and selected profile | The daemon retains descriptors. A client recreates its browser from them. | Pane descriptors end with the session |
+| Chromium page state | Lives in the browser instance while its client keeps it open | A newly opened page starts a fresh renderer |
+| Browser profile data, recent pages and main-window bounds | Stored on the client | Their files remain |
 
-# Daemon lifecycle
+See `AgentJournal::replay_for` in `crates/zz-daemon/src/agent/journal.rs`,
+[browser profiles](/browser/profile.md) and [agent panes](/concepts/agent-panes.md).
 
-The daemon is a single long-lived process per user, started on demand by the GUI or by any CLI
-command, and bound to one owner-only endpoint. On Unix the auto-spawned daemon
-is detached into its own process group (`process_group(0)` in `spawn_daemon`, `crates/zz/src/lib.rs`),
-so terminal signals aimed at the launching client (Ctrl+C, tty hangup) never reach the daemon:
+## Daemon lifecycle
 
-| Phase | Mechanism |
-|-------|-----------|
-| Start | `Daemon::run_foreground` → `prepare_socket` (probe/remove stale endpoint) → `LocalListener::bind` |
-| Single instance | A live endpoint makes `bind` return `AddrInUse` → `DaemonError::AlreadyRunning`; a dead one is unlinked and rebound |
-| Owner-only | `restrict_socket_permissions` sets Unix `0o600`; the Windows pipe is user-SID scoped |
-| Stay alive | Serves connections until `request_shutdown` sets `stopping`; **outlives GUI detach** while sessions exist |
-| Stop | `kill-server` (never auto-starts a daemon), or nothing-left-to-serve: zero sessions **and** zero interactive clients (`subscribers`), armed once the daemon has created a session; `SocketGuard::Drop` unlinks the Unix socket |
-| Restart | `restart-server` (and `zz update --restart`) ends every session, then the same process execs the newest zz on the same socket, holding the start lock across the gap; the successor starts empty |
-| Recover | `terminate_incompatible_daemon` safely stops a daemon on another wire epoch (`PROTOCOL_VERSION`), once the person accepts the restart prompt or runs `kill-server`. A daemon that is only older inside the epoch, and meets the client's revision floor, keeps running: a client never sends it a message it lacks the capability for ([wire protocol](/protocol/wire-protocol.md#wire-epochs)) |
+By default, an unused empty daemon can wait for its first session. Once it has
+had a session, closing the last pane can leave an empty workspace for a connected
+interactive client. With zero sessions and subscribers it can exit. Explicit
+`exit-empty`, `exit-unattached` and `destroy-unattached` options change lifetime
+policy. The desktop setting `quit-daemon-on-exit = true` opts into stopping sessions
+on quit. `kill-server` stops an existing daemon without starting a missing one.
+[Process model](/architecture/process-model.md) · [App config](/configuration/app-config.md)
 
-zz deliberately diverges from tmux's `exit-empty` here by default. tmux can key on sessions alone
-because its last client exits at the same instant, dropping the user back in a shell; zz's GUI
-window outlives its last pane. Keying on sessions alone therefore meant closing the last pane
-killed the daemon and left the window on an unrecoverable "zz daemon stopped" screen. A config that
-EXPLICITLY sets `exit-empty`/`exit-unattached` opts back into the pin's rule (Wave C, 2026-08-21),
-but never past the zero-subscribers guard. Now:
+### Guarded recovery of an incompatible daemon
 
-- **Closing the last pane** leaves the daemon up with zero sessions and reveals the existing
-  `NewSessionView` **New Session** card. That is the steady state of an empty daemon, not a
-  teardown race.
-- **Quitting the app** drops the last subscriber, so the daemon exits then, provided no sessions
-  remain.
-- **Live sessions still win.** A GUI quit with sessions open leaves the daemon and its PTYs running,
-  preserving the multiplexer guarantee that sessions are there on relaunch.
-- **A never-used empty daemon stays alive and unarmed.** A read-only CLI query may auto-start it;
-  only a successful command that leaves a session arms the normal last-session shutdown rule.
-- The check lives in `Shared::request_shutdown_if_empty` and is called from the `execute` effect
-  loop and `Shared::unregister` (the funnel every disconnect path reaches through
-  `ClientRegistrationGuard::Drop`).
+Handshake checks the wire epoch and revision floors. Clients can use compatible
+peers of a different revision and negotiate optional messages by capability. To
+replace an incompatible local daemon, the recovery path checks the socket and
+the recorded process identity before termination. If it cannot establish ownership
+of the endpoint, automatic recovery stops. On Unix it also checks that the
+socket identity stays the same across connection and cleanup. Restarting ends
+all sessions on that daemon. See `terminate_incompatible_daemon` in
+`crates/zz-daemon-client/src/lifecycle.rs`. [Wire protocol](/protocol/wire-protocol.md) · [Daemon update](/designs/daemon-update.md)
 
-The client-local `quit-daemon-on-exit = true` opts out: app quit then sends `kill-server` instead of
-`detach()`, stopping the daemon even with live sessions. It defaults to `false`.
+### Restarting onto a newer build
 
-`MuxClient` also clears its client handle when its reader loop ends, so `is_connected()` no longer
-reports a live daemon over a dead socket and action buttons cannot stay enabled while their writes
-silently fail.
+`zz update` installs a newer headless copy. The running daemon continues using its
+current build. `zz update --restart` requests a restart and reports the affected
+sessions. `restart-server` starts the successor on the same endpoint with a new
+server identity. On Unix the start lock spans the handover. See `restart_server`
+in `crates/zz-cli/src/update.rs` and `crates/zz-config/src/owned.rs`.
 
-On macOS, the GUI changes its AppKit activation policy to `prohibited` during `on_app_quit` before
-the process exits. This keeps the intentionally persistent daemon and its PTYs alive without leaving
-zz's background-activity indicator in the Dock; macOS may still report that activity in its system
-background-app UI.
+## Attach and detach
 
-## Guarded recovery of an incompatible daemon
+Many clients can attach to one session. One connection can be attached to one
+session at a time. Registration alone does not select or create a session.
+Attach seeds a snapshot stamped for the client, subscribes its terminal views
+and sends current content. Changing sessions releases its previous attachment.
+`attach-session -d` evicts other attached clients. Destroying a session sends a
+detach event to its viewers. A regular detach can keep the connection open for
+a later attach. Disconnection permanently releases that client's resources.
 
-When a client handshakes with a daemon on a different wire epoch (`PROTOCOL_VERSION`), it cannot
-send the daemon any command, so it offers to stop the old one and start its own; the desktop asks
-"Restart the zz daemon?" and the raw terminal asks on stderr. Stopping it ends every session it
-holds, which is why the epoch bumps only for changes an existing peer cannot decode or would get
-wrong; a client that is newer inside the same epoch, whose revision floor the daemon meets,
-attaches to the running daemon instead
-([wire protocol](/protocol/wire-protocol.md#wire-epochs)).
+Per-client state includes the focused window, key and prefix state, pending
+prompts, reported geometry, terminal selection, scroll anchor, search and copy
+mode. Layout, active pane, zoom, process and scrollback belong to the workspace.
+`snapshot_presence` reports attached devices and the window each is viewing.
 
-A daemon below the client's `MIN_DAEMON_REVISION` (`DaemonError::DaemonTooOld`) gets the same
-offer: the same alert, the same `auto-restart-stale-daemon`, and the same y/N prompt and
-`--restart-daemon` in the raw terminal, with its own sentence, "The running daemon is revision N;
-this zz needs revision M or newer." The desktop keeps which case it is in `StaleDaemonInfo`
-(`Protocol` or `Revision`). The other way round, a client below the daemon's
-`MIN_CLIENT_REVISION` (`ServerError::ClientTooOld`) is never offered a restart, since restarting
-would not help: the desktop shows "This zz is too old for the running daemon" with an Update
-button when the update check knows a newer release, and the raw terminal and CLI print the message
-with no `kill-server` hint.
+PTY sizing uses `window-size`. Latest uses one geometry owner, largest and
+smallest aggregate eligible clients' dimensions, and manual uses the stored
+extent. `aggressive-resize` narrows eligibility to viewers of the window.
+See `terminal_resize_for_pane` in `crates/zz-daemon/src/daemon.rs`.
 
-A daemon that is only behind (same epoch, revision at or above the floor, below this build's
-`REVISION`) keeps its sessions and stays attached. `MuxClient::daemon_behind` reports it with both
-revisions; the tray then shows **Restart Daemon to Update…** and the About page a Restart daemon
-row, and the prompt says "The zz daemon runs an older build, revision N; this zz is revision M.
-Restarting it to update ends K sessions", K from the local snapshot (no sessions, 1 session, K
-sessions). While attached, that restart sends `kill-server`, waits up to 5 s for the socket to stop
-answering, then starts a daemon the normal way (`connect_interactive_client`); only if the daemon
-is still there does it fall back to the signal below.
-
-The signal stop is deliberately paranoid so it never kills an unrelated process:
-
-- `Daemon::run_foreground` installs a `DaemonIdentityGuard` that atomically writes a private
-  `<socket>.identity` file (magic `zz-daemon-identity-v2`, `pid` + process `start_time` +
-  `protocol_version={PROTOCOL_VERSION}`, Unix mode `0o600`).
-- `terminate_incompatible_daemon` cross-checks the **kernel-reported socket peer PID**
-  (`LocalStream::peer_credentials`), the identity file, the process owner, and the executable/command
-  line (`zz … daemon`) and start time before sending a single non-escalating `SIGTERM` (Unix) or
-  kill (Windows). It refuses on any mismatch (`DaemonRecoveryError::UnsafeTarget`) and verifies the
-  endpoint was not replaced mid-shutdown (`EndpointReplaced`).
-- Cargo rebuilds replace `target/debug/zz` atomically, so Unix may report a still-running daemon's
-  executable basename as exactly `zz (deleted)`. Recovery accepts that one name while still requiring
-  the socket peer PID, private identity PID/start time, owner, and `daemon` command-line checks; missing
-  executable metadata and deleted-name lookalikes remain unsafe.
-
-## Restarting onto a newer build
-
-`zz update` installs a newer headless build as the machine's zz-owned copy without touching the
-running daemon, so sessions keep running on the old build until someone asks for a restart.
-`zz update --restart` (or `restart-server` sent to the daemon) says how many sessions end, asks
-unless `-y`, and ends them all: there is no session restore. The successor is the owned copy when
-it is newer than the daemon, else the daemon's own binary, on the same socket with a fresh server
-id; on Unix it is the same process after `exec`, and the start lock held across the gap keeps a
-reconnecting client from starting a second daemon. It starts with no sessions and stays up under
-the default rule above, since a daemon that never held a session is not armed; a config that sets
-`exit-empty on` or `exit-unattached on` stops it as soon as nobody is attached, and
-`zz update --restart` says so before it asks. When the new build is on another wire epoch, a
-desktop app still on the old one cannot attach until it updates too. A daemon that lacks
-`restart-server` gets `kill-server` on this machine and over ssh; a tailnet host never does, since
-nothing could start it again.
-
-# Attach and detach
-
-A session holds as many interactive clients as the user has devices: `attached` is a
-`BTreeMap<SessionId, BTreeSet<ClientId>>`. The constraint runs the other way: a client attaches to
-at most one session, and attaching to a second one detaches it from the first. Command-only CLI
-clients connect concurrently and never attach. The GUI is a long-lived subscribed client; the CLI
-sends a request and disconnects.
-
-| Step | Server action (`daemon.rs`) |
-|------|-----------------------------|
-| Connect | `handle_connection` reads `ClientHello` (protocol version, build revision and an optional `device_name`), `validate_hello` checks the version, then the revision against `MIN_CLIENT_REVISION` (`ServerError::ClientTooOld` below it) |
-| Register | `register` mints a `ClientId`, records the device name, adds interactive clients to `subscribers` (their `OutboundMailbox`), returns `ServerHello` + capabilities |
-| Attach | `Attach{session}` → `attach_target` → `attach`: an Interactive empty target lazily runs idempotent detached `new-session` only when no sessions exist; then it inserts the client into `attached[session]`, removes it from every other session's set, seeds `visible_terminals`, calls `TerminalSession::attach_view(TerminalViewId(client.0))` on every terminal in the session, recomputes PTY sizes, and returns a `MuxSnapshot` stamped for that client; then a full resync of visible panes |
-| Steal | `attach-session -d` attaches, then `evict_other_clients` sends each peer `EventPayload::Detached { session, by: Some(device) }` and tears its per-client state down. A command-only client cannot attach, but its `-d` still evicts |
-| Detach | `Detach` → `detach` → `detach_client_state`: clears the client's attachment, visible terminals, focus, geometry, overlays, key state, and in-flight GUI requests, then calls `TerminalSession::detach_view` for its views, **keeping the connection, subscriber, and `Arc<TerminalSession>` alive** for a later `Attach`. A client whose hello carries `client-exits-on-detach-v1` (the raw TUI) gets `release_view` instead, since its connection closes next |
-| Disconnect | EOF/reset, a protocol error, or a panic drops `ClientRegistrationGuard` → `unregister`: performs the detach cleanup, removes the client from `subscribers`, and permanently releases its terminal views |
-| Session destroyed | `detach_removed_sessions` runs at the head of every snapshot publish and sends `Detached { session, by: None }` to the clients of a session that no longer exists, so `kill-session` leaves no stale attachment behind |
-
-Because the daemon holds the terminal `Arc`, `detach_view` only removes that client's view of the
-pane; the PTY worker keeps running. Reattaching seeds a fresh snapshot and full terminal viewports,
-so output produced while detached is present.
-
-A client that receives `Detached` for the session it is attached to clears its attachment and shows
-a notice naming the device that took it, or "session ended" when `by` is `None`.
-
-## What each client owns alone
-
-Attaching more devices forks what each person looks through. The session underneath stays single.
-
-| Per client | Shared by the session |
-|------------|-----------------------|
-| Terminal view state under `TerminalViewId(client.0)`: scroll anchor, selection, copy mode, search | Layout tree, pane focus, zoom |
-| Focused window (`focused_windows: BTreeMap<ClientId, WindowId>`, falling back to `session.active_window` when the entry names a window that is gone) | `session.active_window`, window and pane names |
-| Reported pane geometry, key engine and prefix state, command prompt, choosers, command output | The PTY, its scrollback, and every process inside it |
-
-PTY size is arbitrated rather than last-writer-wins. `terminal_resize_for_pane` uses the eligible
-viewer with the newest geometry-owner sequence, with the lowest `ClientId` breaking a tie. Terminal
-input advances that sequence. Client FocusIn also advances it when the server
-`focus-events` option is on. `window-size latest` takes the owner's complete geometry. Largest and
-smallest aggregate rows and columns across eligible viewers, while manual retains the stored layout
-extent; all three take cell metrics from the owner.
-`aggressive-resize` only filters eligibility to clients viewing the pane's window. The resulting
-measurement feeds the window extent through the fixed zoom gate, active-pane single writer,
-one-cell dead-band, and repeat memo. Resize reports, client focus, option changes, attach, and detach
-recompute the affected panes. Navigating the laptop to another window removes it from that window's
-aggressive candidate set.
-
-Presence rides the snapshot. `snapshot_presence` turns the attached set into
-`SessionViewer { name, window, is_self }` rows named from `ClientHello.device_name` (`device-{id}`
-when a client sent none), and `stamp_snapshot_for_client` writes each subscriber's own
-`focused_window` and viewer list into the copy it receives, so one snapshot computation serves every
-client. A view action from an attached client steers that client's view; one from an unattached
-command client fans out to every attached client's view of the pane, because a CLI caller has no view
-of its own.
-
-Client-window focus is transient event input, not daemon-retained presence state. The desktop
-client caches the latest desired state and replays it once after each `Attached` event. A rejected
-same-connection session switch restores the retained session's focus epoch and flushes a desired
-state that changed while the request was pending. The TUI assumes its outer terminal starts focused when it enables
-focus reporting, caches outer focus changes while attachment is pending, and replays the latest
-client-window focus once after each `Attached` event. A rejected sidebar session switch restores the
-retained session epoch, and repeated focus reports with the same value do not send another signal.
-Its separate attach-attempt marker owns missing-target retry and returns to idle on `Attached` or
-terminal failure; unrelated request-zero errors leave both it and the focus epoch unchanged. These
-attachment paths do not replay pane/application focus.
-
-## Involuntary detach and roaming
-
-A network drop is an involuntary detach, and the client hides it. A remote host whose ssh forward
-dies moves to `HostState::Reconnecting { attempt }`: the last snapshot and terminal frames
-stay on screen, `MuxClient` redials on a 1/2/4/8/16/30-second backoff, and a successful dial
-re-attaches the same session, or the default session when one exists. If the daemon is empty, the
-fallback default Interactive attach lazily creates the next numeric session. The daemon
-sees an ordinary disconnect followed by an ordinary attach, so PTYs, scrollback, and the other
-devices attached to that session never notice.
-
-# What is persisted vs transient
-
-| Category | Survives GUI detach? | Survives daemon exit/crash? | Notes |
-|----------|:---:|:---:|-------|
-| Sessions / windows / layout trees / pane IDs | Yes | No | Held in `ServerState.engine` (`MuxEngine`); IDs are monotonic and never reused |
-| Session/window names + last pane titles | Yes | No | Explicit names and the latest terminal OSC/browser document titles live in mux state and are included in attach snapshots |
-| Terminal PTY process + scrollback + screen | Yes | No | Owned by the [zz-terminal worker](/concepts/pty-worker.md); the daemon holds the `Arc<TerminalSession>` |
-| Key bindings, options, mode-keys, prefix | Yes | No | Parsed from the zz-owned `zz/mux.conf` [in tmux grammar](/tmux/conf-parser.md) at startup, mutable via commands |
-| Paste buffers, command-prompt history | Yes | No | `ServerState.paste_buffers`, `command_history` |
-| Browser pane last URL + named zz profile | Yes | No | Stored as `BrowserDescriptor` in mux state; profile switches update the descriptor. Panes created without a URL carry `about:blank` and render the client's recently-visited empty state |
-| Named profile cookies/cache/local storage | Yes | **Yes** | CEF persists each profile in a separate zz-owned immediate child of the browser root; explicit source-profile import writes normalized Chrome cookies into the current zz store without mounting Chrome's request context |
-| App-owned browser history list | Yes | **Yes** | Client-side, not daemon state: the app persists up to 5,000 live or imported Chrome visits in `<data dir>/zz/browser/recent-pages` (see [browser profile](/browser/profile.md)) |
-| Main-window bounds and mode | **Yes** | **Yes** | Client-side, not daemon state: bounded `<data dir>/zz/window-state.json` remembers size, position, display, and windowed/maximized/full-screen mode; restore clamps to a usable current display |
-| Chromium renderer runtime (JS heap, scroll, unsubmitted forms, media) | **No** | No | Not kept alive with no GUI attached; on reattach the GUI builds a fresh CEF instance from the descriptor |
-| Claude Code or Codex CLI + its running turn | Yes | No | An ordinary terminal process in a PTY, so a turn keeps going with every ala window closed |
-| Agent lens runtime | Yes | No | Daemon-owned per terminal pane once a client opens the lens (`zz-daemon/src/agent/lens.rs`), one thread each, until the pane closes |
-| Agent transcript | Yes | **Yes** | Written by the CLI itself (Claude's session jsonl, Codex's rollout). The lens reads it back; zz stores no copy of its own |
-| Reduced lens timeline | **No** | No | Client-side and rebuilt from the replayed stream every time a client opens the lens |
-| Terminal frames in flight | No | No | Coalesced per-pane in each client's `OutboundMailbox`; newest replaces stale |
-
-Browser panes are the key asymmetry: the daemon persists only the **restorable descriptor**, not the
-live browser. Live browser input while detached returns `PaneNotAttached` and is not queued for
-replay. See [browser lifecycle](/browser/lifecycle.md) and [browser profile](/browser/profile.md).
-
-Agents are not that asymmetry: Claude Code and Codex run in terminal panes or under the daemon's
-[agent panes](/concepts/agent-panes.md), so they follow the daemon. A turn survives the GUI closing or
-detaching, and a client that shows an agent pane again gets the chat replayed from the pane's
-stream. What stays client-side is the rendering half: the reduced entries and the composer draft. A
-**daemon** exit takes the terminal or the driver and its CLI with it; the CLI's transcript stays on
-disk for the CLI to resume from.
-
-# Transport per platform
-
-`transport.rs` wraps the `interprocess` crate into `LocalListener`/`LocalStream` behind one
-interface (connect, bind, accept, framed read/write, peer-credential capture). Endpoints are
-owner-only; `default_socket_path` resolves per platform:
-
-| Platform | Endpoint (`default_socket_path`) | Kind |
-|----------|----------------------------------|------|
-| Linux | `$XDG_RUNTIME_DIR/zz/default.sock` (falls back to `$TMPDIR/zz-$USER/default.sock`) | Unix-domain socket |
-| macOS | owner-only directory beneath `$TMPDIR` | Unix-domain socket |
-| Windows | `\\.\pipe\zz-{sanitized-username}-default` | Named pipe |
-
-A remote daemon adds no fourth kind. `ssh://[user@]host[:port]` forwards that host's own
-`default_socket_path` to a local scratch socket, so the client is still talking to a Unix socket and
-the envelope is unchanged. See [wire protocol](/protocol/wire-protocol.md) and
-[fleet attach](/designs/fleet-attach.md).
-
-The accept loop itself is nonblocking, but each accepted stream is explicitly restored to blocking
-mode before protocol handling. That normalization is needed on BSD-derived Unix hosts such as macOS,
-where an accepted socket may otherwise inherit `O_NONBLOCK` and surface a normal empty read as
-`WouldBlock`/`EAGAIN`.
-
-Peer identity is validated via `LocalStream::peer_credentials` (`PeerCredentials { pid, euid }` on
-Unix; PID on Windows). A protocol-version mismatch, invalid framing, oversized frame, or bad enum
-value closes only that connection with a typed error, so **one malformed client never takes down the
-daemon** (`handle_connection` treats `UnexpectedEof`/`ConnectionReset`/`BrokenPipe` as a clean
-disconnect).
-
-# Examples
-
-The requirement this satisfies: closing every ala window must leave the PTYs running, and
-reattaching must show everything they produced while nothing was attached.
-
-```text
-Detach without stopping work:
-  1. Split terminals, run `cargo test` in one pane.
-  2. Close every ala window  → InteractiveClient drops → unregister → detach
-                              → detach_view(client), PTY workers keep running.
-  3. Reopen zz → InteractiveClient::connect + attach → fresh MuxSnapshot
-                              → attach_view + full viewports → test output is intact.
-```
-
-```rust
-// The interactive client detach path (client.rs).
-pub fn detach(&self) -> Result<(), DaemonError> {
-    self.send(&ProtocolMessage::Detach)
-}
-// Simply dropping the connection is equivalent: the server's read loop hits EOF
-// and runs `unregister` → `detach`, which keeps every Arc<TerminalSession> alive.
-```
-
-# Related
-
-- [zz-daemon crate](/crates/zz-daemon.md) . the daemon that implements all of this.
-- [PTY worker model](/concepts/pty-worker.md) . why terminals keep running while detached.
-- [Terminal frame](/concepts/terminal-frame.md) . the coalesced unit resynced on attach.
-- [Split-pane layout](/concepts/split-pane-layout.md) . the persisted layout trees.
-- [Wire protocol](/protocol/wire-protocol.md) . `Attach`/`Detach`/`ServerHello`, protocol versioning.
-- Browser side: [browser lifecycle](/browser/lifecycle.md), [browser profile](/browser/profile.md).
-- Running the daemon: [running zz](/playbooks/running-zz.md).
+A lost connection detaches that client. A reconnecting desktop host can keep
+the last snapshot visible and reattach to the same session, or to the default
+when the old session has gone. [Fleet attach](/designs/fleet-attach.md)

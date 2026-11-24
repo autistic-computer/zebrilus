@@ -17,7 +17,7 @@ timestamp: 2026-10-28T00:00:00-03:00
 
 The sidebar has two views, switched by the chat button beside the sidebar toggle at the top: the
 session tree (raw mode) and chat mode,
-which replaced the flat window list. Chat mode keeps the [flat sidebar](flat-sidebar-data.md)'s
+which replaced the flat window list. Chat mode keeps the [flat sidebar](/designs/flat-sidebar-data.md)'s
 two-line rows, pane stack, attention and ages. The list is windows, and a stack is a pile you can
 open (`window_summary::summarize_chat_machine`, drawn by `zz_ui::navigation::flat`; the board with
 every number is `design/mockups/chat-rows/index.html`):

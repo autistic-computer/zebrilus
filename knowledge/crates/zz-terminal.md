@@ -1,135 +1,33 @@
 ---
 type: Rust Crate
 title: zz-terminal crate
-description: The per-pane terminal engine that owns a PTY child and every libghostty-vt object on a worker thread and publishes immutable renderer-neutral frames.
+description: Terminal session actors, PTY and libghostty-vt ownership, and the renderer-independent viewport, input and appearance types.
 resource: crates/zz-terminal/src/terminal_core.rs
 tags: [terminal, libghostty, pty, actor, worker-thread, frames]
-timestamp: 2026-10-03T00:00:00Z
+timestamp: 2026-11-24T00:00:00-03:00
 ---
 
-# Overview
+# Terminal state and execution
 
-`zz-terminal` (lib root `src/terminal_core.rs`) is the
-crate that turns one shell child into a stream of immutable, renderer-neutral terminal frames. Each
-[`TerminalSession`](/concepts/pty-worker.md) spawns a dedicated OS worker thread that exclusively owns
-its `portable_pty` child process and every [`libghostty-vt`](/terminal/libghostty-vt.md) object (VT
-parser, grid, key/mouse encoders, render state). The ala application never touches a PTY or a
-libghostty handle directly; it reads the latest [`TerminalViewport`](/concepts/terminal-frame.md)
-frame and applies compact patches. The crate holds no ala types, so the daemon, the
-[protocol](/crates/zz-protocol.md) tests, and the app can all use it. It is consumed by
-[`/crates/zz-daemon.md`](/crates/zz-daemon.md), which fans frames out to clients over the
-[terminal lanes](/protocol/terminal-lanes.md).
+`crates/zz-terminal/src/terminal_core.rs` is the crate root. The default `session` feature
+adds the PTY and libghostty-vt runtime. With default features disabled, clients can still use
+the viewport model, appearance, input and interaction types. The daemon owns
+`TerminalSession` handles. The actor for each session owns the mutable VT state and publishes
+immutable viewports to readers. See [the PTY worker](/concepts/pty-worker.md) and
+[terminal frames](/concepts/terminal-frame.md).
 
-# Architecture
-
-The crate is built as a **single-writer actor**: the public `TerminalSession` handle is a thin
-command sender + frame subscriber, while all mutable state lives behind one worker thread.
-
-| Piece | Role |
+| Source under `crates/zz-terminal/src` | Responsibility |
 | --- | --- |
-| `TerminalSession` | Public handle. Sends `Command`s, exposes `latest_viewport()` and an event stream. Holds no terminal state. |
-| worker thread `zz-terminal` | Owns the `Terminal`, `RenderState`, encoders, PTY writer, per-client views, and the `ViewportDictionary`. Runs `run_terminal`. |
-| PTY reader | Platform-specific output delivery into the worker; macOS drains the nonblocking PTY directly in the worker loop. |
-| waiter thread `zz-child-wait` | Owns the `portable_pty` child, parks in `wait()`, and hands the exit status to the worker as a wake event. The worker keeps a `clone_killer()` handle for shutdown. |
-| worker thread `zz-output-view` | PTY-free variant (`run_output_view`) that renders frozen native command output through the same view lifecycle. |
-| `SearchWorker` thread | Scans an immutable `HistorySearchSnapshot` off-thread so search never borrows or blocks libghostty. |
-| `Publisher` | Replaces frames in `Arc<RwLock<PublishedViewports>>`, retains the fallback and per-view frames, and coalesces a `ViewportReady` notification. |
+| `session.rs`, `session/pane_actor.rs` | `TerminalSession::spawn`, input/control queues, actor turns, per-client views and publication |
+| `session/shard.rs` | Assigns PTY actors round-robin to lazily started worker threads. Default count is available parallelism capped at four. `ZZ_PTY_SHARDS=0` selects a dedicated worker for each PTY. |
+| `session/unix_pty.rs`, `pty_types.rs` | Unix PTY handling. Windows selects `portable-pty` through the target-specific dependency in `Cargo.toml`. |
+| `session/surface_actor.rs` | Terminal rendering for command output and other surfaces without a PTY. Surface actors share the shard pool on Unix and use the dedicated path on Windows. |
+| `model.rs` | `TerminalViewport`, `PackedCell`, dictionaries, row spans and viewport diffs |
+| `input.rs`, `interaction.rs` | Key input and pane/view actions, including mouse, copy mode, search and scrolling |
+| `appearance.rs`, `shell_integration.rs` | Resolved terminal appearance and provenance, and startup integration for supported shells |
 
-`CommandSender` routes work through two bounded lanes. A capacity-one control lane carries resize,
-capture, copy-mode, and pure view operations. An ordered PTY-input lane carries text, keys,
-mouse/focus/paste operations, and pending-paste markers. It holds 256 commands in channel slots,
-charged at their payload plus a 4 KiB floor, and queues the rest in order in an overflow charged at
-their payload plus 256 bytes (an entry keeps that charge when it reaches a slot); each slot that frees pulls the oldest overflow entry in, so typed keys
-are never dropped at the slot count. Producers use nonblocking input admission and reject a whole
-command only when the 64 MiB byte budget is full. The actor writes up to 256 queued commands per
-wake, within the 1 ms drain turn, and stops early for a writer backlog or a waiting control command.
-The actor chooses control first and executes
-both lanes on its single worker thread, so terminal state mutations cannot interleave. While
-`PtyWriter` holds unwritten bytes, the actor pauses further PTY input, continues PTY reads and control
-work, and retains libghostty-generated PTY replies in `PtyEffects` until the writer drains.
-`command_queue_len` includes writer-held and queued input permits and overflow entries;
-`pending_pty_input_bytes` exposes their combined admission charge. See
-[pty-worker](/concepts/pty-worker.md) for the actor lifecycle in depth.
-
-On Unix, `run_terminal` obtains its default shell command from `shell_integration.rs`. zsh and
-Bash receive zz-owned startup hooks; Apple's `/bin/bash` 3.2 is skipped because it never reads
-`ENV`, the injection path. On zsh and Bash 4.4+, these publish
-the interactive command as OSC 2 before execution, then replace it with the shell name at the next
-prompt. A program's own later OSC 0/2 title wins while it runs. Each hook title is preceded by the
-private `OSC 2626`, so `EngineFilter` counts only unmarked OSC 0/2 writes in
-`TerminalFacts::program_title_writes`; the daemon's pane watcher passes whether that count moved, and
-a title set with `select-pane -T` or `split-window -T` ignores hook titles until an unmarked write
-lands. The same filter reads [OSC 7501 program status](/terminal/program-status.md) reports,
-answers its support query, and drops records on OSC 133;A and RIS. Shell resources are embedded in the
-binary and materialized into a versioned private cache on every spawn, never once per process: the
-cache root is a purgeable OS cache directory, and a daemon that memoized it would hand later panes an
-`ENV` path that no longer exists, leaving Bash in `--posix` with no startup files at all. Unsupported
-shells, a purged-and-unwritable cache, and explicit opt-out (`ZZ_SHELL_INTEGRATION=none`) all fall
-back to `portable_pty`'s unchanged default login shell.
-
-The bundled Bash, zsh, and PowerShell hooks emit OSC 133: A before the prompt, B before command
-input, C before execution, and D with the exit status before the next prompt. `show-last-output`
-and `send-last-output` use these marks through `capture_last_command` to extract command and output
-text. zsh sends its A as `133;A;redraw=1`, so the engine clears the old prompt when a resize
-makes zsh redraw it. Empty Enter submissions do not emit C/D. Bash preserves user prompt commands and DEBUG traps;
-its first prompt hook saves the command status before user hooks run. PowerShell emits C through
-the existing `PSConsoleHostReadLine` wrapper when that function is available, so command detection
-there is best-effort. It reports success as 0 and failure using a nonzero `$LASTEXITCODE`, falling
-back to 1. Without the read-line hook, it emits A/B but cannot delimit command output. OSC 2 titles,
-OSC 7 working directories, and cursor resets continue alongside the prompt marks.
-
-The worker retains maps of active and inactive views. Each attached view has its own scroll,
-selection, and copy-mode state; `publish_active_views` snapshots active views independently.
-`detach_view` retains the view's state as inactive, and `release_view` drops its retained state.
-When the last view stops streaming, the pane keeps its render state for `VIEWED_RENDER_RETAIN`
-(5 s) before releasing it, so a reattach or window switch inside that window skips the rebuild.
-
-Synchronized output (`DECSET 2026`) holds the last published frames while parsing and input
-continue. `Publisher::defer_synchronized_output` guards the shared snapshot path. Both live-PTY
-and PTY-free workers wake on a one-second deadline to release an unfinished redraw. The closing
-sequence, resize, EOF, or process exit also allows pending content to publish. See
-[BH-004](/research/2026-09-16-interactive-bughunt.md) for the reproduction and regression checks.
-
-# Schema
-
-Public surface re-exported from `terminal_core.rs`:
-
-| Symbol | Kind | Purpose |
-| --- | --- | --- |
-| `TerminalSession` | struct | Actor handle: `spawn*`, `send_text`, `send_key`, `resize`, `attach_view`, `view_action`, `paste_prepared_bytes`, `capture`, `capture_last_command`, `latest_viewport`, `events`, `diagnostics`. |
-| `TerminalEvents` / `TerminalEvent` | stream | Single-consumer events: `ViewportReady`, `ViewClosed`, `CopyReady`, `OpenUri`, with bounded reliable-event accounting. |
-| `TerminalViewport` / `TerminalViewportPatch` | struct | The immutable [frame](/concepts/terminal-frame.md) and its retained-grid diff. |
-| `TerminalAppearance` + loaders | struct/fn | Renderer-neutral [appearance](/terminal/appearance.md) model, Ghostty **config** discovery (`discover_ghostty_config`, the `load_ghostty_appearance*` family), and the `zz/config` overlay pass (`apply_appearance_overrides`). |
-| `AppearanceConfigKey` / `AppearanceSource` / `AppearanceProvenance` / `AppearanceLoad` | enum/struct | The 31 supported keys (`AppearanceConfigKey::ALL`), the four provenance tiers (`Default`/`ThemeFile`/`Ghostty`/`Override`), and the resolved load. |
-| `GhosttyTheme` / `enumerate_ghostty_themes_for` | struct/fn | The theme layer: one discoverable Ghostty theme file with its parsed appearance, and the enumeration of every valid theme in the same precedence order theme resolution uses. |
-| `KeyInput`, `KeyCode`, `Modifiers` | input | Renderer-independent key records for the [interaction](/terminal/interaction.md) encoder. |
-| `TerminalViewAction`, `TerminalMouseInput`, `CopyModeAction`, `SearchQuery` | input | Native viewport / selection / copy-mode / search actions. |
-| `WordSeparators` | struct | Precompiled tmux word-boundary classifier for selection. |
-| `prepare_paste_buffer` | fn | tmux `paste-buffer` byte preparation. |
-| `CaptureOptions` / `TerminalCaptureError` | struct/enum | `capture-pane`-style content extraction on the actor thread. |
-
-# Key files
-
-| File | Role |
-| --- | --- |
-| `src/terminal_core.rs` | Crate root; module tree and the complete public re-export list. |
-| `src/session.rs` | The actor: PTY spawn, worker loop `run_terminal`, `Publisher`, `ViewportDictionary`, snapshot extraction, view/copy-mode/search/mouse/link logic. |
-| `src/shell_integration.rs` | Default-shell detection, private resource materialization, Bash/zsh startup injection, and opt-out handling. |
-| `assets/shell-integration/` | zz-owned Bash and zsh pre-exec/pre-command hooks that publish live OSC titles. |
-| `src/session/mode_revision.rs` | `ModeRevision` capture . stable paged history snapshot backing copy/view [modes](/terminal/libghostty-vt.md). |
-| `src/model.rs` | Frame data model: `TerminalViewport`, `PackedCell`, `PackedStyle`, `Cursor`, `OverlaySpan`, diff/patch. |
-| `src/appearance.rs` | `TerminalAppearance`, Ghostty config loader, X11 named-color table. |
-| `src/interaction.rs` | Renderer-neutral pointer/view/copy-mode/search action types. |
-| `src/input.rs` | `KeyInput` / `KeyCode` / `Modifiers` packed key records. |
-| `src/paste.rs` | `prepare_paste_buffer` tmux safe/literal byte transform. |
-| `src/word.rs` | `WordSeparators` boundary classifier. |
-| `src/x11-rgb.txt` | Embedded Ghostty/X11 `rgb.txt` named-color data. |
-
-# Related
-
-- Owns and drives [`libghostty-vt`](/terminal/libghostty-vt.md) on the worker thread.
-- Publishes the [terminal frame](/concepts/terminal-frame.md) consumed by [`/crates/zz-daemon.md`](/crates/zz-daemon.md) fanout.
-- Frames and patches travel the [terminal lanes](/protocol/terminal-lanes.md) and [snapshots](/protocol/snapshots.md) of the [wire protocol](/protocol/wire-protocol.md).
-- The [rendering-parity](/terminal/rendering-parity.md) effort maps these frames onto ala painting in [`/crates/zz.md`](/crates/zz.md).
-- Subsystems: [interaction](/terminal/interaction.md), [appearance](/terminal/appearance.md); actor lifecycle in [pty-worker](/concepts/pty-worker.md).
-- Session persistence across daemon restarts is described in [session-persistence](/concepts/session-persistence.md).
+The [daemon](/crates/zz-daemon.md) fans the resulting views out to subscribers through the
+[packed terminal lane](/protocol/terminal-lanes.md). The
+[renderer](/terminal/rendering-parity.md) reads the published frame. See also
+[libghostty-vt](/terminal/libghostty-vt.md), [interaction](/terminal/interaction.md) and
+[appearance](/terminal/appearance.md).

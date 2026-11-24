@@ -9,7 +9,7 @@ tags:
 - omnibox
 - autocomplete
 - profiles
-timestamp: 2026-11-16T00:00:00Z
+timestamp: 2026-11-24T00:00:00Z
 ---
 
 # Overview
@@ -19,11 +19,8 @@ without opening Chromium's internal databases. The history store belongs to the
 GUI client, scopes every page and learned selection to a named zz profile, and
 feeds both the blank-page recent list and non-empty omnibox queries.
 
-The implementation follows Chromium's stable user-facing rules instead of its
-field-trial scoring constants: URL and title fit lead, then explicit selections,
-typed use, visit frequency, and recency decide ties. Exact Chromium ordering can
-change with field trials and server features, so zz owns a small deterministic
-scorer.
+URL and title matches rank first. Explicit selections, typed use, visit frequency
+and recency break ties.
 
 # Stored records
 
@@ -42,27 +39,15 @@ atomic replace path and restrict the file to the current user on Unix. A legacy
 `unix-seconds<TAB>url<TAB>title` row loads into the `default` profile with one
 visit and no typed credit; the next write upgrades the file.
 
-The shared `RecentPages::load` API saves after each mutation. The ala desktop
-adapter records the path at startup and defers loading stored pages, learned
-selections, and favicons until a history lookup or mutation. Its
-`RecentPages::pages` and `pages_mut` accessors perform that first load through
-`load_deferred`; a first mutation therefore preserves existing records before
-changing them. Revision checks do not initialize the store.
+The shared `zz_client::recent_pages::RecentPages` serializes and deserializes
+the records. The desktop adapter in `crates/zz/src/browser/recent_pages.rs`
+loads them on the first lookup or mutation. Reading the revision or quitting
+with an unused store leaves the file untouched.
 
-The desktop adapter keeps one save worker. It batches changes for 250 ms, clones
-the latest store once per batch, and serializes and writes that snapshot on the
-background executor. Continuous updates do not postpone the batch deadline.
-Writes run in sequence; a change during a write schedules the next batch.
-
-On normal quit, the adapter cancels the batch coordinator, waits for its
-independent background writer, and saves the latest remaining changes
-synchronously. This final flush runs before ala starts its quit-future timeout;
-a slow filesystem can delay quitting but does not abandon the newest batch. A
-store without a path stays in memory and starts no save worker.
-
-Quitting before any history lookup or mutation leaves the store uninitialized
-and skips disk reads and writes. The existing file keeps its contents and
-modification time.
+The first change starts a 250 ms batch. One background writer saves the latest
+snapshot, then schedules another batch if the revision changed during the write.
+On normal quit, the adapter waits for an active write and saves remaining changes
+synchronously before ala starts its quit timeout. With no path the store stays in memory.
 
 History changes notify visible consumers whose displayed history data changed:
 browser tab icons, blank-page recents, suggestion icons, and browser entries in
@@ -157,7 +142,7 @@ replacements do not trigger inline completion.
 
 # Chrome import
 
-Explicit **Import Chrome data** reads `url`, `title`, `last_visit_time`,
+Explicit **Import browser data** reads `url`, `title`, `last_visit_time`,
 `visit_count`, and `typed_count` from the selected Chrome snapshot. The current
 zz profile remains the destination. Merge keeps the newer visit and usable title,
 plus the larger visit and typed counts, so an import enriches current zz history

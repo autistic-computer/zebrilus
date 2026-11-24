@@ -1,145 +1,43 @@
 ---
 type: Rust Crate
 title: ala-cef crate
-description: Browser-neutral abstraction over CEF Alloy off-screen rendering. Owns CEF init, named private request contexts, page zoom, input, lifecycle, frame mailboxes, and Chrome profile, cookie and history import.
+description: CEF off-screen browser hosting, cross-platform input and frame types, profiles, and optional Chrome data import.
 resource: libs/ala-cef/src/lib.rs
 tags: [browser, cef, crate, osr]
-timestamp: 2026-10-31T12:44:37Z
+timestamp: 2026-11-24T00:00:00-03:00
 ---
 
-# Overview
+# Features and ownership
 
-`libs/ala-cef` (package name `ala-cef`) is the single crate that touches
-CEF. Like [ala](/references/ala.md) and `penna` it is a lib with its own Cargo
-workspace, outside zz's, that builds alone: its CEF sys adapter sits in
-`libs/ala-cef/third_party/cef-dll-sys`, and `just libs check ala-cef` lints and
-tests it the way CI does. It wraps CEF Alloy off-screen rendering (OSR) behind a small, CEF-free public
-API so the rest of zz never sees a raw Chromium handle. It owns global CEF
-initialization, single-binary multi-process subprocess dispatch, named private
-persistent request contexts (browser profiles), GPUI-to-CEF input translation,
-runtime/session lifecycle state machines, and one **latest-frame mailbox** per
-session. The ala client in [`crates/zz`](/crates/zz.md) consumes only the
-browser-neutral types re-exported from `lib.rs`, never CEF binding types.
+`libs/ala-cef` is a standalone Cargo workspace. The desktop [zz client](/crates/zz.md)
+uses its Chromium runtime and consumes browser events and frames. Thin clients can reuse the
+browser-neutral types with default features disabled.
 
-Frame transport is a replaceable boundary, and it has already been replaced twice:
-`OsrFrame` is an enum over `OwnedBgra` (the universal readback tier), `Gpu` (a
-zz-owned wgpu texture on Linux/FreeBSD), and `MacGpu` (a retained `IOSurface` on
-macOS). Adding or losing a tier changes nothing about navigation, profile,
-lifecycle, or input. See [OSR rendering](/browser/osr-rendering.md) for the three
-pipelines and how a session falls back to readback.
-
-# Architecture
-
-The crate depends on no zz crate. zz hands it a `RuntimeConfig` (scheme,
-page global, GPU and frame switches) and the profile directory names.
-It splits into three layers by Cargo feature:
-
-- **No features**: `cookie`, `element_picker`, `event`, `input`, `lifecycle`,
-  `page_zoom`, `profile`. Pure types, validation and state
-  machines on `url`, `serde` and `parking_lot`; this is what the thin
-  clients' browser panes (`clients/app`) use, and it
-  builds for WASM, iOS and Android. The root workspace dependency turns
-  default features off. CI keeps it out of `zz-cli`'s tree, so `zz-config`
-  takes `SearchProvider` from `zz-client`'s `url_input`, not from here.
-- **`host`**: adds `frame`, `readback_texture` and `artifact`, the wgpu,
-  Metal and Direct3D frame types and the local artifact pages.
-- **`cef-runtime`** (the crate's default, enabled by `crates/zz`): adds
-  `cef_runtime`, the only module that links `cef`. It hosts
-  `BrowserRuntime`, `BrowserSession`, `bootstrap`, `run_subprocess`, and every
-  CEF handler (`cef::wrap_*!`) callback. Its module attribute locally allows
-  `unsafe_code` solely to validate and copy CEF's callback-scoped BGRA paint
-  buffer into owned memory; no borrowed CEF pointer survives that callback.
-- **`chrome-import`**: adds `chrome_import`, which reads an installed Google
-  Chrome without CEF, on top of the pure half alone. `profiles` parses a
-  bounded `Local State` in Chrome's picker order and caches the labels in a
-  directory the app names; `cookie` snapshots the cookie database and its WAL
-  into a private temporary directory, decrypts values through the macOS
-  Keychain, Linux Secret Service or Windows DPAPI, and deduplicates by CEF
-  cookie identity; `history` snapshots `History` read-only and returns the
-  newest HTTP(S) rows under caller-given `ImportLimits`. It holds ala-cef's only
-  `rusqlite` (bundled SQLite), crypto and keychain dependencies. Imported
-  profiles are named `chrome:<storage key>`. `crates/zz` turns it on and
-  drives it from the browser's three-dot menu in `browser/view.rs`; the stored
-  history it feeds stays in zz (`crates/zz/src/browser/recent_pages/store.rs`).
-
-`cargo test -p ala-cef --no-default-features --features host` runs the
-CEF-free tests without downloading Chromium; `cargo check -p ala-cef
---all-targets --features cef/dox` type-checks the runtime without it.
-The one-slot mailbox model, whatever the tier: CEF hands over a callback-scoped
-resource, `cef_runtime` copies it exactly once into something zz owns (a `Vec<u8>`
-from `on_paint`, or a zz-owned destination texture/`IOSurface` from
-`on_accelerated_paint`), and publishes that into a
-[`FrameMailbox`](/browser/osr-rendering.md) holding at most one pending frame. A
-new frame replaces a stale unread one, `take()` hands the consumer the owned
-frame, and the app moves it onward without another pixel copy. A slow ala
-consumer therefore never builds an unbounded queue; it always paints the newest
-frame.
-
-## Remote proxy plumbing
-
-A local pane uses its plain named request context and the client's network. A
-pane attached through ssh uses a local `<profile>@egress-<hash8>` context whose
-proxy preference targets the managed `ssh -D` SOCKS listener.
-`BrowserProfilePaths::egress_profile_name` derives the bounded composite name,
-and `BrowserRuntime::set_profile_proxy` installs `fixed_servers` with
-`socks5://127.0.0.1:<port>` plus Chromium's `<-loopback>` bypass override. The
-logical profile name remains the daemon-owned descriptor; the composite context
-and its per-host cookie jar never cross the wire.
-
-# Public API surface
-
-`lib.rs` re-exports the browser-neutral types (always available) and the CEF
-runtime types (only under `cef-runtime`):
-
-| Re-export | Module | Role |
-| --- | --- | --- |
-| `SessionId`, `BrowserEvent`, `BrowserCursor`, `ContextMenuRequest`, `EditFlags` | `event` | Owned browser-domain events, cursor shapes, and context-menu state |
-| `OsrFrame`, `FrameMailbox`, `FrameError`, `FrameMailboxDiagnostics`, `FrameTier`, `OwnedBgraFrame`, `GpuFrame`, `BrowserGpuContext` (+ `MacGpuFrame`/`MacIoSurface` on macOS) | `frame` | Latest-frame mailbox and the three frame payloads |
-| `Viewport`, `Modifiers`, `PointerEvent`, `WheelEvent`, `KeyInput`, `BrowserKey`, `KeyAction`, `EditCommand`, `PointerButton`, `PointerPhase` | `input` | Browser-neutral input + viewport types |
-| `RuntimePhase`, `SessionPhase` | `lifecycle` | Runtime + session state machines |
-| `BrowserProfilePaths` (`under`, `normalize`), `BrowserProfileError`, profile-name constants/normalization | `profile` | Safe named-profile validation, path resolution, creation; the default directory's name also names the default profile |
-| `parse_cookie_import`, `BrowserCookie`, `CookieImportBatch`, `CookieImportResult`, `SiteDataClearResult` | `cookie` | Bounded Cookie-Editor/Netscape parsing plus browser-data operation results |
-| `chrome_import::{profiles, cookie, history}` | `chrome_import` (`chrome-import` feature) | Chrome profile discovery and label cache, cookie snapshot and decryption, read-only history import |
-| `BrowserBootstrap`, `BrowserRuntime`, `BrowserSession`, `BrowserError`, `RuntimeSignal`, `bootstrap`, `bootstrap_with_profile_paths`, `run_subprocess` (+ `bootstrap_windows`) | `cef_runtime` | CEF init, subprocess dispatch, session control. `bootstrap` takes a closure that resolves the profile paths, called only in the browser process; zz passes `browser::profile_paths` |
-
-# Key files
-
-| File | Role |
+| Build in `libs/ala-cef/Cargo.toml` | What it provides |
 | --- | --- |
-| `src/lib.rs` | Crate root; module declarations and the public re-export surface. Gates `frame`/`artifact` on `host` and `cef_runtime` on `cef-runtime`. |
-| `src/cef_runtime.rs` | The only CEF-linked module: `BrowserRuntime`, `BrowserSession`, `bootstrap`/`run_subprocess`, all `cef::wrap_*!` handlers, `on_paint`, input dispatch. |
-| `src/frame.rs` | The `OsrFrame` tier enum + one-slot `FrameMailbox` (latest-wins publish, wake coalescing, dimension/byte-length validation, GPU-import failure tracking). |
-| `src/event.rs` | `SessionId`, `BrowserEvent` variants, `BrowserCursor`. |
-| `src/input.rs` | Browser-neutral `Viewport`, packed `Modifiers`, pointer/wheel/key input types + `windows_key_code` mapping. |
-| `src/lifecycle.rs` | `RuntimePhase` and `SessionPhase` strict transition tables. |
-| `src/page_zoom.rs` | Chrome percentage ladder and logarithmic CEF zoom-level conversion. `next_page_zoom_factor` is in the pure half; the thin clients step their native web views' page zoom with it. |
-| `src/profile.rs` | `BrowserProfilePaths`, profile-name rules; encoded named paths, user-only permissions. zz picks the data dir in `crates/zz/src/browser/mod.rs`. |
-| `src/cookie.rs` | Cookie-Editor JSON/Netscape parsing, normalization, limits, and secret-free result types (CEF-free, so `chrome_import` builds without Chromium). |
-| `src/chrome_import/profiles.rs` | Background Chrome profile discovery, platform paths, the sanitized label cache. |
-| `src/chrome_import/cookie.rs` | Cookie database snapshot, platform key lookup and decryption, chunked normalization into `BrowserCookie`s. |
-| `src/chrome_import/history.rs` | Read-only `History` snapshot, Chromium timestamps, newest-N HTTP(S) rows. |
-| `src/element_picker.rs` | Token-guarded in-page element-picker protocol state (`ElementPickState`). |
-| `src/element_picker.js` | Injected renderer-side script backing the element picker (~45 KB). |
-| `Cargo.toml` | Takes the workspace `cef` dependency (pinned in the root `Cargo.toml`, `accelerated_osr` feature) as an optional dep behind `cef-runtime`. |
+| Default features disabled | Browser events, input, lifecycle, profile names and paths, cookie parsing and page-zoom steps. Element-picker state is available on non-Wasm targets. |
+| `host` | Host frame types, GPU context, artifacts and the latest-frame mailbox |
+| `cef-runtime` (default) | Enables `host`, links CEF and exposes `bootstrap`, `BrowserRuntime`, `BrowserSession` and the message pump |
+| `chrome-import` | Independent opt-in for Chrome profile discovery, cookie import and history reading |
 
-# Module map (concept links)
+`libs/ala-cef/src/lib.rs` gates public exports. macOS host builds expose IOSurface frames and a
+presenter. Windows host builds expose shared GPU texture types, and Windows runtime builds expose
+`bootstrap_windows`. Linux runtime builds include DMA-BUF import. See
+[off-screen rendering](/browser/osr-rendering.md) and [CEF runtime](/browser/cef-runtime.md).
 
-- [CEF runtime & subprocess dispatch](/browser/cef-runtime.md) . `cef_runtime.rs` + `lib.rs`
-- [Off-screen rendering pipeline](/browser/osr-rendering.md) . `frame.rs` + `on_paint`/DPI handling
-- [Runtime & session lifecycle](/browser/lifecycle.md) . `lifecycle.rs` + `event.rs`
-- [Named private profiles & request contexts](/browser/profile.md) . `profile.rs`
-- [Input translation](/browser/input-translation.md) . `input.rs` + `zz-client`'s `url_input.rs`
-- [Element picker](/browser/element-picker.md) . `element_picker.rs`
+## Source map
 
-# Related
+- `src/cef_runtime.rs` owns runtime and session operations. `src/frame.rs` defines
+  `OsrFrame` and `FrameMailbox` for accelerated or CPU-backed frames.
+  [Runtime lifecycle](/browser/lifecycle.md).
+- `src/input.rs`, `src/event.rs` and `src/ime.rs` define the input and event contract.
+  [Input translation](/browser/input-translation.md).
+- `src/profile.rs` owns profile normalization and `BrowserProfilePaths`. The caller selects
+  the data directory. `src/cookie.rs` parses imported cookie formats, and
+  `src/chrome_import/` implements the optional Chrome import. [Profiles](/browser/profile.md).
+- `src/element_picker.rs` and `picker/` hold picker state and the injected script's source.
+  [Element picker](/browser/element-picker.md).
 
-- Consumed by [`crates/zz`](/crates/zz.md), the ala mux client, which keys one
-  CEF `BrowserSession` per browser pane ID and paints its frames via a custom ala
-  element.
-- CEF is pinned through `Cargo.lock`; the resolved versions and per-target archive
-  hashes are recorded in `third_party/cef/ARTIFACTS.md`, described by
-  [CEF artifacts](/references/cef-artifacts.md).
-- Fits into the overall [process model](/architecture/process-model.md) and
-  [data flow](/architecture/data-flow.md).
-- Session restore behavior is described under
-  [session persistence](/concepts/session-persistence.md).
+Run `just libs check ala-cef` from the zz repository for the library's own checks. The
+[CEF artifact reference](/references/cef-artifacts.md) and [bundle playbook](/playbooks/build-cef-bundle.md)
+cover dependency pins and packaging.

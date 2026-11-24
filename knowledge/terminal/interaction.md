@@ -4,7 +4,7 @@ title: Terminal interaction (input, selection, paste, words)
 description: The renderer-neutral pointer, keyboard, word-boundary, and paste layer that turns client gestures into libghostty encoding, native selection, and copy-mode actions, plus the client-side local scroll overlay.
 resource: crates/zz-terminal/src/interaction.rs
 tags: [interaction, input, mouse, selection, paste, copy-mode, keyboard]
-timestamp: 2026-10-07T00:00:00Z
+timestamp: 2026-11-24T00:00:00Z
 ---
 
 # Overview
@@ -102,23 +102,13 @@ placeholder (`zz-image://N`) opens the image preview everywhere.
 
 # Local scroll (client side)
 
-Scrollbar drags and trackpad scrolling do not always have to cost a round trip. When the pane is in
-`Live` mode, mouse tracking is off, the scrollbar has room to move, and the pane's client-side `HistoryRing`
-holds rows,
-the view records a `LocalScroll { target_offset, .. }` and the next frame paints from the
-ring: rows above the live viewport come out of the ring, rows still inside it come from the server
-frame, rows the ring cannot cover yet paint as a dim shimmer, and the scrollbar thumb is drawn from
-the local target. Cursor, selection, and overlay spans are projected onto whatever slice of the live
-viewport remains visible. A scrollbar target older than the ring's coverage or newer than the server's
-offset skips the overlay and takes the round trip instead, and a target near the cold edge of the ring
-triggers a `HistoryRequest` prefetch.
-
-The state machine is `LocalScrollState` in [`zz-client`](/crates/zz-client.md)
-(`crates/zz-client/src/local_scroll.rs`); the desktop `TerminalView`
-(`crates/zz/src/terminal/view.rs`) and the ala thin client's `TerminalPane`
-(`clients/app/src/terminal.rs`, iOS and web) both drive it and send the effects it returns.
-The thin client keeps its rings in `ClientCore` (`retain_history`); both pace history requests with
-the shared `HistoryPacer`.
+`LocalScrollState` in `crates/zz-client/src/local_scroll.rs` drives the desktop
+`TerminalView` and the web, iOS and Android `TerminalPane` in `clients/app/src/terminal.rs`.
+It can move the viewport locally when a live pane has scrollback, mouse tracking is
+off and its `HistoryRing` holds rows. A scrollbar target outside the available range
+goes to the daemon. Near the cold edge, `HistoryPacer` paces prefetch requests.
+[Row sources under local scroll](/terminal/rendering-parity.md#row-sources-under-local-scroll)
+describes which rows, cursor and overlays the client can paint.
 
 **Trackpad pixels.** A `ScrollDelta::Pixels` event (trackpad, Magic Mouse, macOS momentum, Wayland
 touchpad, and on iOS a one-finger pan and its momentum) on a terminal pane moves by pixels instead of
@@ -127,9 +117,8 @@ the content sits below the whole-row target, in `[0, line_height)`, and `pixel_s
 each whole row into the local target in both directions. The position is clamped to what the client
 can paint: no newer than the server's offset (the live bottom when the server is there), and no older
 than the ring's oldest row, so the partial row peeking in at the top always comes from the ring and
-never from the shimmer. The renderer draws that row above the grid, shifts every row, the cursor, the
-overlays, and Kitty images down by the snapped offset, and clips them to the unshifted grid; hit
-testing subtracts the same offset. Popups and command-output panes keep whole rows.
+never from the shimmer. Hit testing accounts for the same snapped pixel offset the painter uses. Popups and
+command-output panes keep whole rows.
 
 The ring only covers rows above the server's viewport, so the daemon has to stay close to the gesture.
 `daemon_follow_offset` sends a `ScrollToOffset` half a screen below the target whenever the server's
@@ -178,9 +167,9 @@ SSH. Terminal-pane support and a client's tty path do not identify its search UI
 Custom callbacks, seeded prompts and clients without the capability keep the generic command-prompt path.
 `remember_copy_mode_search` retains live queries for copy-mode repeat and later copy-mode entries.
 
-Copy, view, unseen-output, dead, waiting and sync indicators use the Chroma button surface through
-`pane_status_badge`; Unzoom uses a regular Button. They inherit theme colors, radius and shadow.
-Hovered links and shell status remain in the bottom-right corner.
+The top-right stack also draws `terminal_mode_tag` for the current mode and penna
+chips for dead and synchronized panes. Hovered links and shell status appear in
+the bottom-right corner (`crates/zz/src/terminal/view.rs`).
 
 # Keyboard routing (client side)
 
@@ -192,12 +181,9 @@ where the [key tables](/tmux/key-tables.md) resolve root/prefix semantics and pa
 through to the PTY. `chrome-keybind` and `chrome-unbind` change the client table without changing
 the daemon's pane tables.
 
-There is no client-side predictive echo. `Predictor` and the `predict` mux option existed to hide
-WAN latency over QUIC and were deleted with that transport on 2026-08-01; a keystroke is drawn when
-the daemon's next frame says so, exactly as it always was locally. Over ssh the RTT is the ssh RTT,
-and the honest fix if it ever hurts is an application-level ping feeding a re-introduced overlay, not
-a resurrection of the old one. See
-[scene-streaming remote attach](/designs/scene-streaming-remote.md) for the retired design.
+Typed characters appear when the daemon sends the updated terminal frame.
+[Scene-streaming remote attach](/designs/scene-streaming-remote.md) records
+the earlier predictive-echo design.
 
 # Related
 

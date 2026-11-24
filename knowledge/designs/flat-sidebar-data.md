@@ -16,7 +16,7 @@ timestamp: 2026-10-26T00:00:00-03:00
 
 # Overview
 
-Since 2026-10-28 the flat list is [chat mode](chat-mode.md): since 2026-11-13 its rows are the
+Since 2026-10-28 the flat list is [chat mode](/designs/chat-mode.md): since 2026-11-13 its rows are the
 windows holding a chat, then one pile of the windows without one, under their machine with no
 session headers. The data layer below is unchanged.
 

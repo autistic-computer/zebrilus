@@ -1,609 +1,186 @@
 ---
 type: Playbook
 title: Building and running zz
-description: How to build and run the zz ala client and its daemon, what the first build downloads, and how to exercise the browser pane with the loopback fixture.
-resource: crates/zz/src/lib.rs
-tags: [running, cargo, cef-download, daemon, browser-fixture, pacman, profiling, instruments]
-timestamp: 2026-10-29T00:00:00Z
+description: Launch an isolated desktop or thin client, exercise a native browser pane and collect logs and profiles.
+resource: scripts/run.sh
+tags: [running, cargo, cef-download, daemon, browser-fixture, profiling, instruments]
+timestamp: 2026-11-24T00:00:00Z
 ---
 
-# Overview
-
-The `zz` package (crate at `crates/zz`) provides the ala client, daemon/CLI entrypoints, and CEF
-helper executable. Linux can run the main binary directly from Cargo. macOS and Windows must launch
-the platform bundle so Chromium can find its framework/resources, sandbox helpers, or bootstrap
-DLL. A first native build additionally downloads and verifies a matching CEF distribution and
-compiles CEF's C++ wrapper; see
-[prerequisites](/playbooks/prerequisites.md) for the toolchain this requires and
-[build/verify a CEF bundle](/playbooks/build-cef-bundle.md) for the packaged (non-`cargo run`)
-equivalent.
-
-# Examples
-
-Use just 1.52 or newer. `just` lists the top-level commands and groups; `just profile`
-lists profiling actions, and `just --list --list-submodules` shows the full tree.
-Related recipes live in `scripts/just/*.just` and use `just <group> <action> [arguments]`.
-Run these commands from any directory inside the checkout; recipes use the repository root.
-
-Start zz. It connects to an already-running daemon, or starts one automatically:
-
-```sh
-# Installed macOS or Linux package
-zz app
-
-# Linux
-cargo run -p zz
-
-# macOS
-cargo xtask bundle-cef --release --output dist/zz
-open dist/zz/zz.app
-
-# Windows
-cargo xtask bundle-cef --release --output dist/zz
-dist\zz\zz.exe
-```
-
-The installed macOS and Linux `zz` command is the tmux-compatible launcher. Bare `zz` rewrites to
-`new-session -A` and enters the raw-terminal client: an empty daemon creates numeric session `0`,
-while a live daemon attaches its current session. Explicit `zz attach` and `zz attach-session`
-remain tmux-compatible and return `no sessions` on an empty daemon. Use `zz new -s NAME` when the
-first session needs a name and `zz app` for a new GUI process. A direct bundle launch or
-`cargo run -p zz` with no command word is the same tmux client, not the GUI; development tools
-and platform launchers pass `app` (`scripts/run.sh`, the AppImage `AppRun`, the Linux `.desktop`
-entry). Only a LaunchServices launch on macOS and the Windows bundle open the GUI bare.
-
-`zz app` starts the first session in the directory where you ran the command. A Dock or Finder
-launch starts it in your home directory. The GUI includes that path when it creates a session, so
-the first terminal does not inherit the process directory of an empty daemon started earlier.
-The desktop window opens while a background task starts or connects to the daemon and reads its
-handshake. The local host stays in `Connecting` until that task finishes; terminal content follows
-the default attach. `MuxClient::new_connecting` keeps daemon startup and socket reads off the UI
-thread, and preserves the stale-daemon restart prompt when the handshake reports a version mismatch.
-
-`ZZ_SOCKET` owns daemon routing. `TMUX` carries compatibility metadata inside a pane or plugin job;
-zz refuses to parse a real tmux socket from it. An explicit `-S`, `-L`, or `--socket` still selects
-a zz endpoint. On Unix, daemon-spawned shell and status jobs export the exact `ZZ_SOCKET` and
-prepend a private `tmux` shim to their `PATH`, so config and plugin scripts launched by zz can keep
-invoking the tmux command name.
-
-A daemon started by a CLI query can remain empty. The GUI's first default Interactive attach
-materializes numeric session `0` only when no session exists, so CLI-first allocation keeps tmux's
-zero-based session/window/pane ids. The installed TUI launcher now shares this behavior. First
-materialization is serialized, so simultaneous default attaches and a command-side session creator
-converge on one session.
-
-The normal development loop is `just run <mac|linux>`. It builds **zz Dev**, an isolated desktop
-instance beside an installed zz. On Linux it copies the debug executable to `target/debug/zz-dev`
-(or the corresponding `CARGO_TARGET_DIR`) and launches it with `app`. On macOS it builds and
-launches the locally signed `dist/zz-dev/zz Dev.app`. `just run` does not accept `windows`. Extra
-args are `--verbose` and `--features <list>` (merged into `ZZ_CARGO_FEATURES`), not Cargo passthrough.
-
-The launcher sets `ZZ_DEV_BUILD=1` only for compilation. `zz-protocol/src/app_identity.rs` records
-that identity in the binaries, independent of debug/release optimization or the version number.
-Dev builds use `zz-dev` wherever installed builds use `zz` for configuration, browser profiles,
-agent preferences, window state, and daemon journals. On macOS the bundle ID is `dev.zz.app.dev`;
-on Linux the application and tray ID is `zz-dev`. Update checks are disabled for dev builds.
-
-Dev icons use an orange logo in the Dock, tray, and browser favicon.
-The macOS tray uses a color image; ordinary zz keeps its system-colored template image. Linux dev
-runs register `zz-dev.desktop` and an orange SVG under the user data directory so Wayland taskbars
-can resolve the dev app ID. The X11 window icon and tray pixmap also use the orange mark.
-
-Dev config discovery searches `zz-dev/config` and `zz-dev/mux.conf` beneath the usual platform
-config roots. It never falls back to installed zz's files. Dev starts with defaults; copy individual
-config files into the corresponding `zz-dev` directory if you want your existing settings.
-The default dev socket is `$XDG_RUNTIME_DIR/zz-dev/default.sock`, or
-`<system temporary directory>/zz-dev-$USER/default.sock` when XDG_RUNTIME_DIR is unset.
-The launcher clears inherited socket, pane, session, tmux, and startup context, so running it from
-an installed zz pane cannot select that pane's daemon. The daemon also drops a parent Claude Code
-session's identity variables (`CLAUDECODE`, `CLAUDE_CODE_CHILD_SESSION`, `CLAUDE_CODE_SESSION_ID`,
-`CLAUDE_CODE_SESSION_ATTENDED`, `CLAUDE_CODE_ENTRYPOINT`, `CLAUDE_CODE_EXECPATH`,
-`CLAUDE_CODE_MESSAGING_SOCKET`, `CLAUDE_CODE_MESSAGING_TOKEN`, `CLAUDE_PID`, and `CLAUDE_EFFORT`)
-from the environment it hands to panes, so Claude Code started inside zz does not inherit a nested
-child session identity; explicit `-e` or `set-environment` values still apply.
-Dev terminal jobs receive the dev socket.
-Explicit socket arguments on direct CLI invocations still work.
-
-Desktop dev runs also link `~/.local/bin/zz-dev` to the development executable for SSH clients.
-They leave a regular file at that location alone and report an error if one prevents linking.
-Dev SSH clients select `zz-dev` for protocol discovery, daemon startup, and proxying, and use the
-remote `zz-dev` socket namespace. Run `just run` on the remote development host first. To inspect
-it from an installed zz pane, use `env -u ZZ_SOCKET ~/.local/bin/zz-dev list-sessions`.
-
-The other development recipes share this identity:
-
-- `just web run`, `just web build`, and `just web serve` use dev assets in `clients/web/dist-dev`,
-  port 8081, separate browser preferences, and the existing dev daemon. `web serve --socket PATH`
-  overrides the socket. `web build --release` retains ordinary release assets in `clients/web/dist`.
-
-`just ios run [iPhone|iPad]` runs the ala iOS client in a simulator with its own app identity.
-It attaches to the throwaway daemon from `just ios rig` when that is up, then to an existing dev
-socket, or to `ZZ_ALA_ENDPOINT` / `ZZ_DEV_SOCKET`; `just ios device` installs it on a paired
-phone. See `clients/ios/README.md`.
-
-`just android run` builds the same thin client as an APK and runs it on the `zz-phone` emulator
-(`just android setup` installs the SDK, NDK, emulator and AVD, picking an arm64 or x86_64 image to
-match the host). It reaches the daemon from `just android rig`, which is the iOS rig, through
-`adb reverse` onto an abstract socket (endpoint `@zz-rig`), or `ZZ_ALA_ENDPOINT`;
-`just android device` installs a release arm64 build on a phone. See `clients/android/README.md`.
-
-`just build` and package installation keep their existing identity and destinations. Brew/AUR
-beta selection is independent of development isolation. Plain Cargo builds do not enable the
-development identity unless you set `ZZ_DEV_BUILD=1`.
-
-To verify the installed-command shape without replacing `/Applications/zz.app`, build the release
-bundle and run its packaged launcher fixture:
-
-```sh
-just build mac
-compat/packaged-cli.sh dist/zz/zz.app
-```
-
-The fixture clones the complete signed bundle beneath a space-containing temporary path and checks
-bare, `new`, and `attach` against empty and existing isolated daemons. It never installs or notarizes
-the app.
-
-`zz attach [session]` is the raw-terminal client (`zz-tui`). It speaks the same wire protocol as
-the GUI and can render kitty-graphics browser panes when CEF is available in the environment.
-
-```sh
-just run linux
-just run mac
-```
-
-For UI iteration, `just watch <platform>` uses Cargo watch to rebuild and relaunch only after a
-successful build:
-
-```sh
-just watch linux
-just watch mac
-```
-
-The current client remains open across compile failures. After a successful build the watcher
-starts the replacement client, closes the previous development client, and leaves the compatible
-development daemon plus its terminal sessions running. Rebuild and relaunch are native, so transient
-client-side UI and Chromium renderer state reset; nothing hot-reloads in process.
-
-`just build linux` / `just build mac` produce the release bundle (`cargo xtask bundle-cef --release`)
-and must run on the target platform. On Linux `bundle-cef` unlinks the bundle's executable before
-writing the new one: the daemon outlives the app and normally runs straight out of `dist/zz`, and
-copying over a running executable fails with `ETXTBSY`. Dropping the directory entry instead leaves
-that daemon on the inode it started from, so it keeps serving the previous build until restarted.
-
-macOS local bundles auto-select a sole valid Apple Development identity. This keeps TCC privacy
-grants for protected app data attached to each bundle identity across rebuilds (`dev.zz.app.dev`
-for development, `dev.zz.app` for installed builds). With no unique candidate,
-bundling falls back to ad-hoc signing; `MACOS_LOCAL_SIGN_IDENTITY` selects an identity by name or
-SHA-1, while `MACOS_LOCAL_SIGN_IDENTITY=-` forces ad-hoc signing. Public release signing remains a
-separate Developer ID/notarization step.
-
-On Arch Linux, package that release bundle with `just package arch`, or build and install it in
-one step with `just install arch`. The installed `/usr/bin/zz` symlink resolves to the `cli`
-launcher beside the complete CEF runtime under `/usr/lib/zz`. On Debian and Ubuntu the pair is `just package deb` (emitting
-`dist/zz-linux.deb`) and `just install deb`, which installs it through `apt` so the computed
-dependencies resolve. The deb also installs `/etc/apparmor.d/zz`; without that profile, Ubuntu
-24.04+ denies the user namespace the browser panes' zygote needs.
-
-On macOS, `just install mac` builds the release bundle and swaps it into `/Applications/zz.app` in
-one step: it quits a running GUI instance first (CEF spawns helpers by bundle path, so the bundle
-must never be deleted under a live GUI), replaces the bundle with `ditto`, and relaunches. The
-daemon . same binary, ` daemon`-suffixed command line . is deliberately left running so sessions
-survive the swap; it serves the previous build until restarted. Local signing keeps the
-`dev.zz.app` identity, so TCC grants persist across installs. The script also tries to put `zz` on
-`PATH` the way the Homebrew cask does: it links the bundle's `cli` launcher (never the real binary,
-which would run bundle-less) into the first existing, writable candidate already on `PATH`, checking
-`/opt/homebrew/bin` then `/usr/local/bin`. It leaves any foreign `zz` untouched and prints a manual
-link command if neither candidate qualifies. Run `zz app` through that launcher to open the GUI;
-bare `zz` runs `new-session -A` through the raw-terminal client, and so does the bundled
-executable itself when a shell runs it without a command word.
-
-The development recipe writes `dist/zz-dev/zz Dev.app`. Its debug CEF runtime uses Chromium's
-mock keychain so local rebuilds do not repeatedly prompt for Chromium Safe Storage; release bundles
-continue using the macOS Keychain. A compatible daemon on the development socket survives GUI
-rebuilds. When testing daemon changes, restart that dev daemon; only its dev sessions are affected.
-Use the development app's restart action, or run its bundled binary with an explicit `-S` pointing
-to the development socket and `kill-server`, then run `just run` again.
-
-Run with continuous diagnostics (records a `.verbose.log`; treat as sensitive, since it logs raw
-terminal I/O, browser URLs/input, and process environment):
-
-```sh
-# Linux
-just run linux --verbose
-
-# macOS
-just run mac --verbose
-
-# Windows
-dist\zz\zz.exe --verbose
-```
-
-The same global flag works on CLI-style commands. This example uses the Linux development launcher;
-on macOS use `dist/zz/zz.app/Contents/MacOS/zz`, and on Windows use `dist\zz\zz.exe`:
-
-```sh
-cargo run -p zz -- --verbose list-panes
-```
-
-`ZZ_LOG_DIR` overrides the log directory; otherwise logs default to `$XDG_STATE_HOME/zz/logs` (or
-`~/.local/state/zz/logs`) on Linux, `~/Library/Logs/zz` on macOS, and `%LOCALAPPDATA%\zz\logs` on
-Windows. The `just run` development launcher sets `ZZ_LOG_DIR` to the git-ignored `logs/`
-folder in the repository and executes the macOS bundle binary directly (not via `open -n`), so
-`ZZ_BROWSER_*` environment flags set in the shell reach the app.
-
-Production runs (no `--verbose`) always log too: the app and daemon roles write info-level records
-to `zz.app.log` and `zz.daemon.log` in that same directory, size-capped as a two-generation ring
-(8 MiB live + one `.log.old` predecessor), and CEF writes its own warnings to `cef.log` there
-(previous session preserved as `cef.log.old`). After a native crash, pair the tail of those files
-with the `.ips` report from `~/Library/Logs/DiagnosticReports` . the ring guarantees the last
-8–16 MiB of app-side history survived. When stderr is a terminal the records are mirrored there.
-
-When something feels off mid-session, flag it instead of trying to remember the time:
-`cmd-shift-m` (`ctrl-shift-m` on Linux/Windows) stamps `user_marker seq=N` plus a state snapshot
-into both ring logs and confirms with a toast, and `zz debug-marker freeze while agent was busy`
-does the same from any shell. The iPad (`cmd-shift-m`) and web clients stamp the same marker into
-their own log and the daemon's, without the state snapshot or the stack sample. Main-thread freezes need no keypress . an always-on watchdog logs
-`main_thread_stall` / `main_thread_stall_recovered duration_us=…` for any pause over 500 ms . and
-every prefix-chord key logs its `key_decision` in the daemon log. Query afterwards with
-`rg 'user_marker|main_thread_stall' ~/Library/Logs/zz/zz.*.log*` and read the surrounding lines.
-On macOS both hooks also answer *what the app was doing*: a marker or a watchdog-detected stall
-triggers `/usr/bin/sample` against the live process (2 s of 10 ms stacks, every thread . works
-because the dev-installed bundle is not hardened) and writes `zz.stall-<unix-seconds>.sample.txt`
-beside the ring logs, newest 8 kept, at most one per minute. The log line names the file; read
-the main-thread call graph at the top of it.
-
-CEF frames in an `.ips` report symbolicate to junk (nearest-export names like
-`v8_internal_simulator_ProbeMemory`), but CEF publishes real symbols for every build. Take the
-exact version string from `third_party/cef/ARTIFACTS.md`, download
-`cef_binary_<version>_<platform>_release_symbols.tar.bz2` from `cef-builds.spotifycdn.com`
-(URL-encode the `+`s; ~2 GB), extract the dSYM's `DWARF` file (GNU tar needs `--wildcards`), pull
-each frame's `imageOffset` out of the `.ips` JSON body, and run
-`atos -o "<dSYM>/Contents/Resources/DWARF/Chromium Embedded Framework" -offset <offset…>` . real
-function names for the whole stack. This is how the 2026-08-03 Immersive-Reading-Mode login crash
-was pinned (see the [update log](/log.md)).
-
-## Glass lab
-
-zz Dev has a Glass lab: an opaque panel with a slider for every number in the glass look,
-applied live to every zz window. On macOS it is a floating panel that takes clicks without becoming
-the key window, so zz keeps drawing its active look while you tune; it hides while another app is
-in front. On Linux it still takes focus when clicked. Open it from Settings > Interface > Material
-(Glass lab, Open), the palette's `glass lab` entry, or at launch with `ZZ_GLASS_LAB=1 just run mac`.
-
-The lab edits the look of the mode zz is in, and the section titles name that mode: Backdrop
-(chrome opacity, the opacity without a shaped backdrop, blur, saturation, contrast, brightness, the
-brightness cap, where 1 is none, and the wallpaper hue amount), Planes (the content plate), Floating
-material (the float shadow's strength, blur, offset and spread first, then every field the look
-overrides on `liquid`), Pane rim (likewise), Pane shadow (the shadow gapped panes cast, outside
-their shape and within the pane margin) and Selection material (the selected sidebar row and the
-active tab pill: their shadow first, then the fields they take over the floating material). Shared holds what the looks
-don't: the panel wash step, the inactive pane veil per mode, border and divider weight, the text
-floor on glass, the inactive rim dim, and the backdrop's sample scale and fallback blur radius.
-Switch the system's mode to tune the other look.
-
-Copy puts the shown look on the clipboard as `name = value` lines (every backdrop and plane value,
-and the material and rim lines that differ from the mode's shared edges), ready to paste over that
-mode's entry in `LOOK` in `libs/penna/src/foundation/glass.rs`. Reset returns every value in both
-modes to the shipped looks; a row's own reset returns that value.
-
-The lab saves what differs from the shipped looks on every change to `glass-lab.toml` in the dev
-data directory (`~/Library/Application Support/zz-dev/` on macOS, `$XDG_DATA_HOME/zz-dev/` or
-`~/.local/share/zz-dev/` on Linux) and loads it at start, so a tweak survives relaunching: look
-lines as `<mode>.<name> = value` (`dark.cap = 0.6`) and shared lines under their own names
-(`plane.raise_step = 0.05`). The file is removed when nothing differs, and a line it doesn't know is
-logged and skipped. It never touches the config file. The lab, its settings row, its palette entry
-and the file exist only in dev builds (`ZZ_DEV_BUILD=1`); a release build always draws the shipped
-looks. The knobs are `penna::foundation::tuning::GlassTuning` (the shared values and the two looks)
-and `window::background::BackdropTuning`, and `crates/zz/src/window/glass_lab.rs` holds the window.
-
-To judge a look before opening the app, composite it the way the window does: the backdrop through
-saturation, the curve and the cap, then the chrome over it, all in sRGB-encoded values. penna's
-`glass` tests compute the same numbers for black and white backdrops.
-
-## Linux allocator memory
-
-The Linux desktop and CLI enable mimalloc's `no_thp` feature. On the pinned
-allocator, this prevents mimalloc from requesting transparent huge pages with
-`MADV_HUGEPAGE`; it does not change the system setting or disable huge pages for
-child programs. Small allocations across many terminal threads otherwise
-inflate resident memory on systems configured to honor that request. Compare
-both RSS and terminal throughput when changing this policy. Separately, `zz_cli`
-sets `PR_SET_THP_DISABLE` for itself at start, and pane programs, `run-shell`
-and status jobs inherit it, so a program in a zz pane on Linux starts with
-transparent huge pages off (tmux leaves them alone).
-
-On glibc, the desktop calls `malloc_trim(0)` every 10 seconds on the main
-thread (`start_heap_trim` in `crates/zz/src/lib.rs`). Mesa, Wayland, and other
-C libraries allocate through glibc, which otherwise keeps pages freed after
-startup inside its heap; the trim returns about 2 MiB on an idle window. A
-periodic `mi_collect(false)` for mimalloc was measured and dropped: it only
-collects the calling thread's pages, so it did not reach memory retained by
-other threads. The daemon sets mimalloc's `purge_delay` option to 0 at startup unless
-`MIMALLOC_PURGE_DELAY` is already set (`purge_freed_memory_promptly` in
-`crates/zz-cli/src/lib.rs`). mimalloc v3 purges freed pages only at a later free or
-collect after the delay, which an idle daemon never reaches: after closing 63 of 64
-panes it held 199.9 MiB footprint for good, and 76.7 MiB with the delay at 0. A
-96-pane create, output, and close churn cost about 2.6% more daemon CPU.
-Idle-heap regressions are easiest to find with a dhat build;
-the 2026-09-22 profile traced 20 MiB of retained arena to the tray pixmap,
-which zbus expands to one boxed value per byte, so the Linux tray now sends
-a 48 px icon.
-
-## Profiling the macOS bundle
-
-The profiling workflow deliberately uses the real CEF bundle rather than a raw Cargo binary. Build
-the release-optimized `profiling` Cargo profile once:
-
-```sh
-just profile build mac
-```
-
-This writes `dist/zz-profile/zz.app` plus matching `zz.dSYM` and `zz_helper.dSYM` bundles under
-`dist/zz-profile/symbols/`. The build inherits release optimization, fat LTO, and one codegen unit,
-but retains full DWARF so Instruments can resolve source lines and inlined Rust frames. `xtask`
-compares each Mach-O UUID with its copied dSYM before accepting the bundle. `libghostty-vt` picks its
-Zig mode from Cargo's `PROFILE` (`debug` for dev and test builds, `release` for this profile), so it
-builds the same `ReleaseFast` engine as the release bundle even though Cargo exposes `DEBUG=true` to
-build scripts when a profile emits DWARF.
-
-Capture one question at a time:
-
-```sh
-just profile cpu mac                 # Time Profiler attached to the GUI
-just profile cpu mac daemon 30s      # Time Profiler attached to the daemon
-just profile cpu mac all 20s         # broader, noisier all-process CPU trace
-just profile summary cpu <run-dir>   # retain only the isolated owned process tree
-just profile system mac 20s          # scheduling, waits, wakeups, and IPC
-just profile metal mac 20s           # ala and CEF Metal work
-just profile summary metal <run-dir> # zz-only frame and GPU summary
-just profile startup mac 8s          # launch to the first attributed displayed frame
-just profile terminal mac 20s
-just profile summary terminal <run-dir>
-```
-
-`scripts/profile-macos.sh` creates a short private socket path and launches the profiling bundle
-directly with `--socket PATH app`, so the GUI cannot reuse the normal persistent daemon. It
-waits for the daemon's private identity file, records the owned process tree at launch, capture
-start, and completion plus relevant `ZZ_BROWSER_*` controls, runs `xctrace`, then terminates only
-the GUI and daemon it launched.
-If shutdown needs a recorder or GUI `SIGKILL`, or the daemon needs `SIGTERM`
-after `kill-server`, the launcher records it in `cleanup-escalations.txt` and
-returns failure. Exclude such captures from accepted performance comparisons.
-
-The private socket isolates daemon sessions, not all GUI preferences. Ordinary
-macOS profiling bundles still read and save window state under
-`~/Library/Application Support/zz`, and share browser roots and agent preferences
-with installed zz. To isolate config, provide an existing `zz/config` under
-`XDG_CONFIG_HOME`; that does not redirect these Application Support stores.
-Record native window bounds, scale, visibility, and pane geometry for matched
-comparisons. The development identity described above is a compile-time choice.
-
-The launcher refuses to start beside another copy of the profiling bundle because macOS UI automation cannot
-reliably distinguish two windows with the same bundle identity. Metal capture attaches to the
-isolated GUI PID; an all-process Metal trace can omit the application's command-buffer submission
-rows even while recording unrelated system GPU work. Captures and metadata land in the git-ignored
-`target/profiles/<run>/` directory. `scripts/summarize-macos-cpu.py` exports Time Profiler samples
-and filters an all-process trace to those owned PIDs, grouping the GUI, daemon, Chromium renderer,
-GPU, network, utility, and other children. It reports both leaf work and inclusive zz
-call stacks so subsystem entry points are visible without manually exporting the trace.
-`scripts/summarize-macos-metal.py` exports the relevant
-Instruments tables into a temporary directory, filters them to the recorded GUI PID, and reports
-command buffers, presents, GPU execution, channel time, and CPU-to-GPU latency using only Python's
-standard library.
-
-Measure memory without Instruments or verbose logging:
-
-```sh
-just profile memory mac 60s
-ZZ_PROFILE_APP=/Applications/zz.app just profile memory mac 60s
-python3 scripts/sample-macos-memory.py --pid GUI_PID --daemon-pid DAEMON_PID \
-    --duration 60s --output target/profiles/live-memory
-```
-
-The memory recipe uses the same isolated daemon lifecycle as the other captures.
-It accepts an installed bundle without dSYMs. The standalone sampler attaches to
-existing processes and leaves them running; omit `--daemon-pid` to measure only
-the GUI and its descendants. Both write `memory.csv` and `memory-summary.txt`,
-with 250 ms samples and separate GUI, daemon, and descendant totals.
-
-`proc_pid_rusage` supplies physical footprint and resident size (RSS) separately.
-Use footprint to investigate changes in the app's memory charge, including
-graphics resources that RSS can miss. Compare high and low samples with
-`vmmap -summary PID` to identify changing categories. `vmmap` can pause the
-target, so keep those snapshots separate from clean timing measurements.
-See [Apple's memory profiling explanation](https://developer.apple.com/videos/play/wwdc2022/10106/).
-
-Memory and attached Instruments captures start after daemon readiness and warmup,
-including when warmup is zero. `profile startup` instead launches the bundle under
-Metal System Trace, with no warmup or dSYM requirement. For an existing release bundle:
-
-```sh
-ZZ_PROFILE_APP=/Applications/zz.app just profile startup mac 8s
-python3 scripts/summarize-macos-startup.py target/profiles/<startup-run>
-```
-
-`startup-summary.json` identifies the earliest displayed surface whose structured
-process record matches the launched GUI PID. It resolves Instruments XML references
-and reports unavailable when that attribution is absent. Launch-relative time includes
-Instruments overhead; alignment with the logger clock is approximate. UI render logs
-and the first render containing a terminal remain separate CPU milestones. Neither
-establishes when terminal content reached the display.
-
-The 2026-09-05 startup comparison used matching release builds and a private minimal config.
-Three uninstrumented pairs reduced the median first workspace render from 169 to 123 ms with
-a fresh daemon. Two alternating Metal launch pairs measured approximately 225 versus 231 ms
-from logger initialization to the first displayed frame, so that sample showed no display-latency
-improvement. Holding the daemon handshake for 1.5 seconds prevented any baseline workspace render;
-the background-connection build rendered at 123 ms while still waiting for handshake bytes.
-
-The 2026-09-05 macOS retention sweep grew an isolated daemon from one terminal to nine,
-then closed eight. Ghostty's page mappings returned from 18 to 2 and libc live allocations
-returned from 18.5 MiB to the original 8.52 MiB, while libc retained 21.7 MiB of dirty
-pages versus 9.34 MiB initially. Repeated create/close cycles plateaued. This supports
-working terminal teardown with allocator retention; it does not establish a terminal
-object leak or justify forced allocator collection. `TerminalSession::drop` and the
-PTY actor shutdown release terminal state; Ghostty's `PageList.deinit` frees its page pools.
-Check VM tags against the allocator source: this build's mimalloc v3 uses tag 100,
-which `vmmap` labels `IOAccelerator` without `(graphics)`. That label alone is not
-evidence of daemon GPU allocations.
-
-`profile terminal` is deliberately separate from clean CPU/Metal captures. It enables
-only the existing `zz::diagnostics::terminal_render` trace target and records cache hits, misses,
-uncached rows, prepared text rows, and prepaint time in `app.stderr.log`; it does not run
-Instruments. `profile summary terminal` filters prompt-only startup frames out of its cache ratio
-when content-active frames exist. Logging changes frame timing, so use this mode to explain why
-renderer work occurs, never as a before/after CPU benchmark.
-
-The default five-second warmup starts after the isolated daemon is ready. Use
-`ZZ_PROFILE_WARMUP_SECONDS=10 just profile metal mac 30s` when a scenario needs more setup time.
-For a steady-state CEF comparison, allow 45–60 seconds after opening the browser so helper startup
-cannot dominate the sample.
-Keep baseline runs quiet: do not add `--verbose` to them. Diagnostics and
-Instruments captures are separate modes because trace logging changes hot-path work and can include
-environment values, raw terminal data, browser URLs/input, process arguments, paths, and rendered
-content. Treat the complete run directory as sensitive.
+## Launch
+
+Use just 1.52 or newer. `just --list --list-submodules` lists the full command tree. For
+a first desktop build install the [native prerequisites](/playbooks/prerequisites.md).
+
+| Target | Command | Behavior |
+| --- | --- | --- |
+| macOS dev | `just run mac` | Builds and launches `dist/zz-dev/zz Dev.app`. |
+| Linux dev | `just run linux` | Builds the GUI and CLI, launches `zz-dev app` from the Cargo debug output. |
+| Dev rebuild loop | `just watch mac` or `just watch linux` | Replaces the client after a successful build. A compatible daemon retains the sessions. |
+| Linux hot reload | `just hot linux` | Subsecond via Dioxus CLI 0.7.10. Needs `ld.lld` and a staged Linux CEF runtime (`just run linux` or `CEF_PATH`). |
+| Installed macOS/Linux GUI | `zz app` | Connects to the existing daemon or starts one. A new first session uses the shell's directory, a Dock/Finder launch uses home. |
+| Linux raw Cargo GUI | `cargo run -p zz -- app` | Runs from Cargo's build tree. For dev isolation use the dev recipe. |
+| Windows desktop | From native PowerShell, `./scripts/build-windows.ps1`, then `.\dist\zz\zz.exe` | The script selects the x64 Visual Studio tools and calls `just build windows` with Git Bash available. |
+| Raw terminal | `zz`, `zz attach -t NAME`, `zz new -s NAME` | Bare `zz` runs `new-session -A` and can create session 0. Explicit attach requires an existing session. |
+
+`just run` and `just watch` accept `--verbose` and `--features LIST`.
+For release bundle paths, packaging and local signing, see [building a CEF bundle](/playbooks/build-cef-bundle.md).
+On macOS `just install mac` quits the installed GUI, replaces `/Applications/zz.app`,
+reopens it and attempts to put its `cli` launcher on PATH. A running daemon keeps serving
+the previous build until it restarts. `zz update --check` also reports the packaged and
+owned headless copies. Set `ZZ_OWNED_COPY=0` to disable handover when checking a packaged binary.
+
+## Daemon and dev isolation
+
+`scripts/run.sh` sets `ZZ_DEV_BUILD=1` at compile time and clears inherited socket, pane,
+tmux and startup context. The dev identity uses `zz-dev` for config, socket, browser
+profile, journal and preferences. Copy individual settings into the dev config if needed.
+The normal Linux dev socket is `$XDG_RUNTIME_DIR/zz-dev/default.sock`; the temporary-directory
+fallback is `zz-dev-$USER/default.sock`. On Unix set `ZZ_SOCKET` or use `-S PATH` for an
+explicit endpoint. Keep test sockets directly under `/tmp` to fit the Unix socket path limit.
+`TMUX` supplies pane metadata. Jobs also get the selected zz socket and a private `tmux`
+launcher on PATH.
+
+Dev launchers link `~/.local/bin/zz-dev` to the headless dev CLI. They refuse to replace
+a regular file there. Run the dev recipe on a remote dev host before connecting.
+From inside an installed pane, `env -u ZZ_SOCKET ~/.local/bin/zz-dev list-sessions`
+queries the local dev daemon. To test a daemon change, restart the dev daemon only after
+its sessions can be stopped. Restarting the GUI alone leaves a compatible daemon intact.
+
+## Thin clients
+
+| Client | Commands | Endpoint |
+| --- | --- | --- |
+| Web | `just web setup`, then `just web run` | Dev gateway on loopback port 8081. [Gateway, host setup and tests](/playbooks/browser-client.md) |
+| iOS | `just ios rig`, then `just ios run [iPhone\|iPad]` | `scripts/ios.sh` checks `ZZ_ALA_ENDPOINT`, `ZZ_DEV_SOCKET`, then `ZZ_SOCKET` before probing the rig and dev sockets. `ZZ_ALA_DEMO=terminal` runs the terminal example. |
+| Android | `just android setup`, `just android rig`, then `just android run` | Uses `ZZ_ALA_ENDPOINT` when set, otherwise maps the rig through `adb reverse` to `@zz-rig`. |
+
+The iOS group also has `build`, `device`, `bench`, `testflight` and `rig stop`.
+Android's `emulator`, `build`, `device`, `logs` and `rig stop` are in
+`scripts/just/android.just`. Both mobile rigs use `scripts/ios-rig.sh`.
+Device pairing, signing and endpoint options are in `clients/ios/README.md` and
+`clients/android/README.md`.
 
 ## First-build CEF download
 
-The first native build or bundle downloads and SHA-1-verifies a matching minimal CEF distribution (see
-[CEF artifact pin](/references/cef-artifacts.md)) and compiles the CEF C++ wrapper before `zz` can
-run. The extracted browser runtime uses several gigabytes. Set a stable shared cache path so
-separate build directories (e.g. multiple worktrees) do not each download an independent copy:
+Set a shared cache before the first build to avoid downloading the same distribution in
+each worktree:
 
 ```sh
 export CEF_PATH="$HOME/.cache/cef"
 ```
 
-CI does the equivalent with a keyed cache instead of a fixed path:
-
-```yaml
-env:
-  CEF_PATH: ${{ github.workspace }}/.cef-cache
-steps:
-  - name: Cache matching CEF distribution
-    uses: actions/cache@v5
-    with:
-      path: ${{ github.workspace }}/.cef-cache
-      key: cef-156.0.15-${{ runner.os }}-${{ runner.arch }}
-```
-
-Bump the cache key's version segment (`cef-156.0.15-...`) whenever the CEF pin changes; see
-[updating CEF](/playbooks/updating-cef.md).
+The downloader verifies the minimal archive against CEF's published SHA-1, extracts it,
+and the build compiles the wrapper. CI keys the cache by CEF version, OS and architecture.
+[CEF pin](/references/cef-artifacts.md) · [Updating CEF](/playbooks/updating-cef.md)
 
 ## Exercising the browser pane: the loopback fixture
 
-`zz_browser_fixture` (a second binary in the `zz` package, `crates/zz/src/bin/zz_browser_fixture.rs`)
-is a deterministic, network-free local HTTP server used as the standard example/smoke-test target
-for the [CEF browser pane](/browser/cef-runtime.md). It never touches the external network and
-serves a fixed page containing a color-channel proof, text input, title mutation, same-session
-navigation, a long scroll area, and persistent cookie/local-storage counters. Run it, then point a
-browser split at its loopback address:
+In one terminal, start the loopback server. In a pane of the running desktop instance,
+open a browser split:
 
 ```sh
-# terminal 1
 cargo run -p zz --bin zz_browser_fixture
-
-# terminal 2 (Linux launcher; use the bundled executable on macOS/Windows)
-cargo run -p zz -- split-window --kind browser -h http://127.0.0.1:9324
-cargo run -p zz
 ```
-
-CEF off-screen rendering uses the fastest attached display refresh rate as
-its paint ceiling: `NSScreen` on macOS and ala display rates elsewhere, with a
-60 FPS fallback when no rate is available. Override the ceiling with
-`ZZ_BROWSER_FPS=1..240`, for example:
 
 ```sh
-ZZ_BROWSER_FPS=120 just run mac
+zz split-window -h --kind browser http://127.0.0.1:9324/
 ```
 
-The ceiling applies to the focused pane. A visible unfocused browser normally
-uses at most 30 FPS, but wheel input raises it to the ceiling until one second
-after the last wheel event. Hidden panes stop painting. Every ceiling is a
-maximum; a static page will not necessarily produce continuous frames.
+Check the red/green/blue stripes, typed text, changed title, navigation, scroll target
+and persistent cookie/count after a reload. The page also links a popup fixture.
+`crates/zz/src/bin/zz_browser_fixture.rs` documents the optional port, popup and IME
+regressions, and Linux shared-texture probe.
 
-Browser panes keep Chromium's GPU process and shared-texture OSR enabled by
-default. Linux/FreeBSD use the wgpu texture tier; macOS uses the
-Metal-IOSurface tier. Set `ZZ_BROWSER_SHARED_TEXTURE=0` to keep WebGL, canvas,
-and video acceleration while forcing readback everywhere, or set
-`ZZ_BROWSER_GPU=0` to force software rendering and compositing as well. On a
-GPU import or surface-wrap failure, zz recreates only the affected pane on the
-universal readback tier. Linux also guards against producers that fail before
-CEF emits a paint callback: if a visible shared-texture session produces no
-first frame within two seconds, zz recreates that pane in readback mode. Hiding
-the pane pauses the guard, and any delivered frame cancels it.
+Use one override at a time when diagnosing rendering. `crates/zz/src/browser/environment.rs`
+parses them and `controller.rs` sets the timing and fallback policy.
 
-macOS drives Chromium compositor pacing with external BeginFrames by default:
-hot visible sessions start at the frame-rate ceiling on a deadline-anchored
-clock, cold visible sessions retain a roughly 30 Hz keepalive, and hidden
-sessions receive no BeginFrames. `ZZ_BROWSER_BF_ADAPTIVE=1` opts into an
-experimental adaptive divisor that selects a slower hot tier after sustained
-delivery shortfall and probes faster again after stable delivery; it stays
-off by default because demand-driven delivery gaps (scroll pauses) still read
-as shortfalls. Set `ZZ_BROWSER_EXTERNAL_BEGIN_FRAME=0` to restore CEF's
-internal BeginFrame clock (which caps shared-texture OSR at 60 FPS).
+| Setting | Effect |
+| --- | --- |
+| `ZZ_BROWSER_FPS=1..240` | Override the fastest attached display's ceiling (60 FPS fallback). An unfocused visible pane normally caps at 30 FPS, with a one-second scroll boost. |
+| `ZZ_BROWSER_SHARED_TEXTURE=0` | Force readback while keeping GPU acceleration. A visible Linux shared-texture pane with no first frame for two seconds falls back independently. |
+| `ZZ_BROWSER_GPU=0` | Force software rendering and readback. |
+| `ZZ_BROWSER_EXTERNAL_BEGIN_FRAME` | On macOS `0` restores the internal timer. Elsewhere `1` opts into external pacing. |
+| `ZZ_BROWSER_BF_ADAPTIVE=1` | Enable experimental delivery-based throttling on the external frame clock. |
 
-Linux/FreeBSD keep CEF's internal BeginFrame clock by default. To exercise the
-pump-driven scheduler there, opt in with the exact value `1`:
+## Logs and live diagnostics
 
-```sh
-ZZ_BROWSER_EXTERNAL_BEGIN_FRAME=1 just run linux
-```
+`just run` writes to the repo's ignored `logs/` directory. `ZZ_LOG_DIR` overrides direct
+launches. Installed defaults are `~/Library/Logs/zz` on macOS, `$XDG_STATE_HOME/zz/logs`
+(or `~/.local/state/zz/logs`) on Linux and `%LOCALAPPDATA%\zz\logs` on Windows.
+The GUI and daemon write `zz.app.log` and `zz.daemon.log` with an 8 MiB live file and one
+rotated generation. CEF warnings go to `cef.log`. Add `--verbose` to record terminal I/O,
+browser URLs/input and process environment for a reproduction.
 
-The Linux/FreeBSD display ceiling uses ala's reported refresh rates, with a
-60 FPS fallback when none are available. `ZZ_BROWSER_FPS` overrides the ceiling
-independently of the external BeginFrame opt-in.
+Mark an incident with `zz debug-marker "freeze during scroll"` or Command-Shift-M
+(Control-Shift-M on Linux/Windows). Search for `user_marker`, `main_thread_stall` and
+`main_thread_stall_recovered`. The stall watchdog threshold is 500 ms. On macOS the
+marker or watchdog can capture two seconds of all-thread stacks in `zz.stall-*.sample.txt`,
+at most once per minute, keeping eight. For crashes, pair the ring logs with the
+`.ips` report in `~/Library/Logs/DiagnosticReports`. To resolve a CEF frame, take its
+`imageOffset` and use `atos -o PATH_TO_CEF_DWARF -offset OFFSET` with the matching
+`cef_binary_<version>_<platform>_release_symbols.tar.bz2`. Take the exact version
+from `third_party/cef/ARTIFACTS.md`.
 
-The browser-specific environment controls:
+## Glass lab
 
-| Variable | Default | Use |
+Launch `ZZ_GLASS_LAB=1 just run mac` or open **Glass lab** from the dev app's palette.
+Tune the active mode, switch mode for the other look, then use **Copy** to export the shown
+values. Per-row reset restores that value, **Reset** restores both looks. Changes persist
+in `glass-lab.toml` in the dev data directory. The panel takes clicks without taking key
+focus on macOS. The implementation and file format are in `crates/zz/src/window/glass_lab.rs`.
+
+## Profiling the macOS bundle
+
+Build once with `just profile build mac`. The profiling app has release optimization
+and full DWARF. Each capture starts it on a short private socket, records the owned process
+tree and saves the result under `target/profiles/<run>/`. Keep window size, display scale,
+visibility, pane geometry and workload matched. The private socket isolates daemon sessions.
+The ordinary profiling bundle still shares GUI preferences and browser roots with installed zz.
+
+| Question | Capture | Readout |
 | --- | --- | --- |
-| `ZZ_BROWSER_FPS=1..240` | Fastest reported display; 60 FPS fallback | Override the OSR ceiling. |
-| `ZZ_BROWSER_GPU=0` | GPU on | Force software rendering/compositing and readback. |
-| `ZZ_BROWSER_SHARED_TEXTURE=0` | Shared texture on | Keep the GPU process but force readback OSR. Linux also falls back per pane if a visible session produces no first frame within two seconds. |
-| `ZZ_BROWSER_EXTERNAL_BEGIN_FRAME` | macOS on; Linux/FreeBSD off | macOS: exact `0` restores CEF's internal timer. Linux/FreeBSD: exact `1` enables pump-driven BeginFrames. |
-| `ZZ_BROWSER_BF_ADAPTIVE=1` | Adaptive throttle off | Opt into experimental delivery-based hot-tier divisor changes on the anchored BeginFrame clock. |
+| Which code uses CPU? | `just profile cpu mac gui 20s` (also `daemon`, `all`) | `just profile summary cpu RUN_DIR` filters to owned PIDs. |
+| Where do threads wait? | `just profile system mac 20s` | System Trace in the run directory. |
+| Which GPU work reaches the display? | `just profile metal mac 20s` | `just profile summary metal RUN_DIR` attributes command buffers and presents to the GUI. |
+| When is the first frame displayed? | `just profile startup mac 8s` | `startup-summary.json` reports the first displayed surface attributable to the launched GUI PID, when available. |
+| Why are rows repainted? | `just profile terminal mac 20s` | `just profile summary terminal RUN_DIR` reads row-cache and prepaint diagnostics. |
+| How much memory is charged? | `just profile memory mac 60s` | `memory.csv` and `memory-summary.txt` give footprint and RSS every 250 ms. |
+
+`ZZ_PROFILE_APP=/Applications/zz.app` works for startup and memory without dSYMs.
+For existing processes, `python3 scripts/sample-macos-memory.py --pid GUI_PID --daemon-pid DAEMON_PID --duration 60s --output RUN_DIR`
+leaves them running. Startup launches under Instruments with no warmup. Attached captures
+and memory sampling wait for daemon readiness and a five-second default warmup
+(`ZZ_PROFILE_WARMUP_SECONDS`). For steady-state browser work allow time for helper startup.
+Keep verbose and terminal diagnostic logging out of performance comparisons. A nonzero
+exit with `cleanup-escalations.txt` identifies a capture that required forced shutdown.
+
+**Recorded macOS baselines, 2026-09-05.** Three uninstrumented pairs reduced median first
+workspace render from 169 to 123 ms. Two alternating Metal launch pairs measured about
+225 and 231 ms to first displayed frame. Holding the handshake for 1.5 s still allowed the
+new workspace to render at 123 ms. In a 1→9→1 terminal sweep, Ghostty page mappings
+returned from 18 to 2 and live libc allocations returned to 8.52 MiB. Dirty libc pages
+settled at 21.7 MiB versus 9.34 MiB initially and repeat cycles plateaued. Check allocator
+tags before attributing memory to GPU work: that build's mimalloc tag 100 appeared as
+`IOAccelerator` in vmmap.
+
+## Linux allocator memory
+
+The desktop and CLI enable mimalloc's `no_thp` feature. The Linux CLI also calls
+`PR_SET_THP_DISABLE`, which child programs inherit. The GNU/Linux GUI schedules
+`malloc_trim(0)` on its background executor every ten seconds. The daemon defaults its
+mimalloc purge delay to zero unless `MIMALLOC_PURGE_DELAY` is set. See `start_heap_trim`
+in `crates/zz/src/lib.rs` and `purge_freed_memory_promptly` in `crates/zz-cli/src/lib.rs`.
+
+Reproduce the retention check by closing 63 of 64 terminals, then measure idle footprint
+and churn CPU separately. The recorded comparison was 199.9 versus 76.7 MiB with a zero
+purge delay and about 2.6% more daemon CPU on 96-pane churn. A separate 2026-09-22 dhat
+profile traced 20 MiB to tray pixmap serialization.
 
 ## Checks
 
-The root workspace excludes `clients/web`. CI checks that standalone browser-client
-workspace in a separate Linux step, and local release checks must include its
-native tests and shipped WASM configuration. `just web setup` installs the nightly
-WASM target used by the browser check below.
-
-```sh
-cargo fmt --all -- --check
-git diff --check
-cargo ci-test --quiet
-cargo clippy --workspace --all-targets --all-features -- -D warnings
-cargo build --workspace --all-targets --all-features
-cargo check --workspace --all-targets --all-features
-cargo test --manifest-path clients/web/Cargo.toml --lib --locked
-rustup run nightly cargo check --manifest-path clients/web/Cargo.toml --target wasm32-unknown-unknown --all-targets --locked
-```
-
-Browser-domain tests can run without downloading or linking Chromium at all (package `ala-cef`,
-crate `libs/ala-cef`):
-
-```sh
-cargo test -p ala-cef --no-default-features
-```
-
-# Key files
-
-| File | Role |
-| --- | --- |
-| `crates/zz/src/main.rs` | Entry point for the `zz` binary (ala client + daemon bootstrap) |
-| `crates/zz/src/bin/zz_browser_fixture.rs` | Loopback-only HTTP fixture used as the standard browser-pane example |
-| `crates/zz/src/bin/zz_helper.rs` | CEF helper/bootstrap binary bundled alongside `zz` |
-| `crates/zz/src/lib.rs` | Argument parsing, `run_command_mode` (the CLI path), daemon spawn, and the log-directory resolution documented above |
-| `crates/zz-protocol/src/catalog.rs` | The canonical command list the CLI and command palette share (`list-sessions`, `split-window`, `send-keys`, …); see the [tmux command set](/tmux/commands.md) |
-
-# Related
-
-- [Prerequisites](/playbooks/prerequisites.md) . toolchain needed before the first build
-- [Build/verify a CEF bundle](/playbooks/build-cef-bundle.md) . packaged equivalent of the first-build download
-- [CEF artifact pin](/references/cef-artifacts.md) . exact version the first build downloads
-- [`app` crate](/crates/zz.md) . the ala client this playbook runs
-- [`server` crate](/crates/zz-daemon.md) . the daemon the platform launcher connects to or spawns
-- [Browser CEF runtime](/browser/cef-runtime.md) . what the fixture exercises
+`scripts/ci.sh` lists the stages for each platform. `cargo ci-test` runs all features in
+the root workspace. The browser client's separate checks are in
+[running the browser client](/playbooks/browser-client.md#checks). For ala-cef's
+renderer-independent domain tests, run
+`cargo test --manifest-path libs/ala-cef/Cargo.toml --no-default-features`.

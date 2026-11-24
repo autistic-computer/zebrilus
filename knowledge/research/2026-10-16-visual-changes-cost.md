@@ -24,7 +24,7 @@ same runs.
 
 MacBook Pro M4 Max, 48 GB, macOS 27.0.1. Every window opened on the Dell P2725QE (100 Hz,
 scale 2), which no other window covered: a covered zz window stops drawing, so runs on the main
-display read as idle whenever another app sat on top. 1280x900 window, `bench/gpui/frames.py`,
+display read as idle whenever another app sat on top. 1280x900 window, `bench/ala/frames.py`,
 three alternating repeats, 15 to 20 s windows after a 5 s warmup, 60 fps in every terminal
 scenario. Medians below.
 
@@ -135,7 +135,7 @@ Metal runs through `SimMetalHost`. A render-copy port to wgpu passed every wgpu 
 Vulkan (RX 7900 XTX) but stays out of the tree, since it saves nothing on the phone and wgpu-hal
 30 does not offer `TEXTURE_BINDING` on Metal surfaces anyway.
 
-# Follow-ups
+# Questions left by the October measurements
 
 - Fade glyphs in the sprite shaders (one sprite per glyph, the span packed into the sprite's
   unused `pad`) instead of one sprite per column. Removes the 24 to 30% extra sprites and the GPU

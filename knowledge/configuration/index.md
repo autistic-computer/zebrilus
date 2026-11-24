@@ -3,7 +3,7 @@
 <!-- okf:listing:start (managed by okf.py index — edit prose outside this fence) -->
 # Concepts
 
-* [Application configuration search paths](app-config.md) - Platform-aware discovery, bounded parsing, agent driver options, settings editing, and one-shot donor import for client-local knobs plus ordered daemon-owned overrides.
-* [zz icon set](icon-set.md) - zz's icons, adapted from Solar and drawn from skeletons so their corners follow the theme radius and superellipse smoothing, how the app and the site get them, and how to draw, preview and review a new one.
-* [UI design conventions](ui-conventions.md) - The component, palette, and styling rules that keep zz application chrome consistent and theme-aware.
+* [Application configuration](app-config.md) - Where zz reads and writes desktop settings, how overrides reach the local daemon, and which values the config accepts.
+* [zz icon set](icon-set.md) - How penna draws themed icons and where zz keeps application and program marks.
+* [UI design conventions](ui-conventions.md) - Which penna components and theme values zz uses for chrome, pane content, typography and input.
 <!-- okf:listing:end -->

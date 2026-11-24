@@ -4,44 +4,22 @@ title: libghostty-vt embedding
 description: How zz-terminal embeds libghostty-vt over a pinned Ghostty snapshot, including line-counted scrollback, terminal color-query replies, and single-worker-thread ownership.
 resource: crates/zz-terminal/src/session.rs
 tags: [libghostty, ghostty, vt, zig, worker-thread, mode-revision, kitty-graphics]
-timestamp: 2026-10-04T23:00:00-03:00
+timestamp: 2026-11-24T00:00:00Z
 ---
 
 # Overview
 
-`libghostty-vt` is the VT engine inside [`zz-terminal`](/crates/zz-terminal.md). The
-workspace vendors the safe wrapper from `demfabris/libghostty-rs` commit
-`0db98a206681fd60c2b1a1719daf14049eda8c30` (`zz-2026-10-04`) in
-`third_party/rust/libghostty-vt`, with `default-features = false`. Its parents `f5f826018e290e776c8bc4e5969c562efe530846`
-(`zz-2026-10-02`, row copies) and `8e40135fb20e9ed91c37c374fe1d14570c386d06`
-(`zz-2026-09-30`, copy snapshots) stay published, and the base
-`359ef751c189540eafb9110b2de89ad95ce48fc3` remains on `zz-2026-09-25`. That base
-contains the stacked render-hold and resize-scrollback APIs needed by the current C ABI.
-Both crates are path dependencies: the wrapper next to the sys snapshot documented in
-`third_party/rust/libghostty-vt-sys/UPSTREAM.md`.
-Ghostty itself is vendored in `third_party/ghostty`: upstream
-`6301810a48aaa3426887a4316668f18833a40138` trimmed to what the libghostty-vt build reads, plus
-eight zz commits (formerly `e482b03688ccc9eebd6304176aa85bd5d81f0bfa` on `demfabris/ghostty`
-`zz-2026-10-04`): the C ABI signal-stack option, spare-page reuse, the history-erase trim fix
-(`c3941417`), owned copy snapshots (`7823f65d`), copied active pages at their used size
-(`67351380`), one-call row cell copies (`189df4a1`), the render state clip (`0ab7941c`) and
-trimmed row copies. The branch fast-forwards retain the earlier pins in their history;
-`zz-2026-09-29` keeps the spare-page pin `713374af`. Builds read the vendored tree without
-source rewriting; `just vendor ghostty <rev>` merges a newer upstream over the zz commits.
-Spare-page reuse keeps a pruned pool page resident for the next grow. The trim fix preserves
-live cell blocks after history erase. The signal-stack option removes unused Zig TLS storage
-from ReleaseSafe dev and test builds. Copy snapshots share immutable history backing,
-keep compressed pages encoded until first read and copy active pages with cursor pointers.
-Rust retains ownership of thread startup and signal handling. See the [macOS measurements](/research/2026-09-23-macos-performance.md). The repository pins **Zig 0.16.0** in `.zigversion`,
-`mise.toml`, and CI so every native rebuild uses the required compiler. `zz-terminal` enables the
-wrapper's `kitty-graphics` feature and leaves the other defaults off. `session.rs` uses
-`Terminal::kitty_graphics`, `Terminal::set_kitty_image_storage_limit`, `PlacementIterator`, and the
-safe `DecodePng` adapter; it contains no raw libghostty layout cast or unsafe FFI. Each VT actor
-installs the wrapper's thread-local PNG decoder before it creates terminal state.
-zz-terminal keeps each live terminal on its actor thread; owned frozen snapshots can move
-to the search worker under a mutex; no libghostty binding type is
-part of the crate's public API, and the [app crate](/crates/zz.md) contains no raw libghostty handles
-or unsafe FFI.
+`zz-terminal` enables its native VT engine through the `session` feature. The workspace
+uses the safe wrapper at `third_party/rust/libghostty-vt` with `kitty-graphics` and
+defaults disabled. Its adjacent sys crate builds the trimmed C/Zig source in
+`third_party/ghostty`. The two crates' `UPSTREAM.md` files record the pins and local changes.
+`just vendor ghostty <rev>` updates the native source. The workspace pins Zig 0.16.0 in `mise.toml`.
+See [prerequisites](/playbooks/prerequisites.md) for setup.
+
+The pane actor installs the thread-local PNG decoder before creating terminal state.
+The wrapper exposes Kitty placements and bounded image storage. Frozen snapshots share
+immutable history, copy active pages and decode compressed pages on demand. Live
+terminal handles stay on the actor. See the [macOS measurements](/research/2026-09-23-macos-performance.md).
 
 # What libghostty provides
 
@@ -50,7 +28,7 @@ The worker uses these libghostty facilities (imports in `session.rs` and `sessio
 | Facility | Types used | Used for |
 | --- | --- | --- |
 | Terminal state | `Terminal<'alloc,'callbacks>`, `Screen`, `Mode` | VT parsing of PTY bytes, grid + scrollback, primary/alternate screens. |
-| Render extraction | `RenderState`, `RowIterator`, `CellIterator`, `CellsCopy`, `Clip`, `Dirty`, `CursorVisualStyle` | Walk dirty rows and copy each row's cells in one call (`copy_into`, fork commit `189df4a1`) into [`PackedCell`](/concepts/terminal-frame.md) frames. `build_snapshot` sets `RenderState::set_clip` (`0ab7941c`) to the top-left region it builds, so an update copies only the rows and columns a frame shows, and copies rows with `copy_trimmed_into` (`e482b036`), which leaves out a row's trailing default cells for the frame's empty fill. A new render state starts with a 1x1 clip, so its first update never copies a whole huge viewport. |
+| Render extraction | `RenderState`, `RowIterator`, `CellIterator`, `CellsCopy`, `Clip`, `Dirty`, `CursorVisualStyle` | `RenderResources::new` starts with a 1×1 clip. `build_snapshot` clips to the requested area and copies rows with `copy_trimmed_into`, leaving trailing default cells to the [frame](/concepts/terminal-frame.md) fill. |
 | Cell semantics | `CellWide`, `CellSemanticContent`, `RowSemanticPrompt`, `TrackedGridRef`, `PointCoordinate` | Wide-glyph spacers, OSC 133 prompt/input/output marks, stable scroll-safe references. |
 | Key encoding | `key::Encoder`, `key::Event`, `key::Key`, `OptionAsAlt` | Encode [`KeyInput`](/terminal/interaction.md) to terminal bytes (Kitty keyboard aware). |
 | Mouse encoding | `mouse::Encoder`, `mouse::Event`, `EncoderSize` | Application mouse reporting when the app requests tracking. |
@@ -67,16 +45,16 @@ Default colors and the full 256-color palette are pushed into every terminal via
 
 # Scrollback limit
 
-`new_terminal` in `session.rs` builds every Ghostty terminal: `Terminal::new(cols, rows)`, then
-`set_scrollback_max_bytes(None)` and `set_scrollback_max_lines(Some(limit))`, with the limit clamped
-to `MAX_HISTORY_LIMIT`. Panes pass tmux's `history-limit`, fixed at spawn as tmux does. Before the
-2026-09-25 bump the pin read that number as a byte budget, so every pane kept about one page of
-history (924 rows at 80 columns) whatever the option said. Ghostty prunes whole pages, so history
-settles somewhat under the limit rather than at it: at 80x24, 10,000 keeps 9,883 rows and 2,000 keeps
-1,609 (`history_limit_counts_retained_lines`). tmux drops a tenth of the limit when it fills, so both
-keep a band below the limit. Small limits keep about one page instead: every limit from 0 to 1,000
-kept 427 rows at 80 columns, where tmux keeps exactly that few. Command-output views pass 100,000 and the startup diagnostics view
-64 MiB, which the clamp turns into one million lines.
+A pane takes its `history-limit` at spawn. `new_terminal` caps it at 1,000,000 lines.
+The byte budget is 128 bytes per cell times the capped line count times the column
+count (at least one), bounded to 64 MiB through 1 GiB and recalculated on resize.
+Command-output views request 100,000 lines. The startup diagnostics view requests
+`64 * 1024 * 1024` lines and hits the one-million-line cap.
+
+Ghostty prunes whole pages. After 30,000 lines at 80×24, `history_limit_counts_retained_lines`
+allows 9,000–10,000 retained rows for a 10,000-line limit and 1,000–2,000 for a
+2,000-line limit. The September 2026 probe measured 9,883 and 1,609 respectively,
+and observed 427 rows at small limits (0–1,000). Those counts depend on page geometry.
 
 # Replies tmux does not give
 
@@ -112,8 +90,8 @@ have independent metadata and mutex-serialized access. Consequences:
   reconstructs one wrapped logical line at a time and never borrows the live terminal.
 - `capture()` blocks only the calling client thread and is answered by the actor; terminal state never
   crosses threads.
-- The design intends each subscribed client to own a distinct `RenderState`, so a mutation is extracted
-  for every view of the same content generation before libghostty dirty rows are acknowledged.
+- `Frames` holds one optional `RenderResources` for the pane. Its `streams` and `areas` maps
+  track the stream epoch and requested dimensions separately for each `TerminalViewId`.
 
 # Mode revisions
 
@@ -140,4 +118,4 @@ while releasing PTY and input resources.
 - Owned and driven by [`zz-terminal`](/crates/zz-terminal.md); frames land in the [terminal frame](/concepts/terminal-frame.md) model.
 - Encoders back the [interaction](/terminal/interaction.md) subsystem; resolved colors come from [appearance](/terminal/appearance.md).
 - The native tmux copy/view modes on top of mode revisions are described in [copy-mode](/tmux/copy-mode.md).
-- Zig toolchain pin in [prerequisites](/playbooks/prerequisites.md); Ghostty pins in [ghostty-color-reference](/references/ghostty-color-reference.md).
+- The [X11 color reference](/references/ghostty-color-reference.md) records the separate provenance of the named-color table.

@@ -1,241 +1,55 @@
 ---
 type: Concept
-title: Daemon-owned PTY worker model
-description: How the daemon spawns and owns one PTY-backed terminal session per pane, the thread/ownership boundary between zz-daemon and the zz-terminal worker, and the paths that carry terminal frames out and send-keys in.
-resource: crates/zz-daemon/src/daemon.rs
+title: Daemon-owned PTY workers
+description: How terminal actors share worker threads and route each viewer's input and frames.
+resource: crates/zz-terminal/src/session.rs
 tags: [pty, daemon, terminal, threading, send-keys]
-timestamp: 2026-10-18T12:00:00Z
+timestamp: 2026-11-24T00:00:00Z
 ---
 
-# Overview
+## Ownership and spawn
 
-Every terminal pane is backed by a **daemon-owned PTY worker**. When [the mux state
-machine](/crates/zz-mux.md) creates a terminal pane, [zz-daemon](/crates/zz-daemon.md) spawns a
-`TerminalSession` from [zz-terminal](/crates/zz-terminal.md) and keeps its handle in
-`ServerState.terminals: BTreeMap<PaneId, Arc<TerminalSession>>`. Each `TerminalSession` starts its
-own OS thread (`zz-terminal`) that exclusively owns the PTY child process and every `libghostty-vt`
-object; the daemon never touches the PTY directly. This split is what lets terminals keep running
-across GUI detach (see [session persistence](/concepts/session-persistence.md)) and keeps parsing off
-the daemon's connection and fan-out threads.
+The daemon keeps an `Arc<TerminalSession>` per terminal pane. The actor owns the
+PTY and libghostty-vt parser, screen and scrollback. Callers send input, resizes
+and view actions through the session handle. Detaching a viewer releases its
+subscription while the process keeps running. [Session persistence](/concepts/session-persistence.md)
 
-The boundary is a **message-passing actor**. The daemon's terminal map holds the owning `Arc` handle
-and talks to the worker over channels: commands in (`send_text`, `send_key`, `view_action`, resize),
-events out (`TerminalEvents`). The dedicated watcher holds a cloned event stream plus a
-`Weak<TerminalSession>`; it upgrades only after an event arrives, so watching cannot extend a pane's
-lifetime. Terminal frames are pulled per view from the worker's published viewports and fanned out to
-each attached client; input and `send-keys` are pushed into the worker as commands.
+`TerminalSession::spawn` assigns actors round-robin to lazily started shards.
+The default count is available parallelism capped at four. `ZZ_PTY_SHARDS`
+overrides the count, and zero gives each actor a dedicated `zz-terminal` thread.
+The platform's PTY read mechanism is separate from where the parser runs.
+See `crates/zz-terminal/src/session/shard.rs` (`choose`) and [PTY drain topology](/terminal/pty-drain.md).
 
-# The ownership boundary
+A mux effect that creates or materializes a terminal supplies its command, cwd,
+environment, initial geometry, history limit and appearance. A split can inherit
+the donor's live working directory. An unmaterialized picker has no PTY. The
+shell integration for supported Bash and zsh installs title and prompt hooks,
+which can be disabled with `ZZ_SHELL_INTEGRATION=none`.
 
-| Side | Owns | Thread |
-|------|------|--------|
-| `zz-daemon` (daemon) | `Arc<TerminalSession>` handle per pane, mux state, per-client `OutboundMailbox`, view attach/detach | `zz-client`, `zz-client-writer-{id}`, `zz-pane-{n}` |
-| `zz-terminal` (zz-terminal) | The PTY child process, `libghostty-vt` grid/parser, scrollback, the authoritative `TerminalViewport` per attached view | `zz-terminal` worker (one per session) |
+## Viewports and delivery
 
-`TerminalSession` (in `crates/zz-terminal/src/session.rs`) is a thin handle over channels:
+One PTY can have several views keyed by `TerminalViewId(client.0)`. Scroll anchor,
+selection, copy mode and search belong to each view. The actor publishes immutable
+viewports for streaming views and maintains a fallback for readers without a view.
+Foreground, preview and inactive streams can receive different work budgets.
 
-```rust
-pub struct TerminalSession {
-    commands: CommandSender,                 // daemon → worker (input, resize, view actions)
-    events: TerminalEvents,                  // worker → daemon (ViewportReady, CopyReady, OpenUri…)
-    latest: Arc<RwLock<PublishedViewports>>, // newest frame per view, plus a viewless fallback
-    max_scrollback: usize,
-    word_separators: RwLock<WordSeparators>,
-}
+`Shared::watch_terminal` installs `shard_sink::PaneSink`. For a live foreground
+view the sink can diff against the last tracked viewport and queue the encoded
+frame directly to the subscriber. A frozen view, a mailbox with a frame pending,
+or a view needing special handling can go through the daemon loop instead.
+The sink and the loop track generations so a slow consumer can catch up to a
+newer full frame. `RequestFull` repairs one pane. Copy and URI events carry the
+originating view ID and go to that client. See `crates/zz-daemon/src/daemon/shard_sink.rs`
+(`TerminalFrameSink::deliver`, `publish_loop_view`), [terminal frames](/concepts/terminal-frame.md)
+and [terminal lanes](/protocol/terminal-lanes.md).
 
-struct PublishedViewports {
-    fallback: Arc<TerminalViewport>,
-    by_view: HashMap<TerminalViewId, Arc<TerminalViewport>>,
-}
-```
+## Input and command output
 
-One publish carries one frame per active view. `publish_active_views` restores each view's scroll
-anchor, selection, copy mode, and search state before snapshotting it, then
-`Publisher::publish_viewports` swaps the whole `by_view` map in and coalesces a single
-`ViewportReady`. A session with no active views takes `Publisher::publish` instead, which clears
-`by_view` and stores only the fallback. Readers name a view with `latest_viewport_for(view)`, take
-the whole map with `latest_viewports()`, or read the fallback with `latest_viewport()`. Details of
-the snapshot itself live in [terminal frame](/concepts/terminal-frame.md).
-
-`spawn_with_scrollback_and_appearance` starts the `zz-terminal` thread running `terminal_worker`,
-which owns the PTY and libghostty for the life of the pane. The daemon interacts only through the
-handle's methods; it never shares PTY or grid memory across the boundary.
-
-# Spawning a PTY worker
-
-Terminal spawns are driven by mux effects while `Shared::execute` holds the state lock; actor
-commands and watcher startup are deferred until after that lock is released:
-
-```text
-MuxEffect::PaneCreated|PaneMaterialized { pane, kind: Terminal, inherit_cwd_from }
-  → history_limit_for_pane / word_separators_for_pane        (mux options)
-  → resolve the donor shell's live cwd when this is a split
-  → TerminalSession::spawn_with_scrollback_and_appearance[_in](limit, appearance, cwd)
-  → ServerState.terminals.insert(pane, Arc::clone(&session))
-  → DeferredTerminalCommand::AttachView { view: TerminalViewId(client.0) }  (one per attached client)
-  → watch_terminal(pane, &session)                           (spawns the zz-pane-{n} watcher)
-```
-
-A session holds a **set** of attached clients (`attached: BTreeMap<SessionId, BTreeSet<ClientId>>`), so
-a new pane attaches one view per client already reading that session. Each view costs a scroll anchor,
-a selection, and copy-mode/search state; the PTY behind them stays single.
-
-A terminal `split-window` automatically sets `inherit_cwd_from` to its target pane. The terminal
-actor exposes the live foreground process ID, queried from the PTY at call time (`tcgetpgrp` on a
-dup of the master on Unix, with the shell child as a fallback and nothing cached in between);
-`zz-daemon` resolves that process's current directory and passes it to the new PTY's
-`CommandBuilder`. This also accepts tmux's
-`split-window -c "#{pane_current_path}"` form, so existing bindings keep working. If the donor is not
-a live terminal, process inspection fails, or the directory no longer exists, spawning falls back
-to the normal default-shell directory instead of failing the split.
-
-Before spawning the default shell, zz-terminal installs zz-owned title hooks for zsh and modern
-Bash. The embedded scripts are materialized into a versioned user-private cache (directories `0700`,
-files `0600`). zsh is bootstrapped through a temporary `ZDOTDIR` that restores and sources the
-user's real `.zshenv`; Bash enters POSIX mode long enough to source an `ENV` bridge, then restores
-ordinary login startup. The hooks emit OSC 2 with the exact interactive command at pre-exec and a
-home-abbreviated working directory at each prompt, so the live viewport title (and therefore the
-sidebar pane label) describes `npm run dev` while that command owns the PTY. Unsupported shells and
-macOS's legacy `/bin/bash` use the unchanged default-shell path. `ZZ_SHELL_INTEGRATION=none` disables
-the injection without preventing applications from publishing OSC 0/2 themselves.
-
-`split-window --kind picker` creates `PaneKind::Picker` with no
-`TerminalSession` and remembers the donor pane only so a later Terminal selection can inherit the
-same live cwd. `PaneMaterialized{Terminal}` follows the spawn pipeline above, while a Browser
-selection creates no daemon-side runtime. `split-window` — key-bound, CLI, or command-prompt —
-always creates a terminal immediately, like tmux.
-
-`MuxEffect::PanesRemoved` removes the map's owning `Arc<TerminalSession>`, which closes the command
-side and shuts down the worker even when the shell is idle. The event sender then closes and wakes the
-non-owning watcher so it can exit. The daemon also publishes `PaneRemoved`. Browser panes create
-**no** PTY worker; their state is a `BrowserDescriptor` rendered by the attached GUI.
-
-# Terminal frame fan-out (worker → clients)
-
-A foreground live view reaches its client from the shard thread. `watch_terminal` installs a
-`PaneSink` (`crates/zz-daemon/src/daemon/shard_sink.rs`) on the session with
-`TerminalSession::install_frame_sink`, and the loop keeps one sink record per (pane, view) for each
-client that streams the pane as `Foreground`. `apply_view_streams` updates the records on attach,
-detach, window switch, zoom and preview changes. A client in copy mode on the pane keeps its record
-but marks it not live (`enter_copy_session` / `exit_copy_session`). A record holds the client's
-`OutboundMailbox` and the last viewport queued for that view by either path.
-
-`publish_views` hands each frame to the sink before it stores it. Under the sink's lock the sink
-diffs every live record against that last viewport, encodes once per (base, current) through
-`PaneFrameFanout::enqueue`, and queues the same bytes on every matching mailbox. It skips a view
-whose frame is not live, whose client is frozen (`OutboundMailbox::terminals_frozen`, kept in step
-by `sync_terminal_freeze`) or whose client still holds an unwritten frame for the pane (checked
-before the diff, so a backed-up client costs the shard no diff), so a slow client gets the loop's
-latest-frame coalescing instead of a full encode per frame on the shard. It skips the whole pane
-while a frame or its predecessor carries Kitty placements. The views it took are stored as `sunk`
-beside the frame (`TerminalSession::latest_frames`). A record removed under that lock gets no later
-frame, and the mailbox's generation checks drop or widen anything that lands against a stale base.
-When an interactive client's mailbox holds nothing, the loop has no write in flight for it and no
-attach batch, attach settle or control collection is open, `enqueue_terminal_with` called off the
-loop thread writes the frame itself under the mailbox lock with one nonblocking `send` on a duplicate of the client's socket
-(`OutboundState::direct_socket`, set by `Connection::prepare_hello` for `ClientKind::Interactive`
-and dropped when the mailbox closes or the connection goes away). A short write leaves the rest at
-the front of the reliable lane as `OutboundFrame::Partial` and wakes the loop, which owns the socket
-until the mailbox is idle again; an error drops the duplicate and queues the frame for the loop.
-Frames the loop thread enqueues itself keep the slot, so they still go out behind reliable messages
-the same turn queues later. A refused `ControlStdio` is queued on the mailbox like any reply, and an
-accepted one drops both socket duplicates, so the loop stays the only writer while it holds bytes.
-Otherwise the mailbox wakes the loop only when a client's terminal slot goes from empty to
-non-empty, and the sink holds those wakes until the frame is published
-(`TerminalFrameSink::published`): when the same publish also notified the loop, that notification's
-turn writes the frame and the wake is dropped.
-
-Views the sink did not take fall back to the loop. When every streamed view of a pane went to the
-sink, the shard notifies the loop only on an edge: a title, OSC 7 path or status change, a title
-write or progress bar change (`Publisher::set_facts`, `set_progress_bar`), a preview watch, or output
-at most every 100 ms (`Frames::admit_notify`). A pane with a live output watch (`wait-pane`, the
-`send-text` echo check, `run-pane`; `PaneSink::observe` from `terminal_reads`) notifies on every
-output frame instead. Bells, clipboard writes, renames, copy results and placeholder binds are
-reliable events that notify on their own. On the loop, `TerminalWatcher` walks the latest frames and
-hands each view not in `sunk` to `shard_sink::publish_loop_view`, which diffs against the record's
-viewport (or the watcher's own for a view without a record), drops a frame older than the one the
-record holds, and writes the frame back to the record unless the shard moved it meanwhile:
-
-```rust
-// shard_sink::publish_loop_view, per view the sink did not take
-let seen = sink.and_then(|sink| sink.tracked(view)).flatten();
-if seen.is_some_and(|(_, newer)| generation(viewport).precedes(generation(newer))) {
-    return;
-}
-let base = epoch.and_then(|epoch| seen.or(watcher_previous).filter(|(known, _)| known == epoch));
-shared.publish_terminal_for_pane(pane, ClientId(view.0), base, viewport, terminal, fanout);
-sink.track(view, seen, epoch.map(|epoch| (epoch, viewport)));
-```
-
-Output frames call `note_pane_output` (activity, silence and a 500 ms name check that reads the
-foreground command and path). That check feeds automatic-rename and the cached runtime facts; a
-command's format (`display-message`, `list-panes`, `if-shell -F`) reads `#{pane_current_command}`
-live from the pane's terminal instead (`DaemonFormatHooks::variable` in
-`crates/zz-daemon/src/status.rs`), as tmux's `format_cb_current_command` does, so a quiet child
-started right after the shell's echo is seen at once. The physical cwd comes from
-`proc_pidinfo(PROC_PIDVNODEPATHINFO)` on macOS and the `/proc/<pid>/cwd` link on Linux, separate
-from the path reported through OSC 7. The wrappers live in `crates/zz-daemon/src/daemon.rs`, the
-lookups in `crates/zz-daemon-client/src/process_info.rs`.
-
-Title sync and exit detection ride whichever frames exist. Each frame's title goes through
-`synchronize_pane_title`, and an `Exited` status on any of them closes the pane through
-`close_exited_terminal`. When `latest_viewports()` comes back empty the session has no attached views,
-so the watcher reads `latest_viewport()` instead and runs both checks off that fallback. A pane whose
-last viewer detached keeps its sidebar label current and still closes when its shell exits.
-
-`publish_terminal_for_pane` takes the view's `ClientId` and delivers while that client remains
-attached to the pane's session, publication is not frozen, and the pane has an entry in that client's
-`streamed_terminals`. The entry selects a foreground or preview stream; preview delivery reserves
-mailbox capacity for foreground panes and uses a separate byte limit. The frame lands in that client's `OutboundMailbox`
-terminal lane (one coalesced pending frame per pane), where the watcher's `is_current_terminal` guard
-and the mailbox's generation check (`delivered_terminals`) promote a stale-base patch back to a full
-viewport. The same check refuses a full frame that trails what is pending or already delivered
-(`TerminalGeneration::precedes`), so two producers encoding outside the lock cannot move a client
-backward; a respawned terminal starts its generations past every predecessor (a process-wide seed
-in `ViewportGenerations::new`), which keeps that comparison meaningful across respawns. Full details
-of the mailbox lanes and backpressure live in
-[terminal frame](/concepts/terminal-frame.md) and [the server crate](/crates/zz-daemon.md). The
-watcher also forwards `CopyReady` (paste buffers / copy-pipe / clipboard) and `OpenUri` events, both
-of which carry the originating view and route to `ClientId(view.0)`.
-
-# Send-keys and interactive input (clients → worker)
-
-Both CLI `send-keys` and interactive keystrokes converge on `TerminalSession::send_text` /
-`send_key`, which enqueue `Command`s to the worker. The daemon resolves **synchronized-input
-targets** first, so one keystroke can fan out to several panes:
-
-| Entry | Path |
-|-------|------|
-| CLI `send-keys` | `CommandRequest` → `execute` → `MuxEffect::SendKeys{pane, keys}` → `resolve_input_sinks` → `DeferredTerminalCommand::SendTokens` → `keys::send_tokens` → `send_text`/`send_key` |
-| Terminal interactive text | `InputMessage::Text` → `input_text` → key engine (`key_decision`, prefix tables) → `dispatch_input_text` → `input_sinks` → `send_text` |
-| Terminal interactive key | `InputMessage::Key` → `input_key` → `key_decision` → `input_sinks` → `send_key` |
-| Browser page input | same `input_text`/`input_key` path; `Pass` decisions reach the Browser sink |
-
-`resolve_input_sinks` maps each target pane to a `PaneSink::Terminal(Arc<TerminalSession>)` or
-`PaneSink::Browser(PaneId)`; browser targets become `EventPayload::BrowserCommand` events sent to the
-attached GUI (they need a live CEF instance) rather than PTY writes. `send_tokens` (`keys.rs`)
-translates tmux key spellings into `KeyInput` (`named_key`) or literal text and fans them to every
-terminal sink, cloning the input for all but the **last** sink so single-target input allocates
-nothing extra. CLI `send-keys` writes pane input directly and does **not** traverse the attached
-client's key tables.
-
-# Interaction & command-output surfaces
-
-- **Views** are per-client: `attach_view` / `detach_view` / `release_view` on a `TerminalSession`
-  are keyed by `TerminalViewId(client.0)`, so selection, copy-mode, and search are per-viewer without
-  duplicating the PTY. `Shared::attach` attaches that view on every terminal the target session owns
-  and detaches it from the session the client is leaving, so two devices reading one pane hold two
-  scroll anchors over one shell. `view_action` carries copy-mode and history actions into the worker.
-- **Command output** (`C-b :` results, interactive command output) uses a **PTY-free**
-  `TerminalSession::spawn_output_view_with_appearance`, a frozen terminal surface with no child
-  process, so the same rendering and copy-mode machinery works without a shell.
-
-# Related
-
-- [zz-daemon crate](/crates/zz-daemon.md) . spawns, watches, and fans out these workers.
-- [zz-terminal](/crates/zz-terminal.md) . defines `TerminalSession`, the worker thread, libghostty ownership.
-- [Terminal frame](/concepts/terminal-frame.md) . the coalesced fan-out unit and mailbox lanes.
-- [Session persistence](/concepts/session-persistence.md) . why the worker outlives GUI detach.
-- [Terminal interaction](/terminal/interaction.md) and [libghostty-vt](/terminal/libghostty-vt.md) . inside the worker.
-- Input types (`KeyInput`, `KeyCode`, `Modifiers`) and `KeyToken` come from
-  [zz-terminal](/crates/zz-terminal.md) and [zz-protocol](/crates/zz-protocol.md).
+Interactive keys first pass through the mux key tables. A key which reaches a
+terminal, literal text, paste and mouse actions go to the actor, which knows the
+terminal's current modes. `send-keys` resolves a pane target. Synchronized panes
+can fan the input out to multiple sinks. Copy-mode actions and searches use
+the viewer's state. Commands such as `capture-pane` can read the terminal
+without attaching another interactive viewer. Command output can also use a
+frozen terminal surface with no PTY child.
+[Terminal interaction](/terminal/interaction.md) · [zz-terminal](/crates/zz-terminal.md) · [Commands](/tmux/commands.md)

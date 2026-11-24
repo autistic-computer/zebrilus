@@ -2,7 +2,7 @@
 type: Research
 title: GPUI fork lab (gpui-fast, gpui-ce, upstream, hot reload)
 description: What zz took from longbridge/gpui-fast, gpui-ce and upstream zed after measuring each candidate on Linux and macOS, what it rejected and why, the combined frame-cost results on both, and the Subsecond hot reload prototype.
-resource: Cargo.toml
+resource: bench/ala/frames.py
 tags:
 - performance
 - gpui
@@ -14,6 +14,10 @@ timestamp: 2026-10-05T00:00:00Z
 ---
 
 # Scope
+
+The branch names and revisions below identify the builds tested in September and October.
+The implementation now lives in `libs/ala`. The [ala reference](/references/ala.md) covers
+its source layout and the current process for changing it.
 
 Between 2026-09-30 and 2026-10-01, on the Ubuntu 26.04 dev box (Ryzen 7800X3D, RX 7900 XTX,
 GNOME Wayland at scale 1.25), six Codex lanes evaluated GPUI changes for the `demfabris/zed`
@@ -192,11 +196,14 @@ reliable gain on the incremental zz rebuild under load.
 
 # macOS (Metal)
 
+The lab series merged as `2eadfc8aa` on base `da21a23b6`. The macOS run passed Clippy.
+Daemon tests that failed under full-workspace load passed in isolation.
+
 Measured 2026-10-01 and 02 on the MacBook (M4 Max, 12 performance and 4 efficiency cores, 48 GB,
 macOS 27.0) driving an external 6K display at 60 Hz and scale 2. Every build was a profiling
 bundle (`cargo xtask bundle-cef --profile profiling`: release, fat LTO, full debug info).
 
-`bench/gpui/frames.py` is the Mac yardstick. It launches a bundle with its own `HOME` and socket,
+`bench/ala/frames.py` is the Mac yardstick. It launches a bundle with its own `HOME` and socket,
 pins the window to 1280x900 through `window-state.json`, and drives the five Linux scenarios
 through the CLI (stream: a Perl writer at 240 rows/s; scroll: copy mode at 20 commands/s). Each
 scenario gets 5 s of warmup and a 20 s window, and builds alternate within each repeat.
@@ -289,6 +296,8 @@ stream and chrome, but C and C1 overlap on main-thread CPU, so that commit is no
 
 On 2026-10-02 the font cache and the recorder field went to `zz-patches` (`ff805a96b0`,
 `5a00ac89a4`) and zz pinned them; the run rendering commit `3aefd2a813` was not carried.
+Side-by-side captures covered bold, italic, colors, emoji, CJK, box drawing, ligatures, wrapping
+and the sidebar. Those examples matched on the old and new pins.
 
 Risks:
 
@@ -310,15 +319,15 @@ Risks:
   already paints shader layers, so neither can be toggled without changing zz. Without a layer in
   the frame, the Metal renderer only resets a flag and clears two empty vectors, and the headless
   renderer runs only in tests. Not measured.
-- **Hot reload on macOS**: not attempted. dioxus-cli 0.7.10 is not installed here (`dx` on this
-  PATH is another tool), and the bundle, CEF framework and codesigning questions stand.
+- **Hot reload on macOS** was not exercised. At `1ce632dce`, `scripts/run-hot.sh` requires
+  Linux. The lab recorded no macOS bundle, CEF framework or signed patch-library validation.
 
 # Fork sweep, 2026-10-05
 
 A web sweep of GPUI forks, apps that patch GPUI, and unmerged zed PRs (three `agy` research
 lanes) found mostly what this lab had already judged: retained mode, window composition and the
 gpui-ce MSAA fix. What was new since 09-30 went through one implementation lane each on
-`demfabris/gpui`, a failing-first test per fix, and a six-way A/B with `bench/gpui/frames.py`
+`demfabris/gpui`, a failing-first test per fix, and a six-way A/B with `bench/ala/frames.py`
 (profiling bundles, three repeats, base `63990de7a9`). The window sat on the secondary display
 (`--bounds=-2600,80,1280,900`) because macOS stops drawing a covered window: an earlier attempt
 on the main display, with the machine in use, drew 0 frames in most windows. Run-to-run spread

@@ -4,7 +4,7 @@ title: Terminal appearance and color model
 description: The renderer-neutral appearance model, the native zz/config override resolver, per-key provenance, the client-side Ghostty import loader, and embedded Ghostty/X11 colors.
 resource: crates/zz-terminal/src/appearance.rs
 tags: [appearance, color, ghostty, palette, x11-rgb, config]
-timestamp: 2026-10-31T00:00:00Z
+timestamp: 2026-11-24T00:00:00Z
 ---
 
 # Overview
@@ -22,14 +22,11 @@ explicit import flow
 `red`, `rebeccapurple`, etc. resolve identically on every host. The wire protocol carries a
 complete per-key provenance map beside the appearance.
 
-This is a **terminal-only** system. Application chrome has its own light/dark palette in
-[zz-ui](/configuration/ui-conventions.md) and does not derive from these colors; only
-`mono_font_family` still crosses the boundary, and it is not chroma. `background-opacity` remains
-pane-local too. The renderer paints the terminal color at that alpha over an opaque app-pane base,
-so `1` shows the configured terminal background and lower values mix toward the app surface.
-A tiled pane paints none of it: panes show the window behind them. A PiP tints its glass with that
-color while glass is on and paints it opaque while glass is off. Terminal text and explicit cell
-backgrounds retain their own colors.
+Tiled terminals show the window background. For a terminal in picture-in-picture,
+`background-opacity` controls how much of the terminal background blends into the
+theme background. The result tints the PiP glass, or fills the PiP when glass is off.
+Text and explicit cell backgrounds keep their own colors. See
+[what reaches application chrome](#what-reaches-application-chrome) for UI colors and font fallback.
 
 # Model
 
@@ -144,20 +141,14 @@ until the user re-imports.
 
 # What reaches application chrome
 
-Only one value crosses from terminal appearance into application chrome, and it is not a color:
+On desktop, `apply_zz_overrides` in `crates/zz/src/theme.rs` selects the chrome mono
+font by trying an installed `ui-mono-font-family` override, the resolved terminal
+font, then penna's platform mono font. The window, sidebar and other chrome colors come
+from the [interface theme](/designs/interface-themes.md). Its effective light/dark mode
+is also the color scheme reported to the daemon.
 
-| Value | Why it crosses |
-| --- | --- |
-| `mono_font_family` | Agent Markdown, tool previews, and code blocks use the same primary family the terminal resolved, so code reads in one typeface across the window. |
-
-Everything else, including `background_opacity`, stays at the terminal paint boundary. Application
-backgrounds, foregrounds, accents, and semantic families come from the interface theme's light and
-dark colors, with any accent and tint `zz/config` sets over them (see
-[interface themes](/designs/interface-themes.md)), and follow the effective light/dark mode (`theme-mode`, pinned or the OS's), which is also the color
-scheme the client reports for the terminals. `crates/zz/src/theme.rs` holds the latest immutable `TerminalAppearance`
-as an ala global; it derives no chrome color or alpha from it. The client consumes appearance
-provenance while resolving daemon font stacks against fonts installed on the rendering machine, but
-does not retain provenance as a global. Terminal panes read the localized appearance directly.
+The desktop retains the localized `TerminalAppearance` as an ala global. It uses
+provenance to resolve daemon font stacks against fonts installed on the rendering machine.
 
 The client installs the initial value from `ServerHello`, then replaces it on every
 `AppearanceChanged` event, published by override changes, explicit daemon config reload, and
@@ -173,10 +164,8 @@ back to `csscolorparser` (hex, `rgb()`, etc.); `parse_rgb` rejects alpha. The ta
 (`OnceLock`) from `include_str!("x11-rgb.txt")`; each line is `R G B name`. Palette entries accept
 `index=color` with decimal / `0x` / `0o` / `0b` indices.
 
-`x11-rgb.txt` is copied verbatim from Ghostty's `src/terminal/res/rgb.txt` at upstream commit
-`cf60af281bd7559a819aa25372cef01d623b8c5a`, sourced from the X.Org `rgb` project under the MIT/X11 license
-(provenance in `third_party/ghostty-reference/UPSTREAM.md`). See
-[ghostty-color-reference](/references/ghostty-color-reference.md).
+The [X11 color reference](/references/ghostty-color-reference.md) records the data source,
+revision and license.
 
 # Key files
 

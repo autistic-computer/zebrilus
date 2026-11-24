@@ -5,57 +5,38 @@ shares. This file adds what is specific to zz.
 
 @~/dev/autistic-computer/.agents/AGENTS.md
 
-Zebrilus (zz, repo autistic-computer/zebrilus) is a tmux-superset terminal multiplexer that ships as a native GPU desktop app: a Rust workspace built on ala (our fork of the GPUI UI framework, in `libs/ala`), a persistent daemon that owns sessions and PTYs, Chromium browser panes (CEF off-screen rendering), agent panes (ACP), and remote hosts over plain ssh. Targets macOS and Linux (Wayland), with experimental Windows/WSL, iOS and Android clients, and a raw-terminal attach client.
+Zebrilus (zz) is a terminal multiplexer. A persistent daemon owns the sessions and PTYs.
+The desktop app renders terminal, browser and agent panes. Other clients attach through the
+CLI, TUI, web gateway or mobile app. Host connections include SSH, tailnet and, on Windows, WSL.
 
-Rust edition 2024, MSRV 1.99. Release builds on mac/windows require Zig 0.16.0 (see `mise.toml`).
+`Cargo.toml` and `rust-toolchain.toml` specify the Rust edition and toolchain.
+`mise.toml` pins Zig for macOS and Windows release builds.
 
 ## Project map
 
-- `libs/ala` - ala, our GPUI, a git subtree of [autistic-computer/ala](https://github.com/autistic-computer/ala) with its own Cargo workspace: `crates/ala` (the gpui core split out of upstream, with the upstream utility code it needs as modules: `ala::collections`, `sum_tree`, `scheduler`, `util`, `http_client`, `refineable`), `crates/ala-platform` (the backends, one module per target, each compiled only there: `macos` with the Metal renderer in `apple`, `linux` (Wayland, X11), `windows`, `web`, `ios` (UIKit, with ala's own `Ala*` Objective-C classes an app's `Info.plist` names), `android` (JNI and the NDK, its natives registered on a class the app names in `on_load`), and the `wgpu` renderer Linux, web, iOS and Android share), `crates/ala-macros` (proc macros, including the `Refineable` derive), and `third_party/cosmic-text`; its runtime knobs are `ALA_*` environment variables, and `knowledge/references/ala.md` covers embedding it on iOS and Android
-- `libs/penna` - `penna`, the widget kit on ala (theme, the kit's theme files (default, macos, yaru), with the look starting from the platform's, primitives, widgets, touch widgets and phone chrome (`compact`: the floating pill, its menu and morph, folding title bars, the bento grid), settings pages with the appearance page (the `foundation::interface_theme::Appearance` model and `kit_row` for its rows) and About builders, callouts, toasts from app code (a keyed toast is replaced in place), a progress bar, tree indent guides, icons, `theme_css` that writes every role's look as CSS tokens, and the HTML kit in `web/` that paints with them), a git subtree of [autistic-computer/penna](https://github.com/autistic-computer/penna): a maintained fork of gpui-component with no zz dependencies, usable by other apps (nidus is one). Apps define no roles of their own (penna's `knowledge/designs/kit.md`); an app calls `penna::init`, opens each window with `Root` (which draws the dialog and toast layers), and applies the look with `Appearance::apply`, or `InterfaceTheme::activate` on `Appearance::shown_theme()`; the features are `editor`, `tree-sitter` and `tray`, none on by default; `knowledge/references/penna.md` has the setup. `libs/penna/storybook` (crate `penna-storybook`, its own Cargo workspace) is the storybook harness (story types, section host, knobs, the web page, the theme creator in `creator` with penna's `PLATES` and the parts an app's plates share, `Catalog` for an app's plates, stories, knobs and assets, ending in `..PENNA` for what it leaves out, and `build.sh --manifest` that builds any app's page) and penna's own page: the theme creator with penna's five plates, then its Foundation and Kit stories (`just storybook penna`)
-- `libs/ala-cef` - `ala-cef`, Chromium off-screen rendering for wgpu apps (CEF frames as GPU textures, input, profiles, cookies, the element picker and its TypeScript source in `picker/`, and `chrome_import` behind the `chrome-import` feature: Chrome profile discovery, cookie decryption and history reading), with its CEF sys adapter in `third_party/cef-dll-sys`; without features it is the pure half the thin clients' browser panes use, and `zz-cli` must not link it. A git subtree of [autistic-computer/ala-cef](https://github.com/autistic-computer/ala-cef), set up like the other libs
-- `libs/pele` - `pele`, Mermaid text to static SVG in Rust with no JavaScript engine (flowchart, sequence, class, state, ER, gantt, pie and quadrant; `pele::supports` says which), a port of upstream Pele that zz-ui's agent chat draws its mermaid blocks with. A git subtree of [autistic-computer/pele-rs](https://github.com/autistic-computer/pele-rs), set up like the other libs; it depends on no other lib
-- `crates/zz` - desktop client: ala shell, terminal/browser/agent panes, settings, daemon client
-- `crates/zz-daemon` — the daemon: session state, PTY workers, client connections
-- `crates/zz-daemon-client` - the client half of the daemon: local and ssh endpoints, askpass, `CommandClient`/`InteractiveClient`, transport, paths, and process facts; client-only crates depend on it instead of `zz-daemon`
-- `crates/zz-mux` — tmux-compatible model: sessions, windows, panes, key tables
-- `crates/zz-protocol` — wire protocol between daemon and clients, plus the shared key contract (tables, engine, fold, command catalog)
-- `crates/zz-client` - sans-IO client core: protocol reduction, chrome keymap, daemon-backed convergence simulator
-- `crates/zz-config` - renderer-free application config, settings actions, preference persistence; the update check and the release downloader (`update`); the zz-owned headless copy under the data directory (`owned`: `zz build-info`'s `BuildInfo`, the install and remove `zz update` runs, and the rule by which a packaged zz hands over to that copy); behind its `update` feature, the in-app installer (`update::{detect, prepare, apply}`: find the install, download and verify a release, stage it beside the install, swap it in on restart)
-- `crates/zz-machine` - the shape of zz's pure state machines: a transition returns the next state, effects and rejects, and the state says when to wake; the agent turn machine (`zz-daemon/src/agent/turn.rs`) is built on it
-- `crates/zz-cli` — headless `zz_cli` binary: the CLI, raw-terminal attach, and the ssh-side entry point
-- `crates/zz-simulator` - screen and input access to a booted iOS simulator through Xcode's CoreSimulator and SimulatorKit (macOS only); `examples/probe.rs` attaches, counts frames and sends taps, swipes and keys
-- `crates/zz-terminal` — terminal engine: PTY sessions, libghostty-vt state, frame snapshots
-- `crates/zz-ui` - zz's application UI on penna (panes, terminal painting, agent, palette, zz's settings pages and appearance rows, navigation, the pane glow and frames (`pane_look`), the terminal tool keys, tmux highlighting, the phone overview's host, window and pane tiles; content reads the pane, floating panes, PiPs, the pane stack and the window through `penna::ContentLook`); kit names come from `penna` directly, not through it
-- `crates/zz-tui` — raw-terminal attach client as a library (the binary lives in `zz-cli`)
-- `crates/zz-web` - local HTTP/WebSocket gateway for browser clients
-- `crates/zz-hotreload` - Subsecond hot-reload launcher for `just hot linux`
-- `clients/app` - `zz-app`: the thin-client app web, iOS and Android share (shell, sidebar, status bar, settings, palette, overlays, panes, connection reducer, image cache, the native transport and the iOS and Android browser panes)
-- `clients/web` - `zz-web-client`: the WASM entry point around zz-app, with its own Cargo workspace
-- `clients/dom` - `zz-dom`: an HTML thin client, `zz-client` in wasm drawn with penna's HTML kit and `design/zz.css`, served by `just design client`
-- `clients/storybook` - `zz-storybook`: zz's storybook web page, penna's storybook harness plus zz's catalog (agent, workspace and console stories and pane knobs; the theme creator is on penna's page only); `just storybook run`, see `knowledge/playbooks/storybook.md`
-- `clients/ios` - `zz-ios`: the iOS entry point around zz-app and ala-platform's iOS backend, the bundle files, and a terminal example (`ZZ_ALA_DEMO=terminal`); `just ios`
-- `clients/android` - `zz-android`: the Android entry point around zz-app and ala-platform's Android backend, the Java glue (activity, surface view, input connection, web view), the manifest and resources; `just android`
-- `crates/zz-xtask` — build tooling: CEF bundling, packaging (`cargo xtask`)
-- `compat/` — tmux compat campaign: differential harness (`run.sh`), gap registry (`tmux-gaps.json`), dispatch-board client (`board.py`), progress meter, orchestration handoff (`orchestration/`)
-- `compat/tui/` — TUI parity campaign: proof ledger (`campaign.json`), validator and report generator (`tracker.py`), cycle runners (`run-N.js`); closed 2026-09-20 at 18/18
-- `compat/catchup/` — tmux catch-up campaign (stale refusals, pin to 3.8, floating panes): rules and resume steps in `README.md`, work items in `ledger.json`
-- `knowledge/` — OKF knowledge bundle for the whole system (start at `index.md`)
-- `scripts/` — build, packaging, and profiling scripts
-- `bench/` — terminal throughput benchmark harness
-- `design/` - HTML mockups painted with the real theme through penna's HTML kit (`libs/penna/web`): `penna::foundation::theme_css` writes every role's look as CSS (`just design tokens`), `zz.css` lays out zz's pieces, `just design serve` shows them; see `design/README.md`
-- `site/` — zzmux.sh, which serves only `install.sh`; the landing page and docs were wiped 2026-10-30 for a rework
-- `third_party/` — vendored code (`ghostty/`, a trimmed Ghostty synced with `just vendor ghostty <rev>`; the libghostty-vt crates under `rust/`) and pinned reference material
-- `packaging/` — Arch package, AUR/cask templates
+| Path | Owns |
+| --- | --- |
+| `crates/zz`, `crates/zz-ui` | Desktop client and zz-specific UI shared with thin clients. Reusable widgets belong in penna. |
+| `crates/zz-daemon`, `crates/zz-mux` | Session and PTY ownership, agent drivers, command execution and the tmux model. |
+| `crates/zz-protocol`, `crates/zz-client` | Wire messages, key tables and command catalog. Renderer-independent client state. |
+| `crates/zz-daemon-client`, `crates/zz-tailnet` | Endpoints, transport and daemon lifecycle. The latter runs zz's own tailnet node on Linux and Apple Silicon macOS. |
+| `crates/zz-cli`, `crates/zz-tui`, `crates/zz-terminal` | Headless entry point, raw-terminal attach client, PTYs and viewport snapshots. |
+| `crates/zz-config`, `crates/zz-machine` | Preferences and updates, including the owned headless copy. Pure state machines used by the agent runtime. |
+| `crates/zz-web`, `clients/app`, `clients/{web,ios,android}` | HTTP/WebSocket gateway, shared thin client and platform entry points. |
+| `clients/dom`, `crates/zz-showcase-daemon` | HTML client and the in-browser showcase's daemon, CLI and socket proxy. |
+| `crates/zz-simulator`, `crates/zz-hotreload`, `crates/zz-xtask` | iOS Simulator access, Linux hot reload and build tooling. |
+| `libs/ala`, `libs/penna` | UI framework, platform backends and widget kit. See [ala](knowledge/references/ala.md) and [penna](knowledge/references/penna.md) for embedding and setup. |
+| `libs/ala-cef`, `libs/pele` | Chromium off-screen rendering and Mermaid-to-SVG rendering. The headless CLI must stay free of GUI and browser dependencies. |
+| `clients/storybook`, `design/` | zz's catalog in penna's storybook and HTML mockups. See the [storybook playbook](knowledge/playbooks/storybook.md). |
+| `compat/`, `bench/` | Differential scenarios, gap registry, TUI evidence, and benchmarks. |
+| `third_party/`, `packaging/`, `site/` | Vendored sources and reference pins, package definitions, and the zzmux.sh installer site. |
 
 ## Knowledge bundle
 
-`knowledge/` documents architecture, the wire protocol, tmux compat, the terminal engine, the CEF browser, designs, and operational playbooks. Read `knowledge/index.md` before digging into an unfamiliar subsystem — it beats cold grepping. The bundle is a map, not ground truth: load-bearing facts cite `resource:` source files; verify those before acting on them.
-
-For TUI parity campaign work, start with `compat/tui/README.md` and
-`knowledge/playbooks/tui-parity-campaign.md`. `python3 compat/tui/tracker.py check` validates the
-ledger and its generated report; `ready` lists the dependency-ready obligations. Only verified proof
-counts as TUI progress; accepted tmux gaps do not.
+Start at [knowledge/index.md](knowledge/index.md). Check a concept's cited source before changing
+behavior. For compatibility work, `compat/tmux-gaps.json` owns the command and behavior registry.
+The TUI campaign has its own [proof ledger](compat/tui/README.md). Run
+`python3 compat/tui/tracker.py check` to validate it and its generated report.
 
 <important if="you need to build, run, test, lint, package, profile, or release">
 
@@ -107,7 +88,11 @@ Recipes live in `Justfile` and `scripts/just/*.just` and run from the repo root.
 </important>
 
 <important if="a test fails under cargo test --workspace">
-A few `zz-daemon` tests are timing-sensitive and only fail under full-workspace parallel load. Before diagnosing, re-run the failing test alone (`cargo test -p zz-daemon <test_name>`); a solo pass points to load-induced flake, not your change. On headless machines `concurrent_default_interactive_attaches_atomically_share_session_zero` fails deterministically with `open terminal failed: not a terminal` — environmental, not a regression. Its panic is raised on a spawned thread, so libtest can attribute the failure to an innocent neighboring daemon test; a one-off daemon failure with that error text is this test misattributed.
+
+Rerun the named daemon test alone with `cargo test -p zz-daemon <test_name>`. If it passes
+alone, keep the original failure in the results and check which concurrent setup or timing
+condition differed. For `open terminal failed: not a terminal`, check the client kind and PTY
+metadata in the attach request.
 </important>
 
 <important if="you are debugging a running daemon or checking the CLI">
@@ -115,7 +100,7 @@ A few `zz-daemon` tests are timing-sensitive and only fail under full-workspace 
 - The daemon outlives the app: after installing a new build, existing sessions keep running the old daemon binary until it restarts. Don't chase "missing" behavior in a stale daemon.
 - A packaged headless zz on Unix `exec`s the owned copy in `<data dir>/zz/owned/` when that copy is newer (`zz update --check` shows both), and on Windows starts it as the daemon; `ZZ_OWNED_COPY=0` turns that off, and panes never hand over.
 - `just run` / `just watch` build zz Dev with `ZZ_DEV_BUILD=1`, clear inherited daemon/pane context, and use `zz-dev` config/data/socket paths. The macOS bundle is `dist/zz-dev/zz Dev.app` (`dev.zz.app.dev`); Linux launches `target/debug/zz-dev`. Installed and beta packages keep their existing behavior.
-- `just web run` / `web build` / `web serve` use dev assets and port 8081. Dev SSH selects `zz-dev`, linked by desktop dev runs into `~/.local/bin`. `web build --release` retains production identity. `just ios run iPad` opens the session sidebar and daemon-backed terminal/agent panes; `just ios run` (iPhone) opens the phone shell, one pane per screen, paged by the bar's pill (every pane of the session as its program face, the one on screen a capsule), with a drill-in overview as its navigator (the handle on the pill's top edge or dragging the pill up zooms out to the machine's page, every session's windows as cards; there the pill holds every connected machine as its platform mark, and its handle, All machines in its menu or dragging it up again zooms out to Machines, every saved machine, where the app also opens with no machine connected; connected with nothing on screen, it opens on that machine's page); Settings under the Machines page's machine tiles, or in a machine pill's menu, opens the thin-client settings (iPhone hides Panes, Multiplexer, Match system text size and Command palette); set `ZZ_ALA_DEMO=terminal` for the terminal example. See `clients/ios/README.md` for endpoint selection. `just android run` installs the same app on the `zz-phone` emulator and attaches it to `just android rig` (the iOS rig) through `adb reverse`; see `clients/android/README.md`.
+- `just web run` serves the dev client on port 8081. `just web build --release` builds with production identity. `just ios run [iPhone|iPad]` and `just android run` launch the shared thin client. See [running zz](knowledge/playbooks/running-zz.md) and the [browser client](knowledge/playbooks/browser-client.md) for endpoint selection and test rigs.
 - `ZZ_SOCKET` overrides the socket the app dials. Unix socket paths have a low length cap (`sun_path`); put test sockets directly under `/tmp`.
 - Recipes live in `knowledge/playbooks/running-zz.md`.
 </important>
@@ -125,7 +110,7 @@ A few `zz-daemon` tests are timing-sensitive and only fail under full-workspace 
 - `PROTOCOL_VERSION` (`crates/zz-protocol/src/message.rs`) is a wire epoch. Bump it only for a change an existing peer cannot decode or would get wrong: removing, reordering or reshaping a shipped message, variant or field, changing what one means, appending to a nested enum, or touching the terminal lane's packing.
 - Never bump it to add a `ProtocolMessage` or `EventPayload` variant. Gate the variant with a capability instead; "Adding a message inside an epoch" in `knowledge/protocol/wire-protocol.md` has the steps for each direction.
 - Bump `REVISION` (same file) by hand when behavior the other side relies on changes with no wire change, a fix included. Raise `MIN_DAEMON_REVISION` or `MIN_CLIENT_REVISION` only when an older peer would make a screen wrong.
-- A bump ends every running session for every user on update: the new client cannot talk to the old daemon until it restarts, and the restart kills every pane it holds.
+- Changing the wire epoch prevents new clients from attaching to a daemon on the old epoch. Restarting that daemon ends the sessions and panes it owns.
 </important>
 
 <important if="you are changing an agent driver, or an agent CLI (claude, codex, agy, grok, cursor-agent) updated">

@@ -1,208 +1,43 @@
 ---
 type: Playbook
 title: Running the TUI parity campaign
-description: "Run the TUI parity campaign: the ledger, the proof surfaces, and the worker, reviewer, and gate cycle that turns measurements into verified obligations."
-resource: compat/tui/run-1.js
+description: Read or repeat a raw-TUI proof and record a new obligation against the correct tmux pin.
+resource: compat/tui/campaign.json
 tags: [tui, tmux, compatibility, campaign, playbook]
-timestamp: 2026-09-09T00:00:00-03:00
+timestamp: 2026-11-24T00:00:00-03:00
 ---
 
-# Outcome
+# Read a proof
 
-Make the plain zz TUI honor the [TUI parity contract](/designs/tui-parity.md) one bounded
-obligation at a time, with every closure proved against the pinned tmux by real attached clients
-and reviewed by an agent that did not write it. The campaign borrows its shape from the
-[tmux compat cohorts](/playbooks/tmux-compat-cohorts.md): a ledger with acceptance clauses as the
-contract, differential fixtures as the proof, a runner that drives one worker lane, one adversarial
-reviewer and one serialized gate, and the shared board for locks and the integration ledger.
-
-# Records
-
-`compat/tui/campaign.json` owns the obligations. Each carries acceptance clauses, dependencies,
-references into `compat/tmux-gaps.json`, an `evidence_note` (the current measurement), a
-`next_action`, and a `proof` block once verified. The generated
-[report](/tmux/tui-parity.md) is the readable view; regenerate it, never edit it.
+The campaign closed on 2026-09-20 with twelve baseline and six added obligations verified at `d77c9dc6`. `compat/tui/campaign.json` records the full pin, individual zz revisions, acceptance clauses, commands, environments, artifacts and independent reviews. `compat/tui/evidence/<ID>/<attempt>/` holds the captures. The [report](/tmux/tui-parity.md) is generated. The current oracle moved to 3.8 in October. `pin.tui-fixtures` in `compat/catchup/ledger.json` records the rerun at that pin.
 
 ```sh
 python3 compat/tui/tracker.py check
-python3 compat/tui/tracker.py write-report
 python3 compat/tui/tracker.py ready
+jq '.items[] | select(.id == "TUI-005") | {acceptance, proof}' compat/tui/campaign.json
+python3 compat/tui/verify-claims.py
 ```
 
-`check` validates fields, the pin against `compat/tmux-oracle.json`, gap references, source and
-artifact paths, dependency cycles, and report freshness; `compat/check.sh` runs it beside the tmux
-tracker. Statuses are `unmeasured`, `different`, `active`, `review`, `blocked`, `verified`. Only
-`verified` counts. The baseline of twelve ids is frozen; additions report separately and never
-dilute the number, the way `compat/progress.py` treats the tmux registry.
+`check` validates the ledger, references, dependencies, proof fields and report freshness. A fully verified campaign can retain its historical pin. Reopening makes the tracker require the current oracle pin, and every proof must match its campaign pin. `verify-claims.py` also checks proof ancestry, mapped fixtures and case ownership. Run the fixture itself with the current zz build and fetched tmux.
 
-Who writes what: a worker writes `status`, `evidence_note` and `next_action` of the obligations
-it owns and nothing else. The gate writes the `proof` block and sets `verified`, because
-`proof.revision` must name the candidate commit the gate re-ran the proof on. A worker never sets
-`verified`. Existing tmux gaps are not reopened by this campaign. A landing that makes the raw TUI
-honour an item of a gap closes that item with a dated measurement (cycle 4 closed
-`options.theme-palette` this way; an accepted native-presentation gap keeps its decision for the
-GUI, per the contract's 2026-09-10 triage). Any other contradicting measurement is appended to the
-gap's reason, dated.
-
-Evidence lives at `compat/tui/evidence/<ID>/<attempt>/`: `environment.txt` (both binary hashes,
-zz revision and dirty state, the pin, OS, TERM, shell, outer terminal size), fixture output and
-captures as `.txt` (the global ignore drops `*.log`), `notes.md`, and the gate's `review.md`.
-Real runs only; a file describing a check that did not run is a defect.
+```sh
+cargo build -p zz-cli
+compat/fetch-tmux.sh
+python3 compat/tui/verify-claims.py --run TUI-005 --zz target/debug/zz_cli
+```
 
 # Proof surfaces
 
-Every attached proof runs both binaries inside an outer pinned tmux with isolated `HOME` and
-`XDG_CONFIG_HOME` per side, short `/tmp` sockets and bounded waits on observables. The outer tmux
-is the decoder: `capture-pane -e` re-emits attributes from its grid, so attribute order, batching,
-redundant resets and cursor-movement spelling collapse on both sides, while the colour class of a
-cell (named, indexed, RGB) is preserved and compared, as the closed class-1 finding under
-`tui.status-row` established. Cursor position and geometry come from `display-message -p` on the
-outer pane. Whether cursor shape can be read that way is measured, not assumed.
+The [contract](/designs/tui-parity.md) compares CLI stdout, stderr and exit status, and attached clients' decoded cells, style, cursor, geometry and interaction. The outer pinned tmux gives both sides PTYs and decodes their screens. `capture-pane -e` preserves named, indexed and RGB colour classes even when the input escapes have different spellings. Isolate HOME, config and sockets, fix the outer size and TERM, and wait for observable state with deadlines.
 
-- `compat/tui-pane-geometry.sh`: pane columns and rows at 80, 100 and 120, all asserted since cycle 3.
-- `compat/status-row.sh`: the last row's bytes after each status option at 79 columns.
-- `compat/attached-client.sh`: the large attached fixture; `compat/run.sh --attached-client`.
-- `compat/tui-screen-diff.sh`: the whole-screen comparison at named checkpoints, with a
-  `--self-check` that proves it fails on a one-sided glyph, colour, cursor or geometry change and
-  passes on an equivalent spelling. TUI-002 builds it; later obligations extend its cases.
-- `compat/tui-stock-keys.sh` (TUI-003): stock bindings typed through real stdin.
-- `compat/tui-indicators.sh` (TUI-004), `compat/tui-copy-mode.sh` (TUI-005) and
-  `compat/tui-caps.sh` (TUI-009): one fixture per obligation since cycle 4, so parallel lanes do
-  not rebase over one file.
-
-The corpus runner and the [harness playbook](/playbooks/compat-harness.md) still apply for anything
-a detached differential can observe. A detached query never proves what an attached client draws.
+Use the `FIXTURES` map in `compat/tui/verify-claims.py` to find the script for an obligation. For example, `compat/tui-screen-diff.sh` tests screen comparison and `compat/tui-copy-mode.sh` exercises selection through real input. The comparison's self-check must detect a one-sided change. A shared fixture charges each recorded case to its owner. Unattributed cases count against all mapped obligations. Accepted registry differences and skipped checks cannot satisfy an obligation's acceptance clause.
 
 # The cycle
 
-`compat/tui/run-1.js` is the template, copied from the tmux campaign's `opus-compat-run-18.js`:
+1. Reopen an obligation for contrary evidence or add one for new scope. Keep the baseline IDs fixed and record dependencies, affected tmux gaps, sources, measured behavior and next action. `tracker.py ready` orders work whose dependencies are verified.
+2. Use `compat/tui/README.md` for setup and `compat/tui/HANDOFF.md` for the gate and resume procedure. The [compatibility cohorts](/playbooks/tmux-compat-cohorts.md) share its board. Before launching a new runner, apply `python3 compat/tui/lint-runner.py compat/tui/run-N.js` to that runner. Give each lane the source and fixture paths its obligation requires.
+3. The worker measures the change, saves environment, binary hashes, captures and fixture output, and updates its evidence note. A reviewer independently reruns the clauses at the candidate tip and exercises a failing comparison. A timeout, waived case or incomplete dependency stays visible.
+4. Run gates in the declared merge order. Remeasure the branch after rebase, resolve any cases waiting for a sibling, and record the revision that passed. Only the gate sets `verified` and records the proof and review. A completed proof waiting on another obligation stays in `review` until the dependency lands and the fixture passes at the new revision.
+5. Regenerate with `python3 compat/tui/tracker.py write-report`. Run both trackers, the affected fixtures and their self-checks. The last gate runs all campaign fixtures, the [full attached corpus](/playbooks/compat-harness.md) and the crate checks prescribed in the handoff. Store the proof in the ledger once.
 
-1. **Work.** One Opus lane in a fresh worktree from `origin/main` takes the batch (cycle 1:
-   TUI-001, then TUI-002), each obligation under a hard budget, measures first, pushes
-   `campaign/<name>`, and reports through a schema (branch, per-obligation status and proofs).
-2. **Review.** One adversarial reviewer verifies every claimed clause against the pin, re-runs the
-   proofs at the tip, adds a sabotage of its own, and returns approve, approve-with-fixes or
-   reject. A reject gets one fix pass by a fresh agent and a re-review.
-3. **Integrate.** The gate rebases, runs the workspace tests and clippy only where `crates/`
-   changed, always runs the fixtures and both trackers, writes the records commit (proof blocks,
-   `review.md`, `verified`), pushes main, ledgers the lock front on the board, posts residuals
-   under TRIAGE, and reports.
-
-Before launching a cycle, run `python3 compat/tui/lint-runner.py compat/tui/run-N.js`. It holds one
-rule per lesson an earlier cycle paid for, each with the cycle that earned it, and it exits non-zero
-until the new runner carries them. Add a rule the moment a cycle teaches one. Every lesson this
-campaign wrote down in prose alone was forgotten at least once: three cycles running shipped a lane
-whose remaining fix sat in a crate the lane did not hold, and cycle 4's "a lane is judged on
-recorded cases flipped to asserted" had to be relearned twice. A rule in the lint cannot be
-forgotten, and a rule that only lives in a page will be.
-
-`compat/tui/README.md` carries the launch recipe (preflight, mint the lock front, the `Workflow`
-call, verification) and the current state. The orchestrator writes the next runner from a fresh
-`ready` listing after each gate, the way `compat/orchestration/HANDOFF.md` does.
-
-An obligation reaches `verified` only when every acceptance clause has evidence against the pin at
-the recorded revision, the fixture that proves it demonstrably fails when it should, and an
-independent review approved it. A timeout, a missing capability, a waived comparison or a skipped
-case is recorded, never counted. Split a large obligation into child ids when measurement warrants
-it; the parent stays and depends on the children.
-
-Since cycle 3 a cycle runs several lanes in parallel under one consolidated lock front (the board
-refuses sibling fronts whose zones overlap). When one lane's fixture case can only pass after a
-sibling lane's landing, the lane records it with a reason starting `SIBLING:<lane>`; the gate,
-merging in a declared order, flips each such case to asserted after that sibling merges and keeps
-the flip only if the fixture and its `--self-check` stay green. This lets a dependent obligation
-start in the same cycle as its dependency and verify in the same records commit.
-
-Since cycle 6 each branch has its own gate agent. The gates run in a fixed order, and each one
-pushes main when its branch is green, so a later lane rebases onto what the earlier ones landed.
-Cycle 5 showed why: one gate agent carrying five branches stopped partway and left nothing on
-main.
-
-A dependent obligation whose own proof is complete does not wait for another cycle. When every
-clause of an obligation asserts but a dependency is not yet verified, its gate writes the evidence
-and fills the proof block, leaves the status at `review` with an `evidence_note` that leads
-`proof complete at <sha>; held on <ids>`, and the gate that later verifies the dependency re-runs
-that obligation's fixture at its own tip, appends those commands to the proof and sets `verified`.
-The tracker accepts a proof block on a `review` item, so nothing is lost between the two landings.
-Cycle 6 carried TUI-007 this way behind TUI-004.
-
-Since cycle 7 an earlier gate runs the delta corpus only for the commands its own lane touched, and
-the last gate in the order runs the keys and status scenario sets and the backpressure row once for
-the whole cycle. Running the same rows at every gate cost hours per cycle and caught nothing a
-single run at the end would miss.
-
-Do not resume a killed cycle with `resumeFromRunId` when the runner schedules its lanes through a
-concurrency pool. The cache replays the longest unchanged prefix of `agent()` calls in start order,
-and a pool starts them in whichever order lanes happen to finish, so the prefix breaks and finished
-lanes run again. Cycle 6 lost about eighteen hours of agent time this way. Instead read the run's
-`journal.jsonl`, embed the finished workers and reviews in a fresh script so their lanes go straight
-to their gates, and launch it as a new run; `compat/tui/run-6b.js` is the template.
-
-A lane that removes or changes a zz-only screen string, prompt, label, format or option name greps
-`compat/scenarios` for it and runs the rows it finds, and its reviewer runs the delta corpus for the
-lane's touched commands. Cycle 6 twice landed a presentation change that a corpus row two directories
-away still asserted, and both times the gate was the first place the two met, which is the most
-expensive place to find it. Every batch
-prompt already tells its agent to inspect its worktree and continue from the state it is in, so a
-relaunch costs only the killed agent's own progress.
-
-# Machine notes
-
-- macOS: `/bin/bash` is 3.2; prefix `PATH=/opt/homebrew/bin:$PATH` on every `compat/` invocation.
-  Commit with `git -c commit.gpgsign=false` in unattended sessions. The box has a real
-  `~/.tmux.conf` and `~/.config/zz/mux.conf`; scrub both `HOME` and `XDG_CONFIG_HOME`. Cycle 17
-  measured eleven environment-red corpus rows here; a red row is a lane's only if it is green at
-  `origin/main`. Never run a bare `tmux` or `zz` command without a throwaway socket.
-- The board: `--holder` is global, shell state does not persist between an agent's Bash calls,
-  `release` and `withdraw` need `--reason`, `front` needs TRIAGE held. Board quirks are listed in
-  the tmux handoff.
-- Shared checkout: other sessions' uncommitted work lives in `~/dev/zz`; add worktrees from it,
-  never stash, reset or clean it.
-
-## Second-half lanes
-
-A worker that returns with its obligation still `active` has not failed. Read
-what it left: if its report names the remaining items and the files that own
-them, launch a second-half lane on top of its branch straight away rather than
-carrying the obligation into the next cycle.
-
-There is capacity for it. A cycle's gates run one per branch in a fixed order,
-each pushing main before the next starts, so from the moment the last review
-returns, every agent slot but one is idle for hours. That is where a second-half
-lane goes, and it costs nothing the cycle was otherwise going to use.
-
-Shape it like `compat/tui/run-9b.js`:
-
-- its base is the first half's campaign branch, not `origin/main`, and the batch
-  says so in capitals, because `COMMON` otherwise tells a lane to start at main;
-- it quotes the first half's measurements as measurements and tells the lane to
-  re-run the fixture before trusting any of them;
-- it says exactly how the ground moves: the first half is under review and the
-  cycle's gates push main while the lane works, so commit only your own work,
-  fetch on a timer, and rebase onto `origin/main` once the first half lands
-  there;
-- it points `CARGO_TARGET_DIR` at a finished lane's warm target. A cold build of
-  this workspace costs half an hour and 150 GB;
-- its gate is the only gate of its runner, so it runs the shared corpus sets, and
-  it claims MAIN knowing a cycle gate may hold it. A claim on a held front fails
-  whoever asks, this holder included: that is a queue, not an error.
-
-`compat/tui/agentwatch.py` raises SECOND HALF when a worker finishes short, so
-the opportunity does not depend on the orchestrator noticing.
-
-## The close-out runs every fixture
-
-A gate runs the fixture list its runner named, and that list rots: cycle 10's
-lint found the gate stage had gone three cycles without picking up
-`tui-mouse.sh`, `tui-client-commands.sh` or `tui-superset.sh`, so nothing ran
-them but the lane that owned them. A cross-lane regression, which is the exact
-thing a gate exists to catch, could have walked through.
-
-`lint-runner.py`'s `every-fixture` rule now reads `compat/tui-*.sh` out of the
-tree and fails a runner whose gate stage misses one, so a fixture added mid
-campaign joins every later gate on its own.
-
-It cannot fix a runner already launched. So the close-out, after the last gate
-pushes, builds zz at the final `origin/main` and runs every fixture in the tree
-with its `--self-check`, and the count goes in the close-out record beside the
-ledger count.
+An interrupted parallel run can resume from completed worker and review results in its journal. `compat/tui/run-6b.js` shows how to feed those results into a fresh runner. `run-9b.js` shows how to continue a partially completed lane from its own branch.

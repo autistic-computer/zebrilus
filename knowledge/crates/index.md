@@ -1,16 +1,16 @@
 <!-- okf:listing:start (managed by okf.py index — edit prose outside this fence) -->
 # Concepts
 
-* [ala-cef crate](ala-cef.md) - Browser-neutral abstraction over CEF Alloy off-screen rendering. Owns CEF init, named private request contexts, page zoom, input, lifecycle, frame mailboxes, and Chrome profile, cookie and history import.
-* [zz-cli crate](zz-cli.md) - Headless CLI, daemon entrypoint, and terminal attach client shared with the desktop app.
-* [zz-client crate](zz-client.md) - Renderer-free client state, effects, chrome keymaps, and normalized pane geometry shared by native and terminal skins.
-* [zz-daemon-client crate](zz-daemon-client.md) - The client half of the zz daemon. Local and ssh endpoints, ssh askpass, the command and interactive clients, and the transport, config paths, and process facts the server shares.
-* [zz-daemon crate](zz-daemon.md) - The persistent local daemon. Sole authority for mux state, owner of PTY-backed terminal sessions and of the agent drivers behind agent panes, and the fan-out engine that streams coalesced terminal frames and agent timelines to attached and short-lived clients over a socket or named pipe.
-* [zz-mux crate . renderer-free mux state machine](zz-mux.md) - The pure, UI-agnostic multiplexer core that owns sessions/windows/panes/splits, resolves tmux-style targets, executes tmux-compatible commands, holds key tables, and parses .tmux.conf.
-* [zz-protocol crate](zz-protocol.md) - The stable, versioned wire vocabulary (IDs, framing, control messages, packed terminal lanes, and mux snapshots) shared by every zz client and the daemon.
-* [zz-terminal crate](zz-terminal.md) - The per-pane terminal engine that owns a PTY child and every libghostty-vt object on a worker thread and publishes immutable renderer-neutral frames.
-* [zz-xtask crate](zz-xtask.md) - Workspace build task that assembles and validates desktop CEF bundles across Linux, macOS, and Windows.
-* [zz crate (the ala client)](zz.md) - The long-lived ala desktop client, linking zz-cli for CLI dispatch, daemon spawning, and terminal attach, and hosting terminal, Chromium browser and agent chat panes, with the flip button that switches a pane between the Claude Code or Codex CLI and its chat.
+* [ala-cef crate](ala-cef.md) - CEF off-screen browser hosting, cross-platform input and frame types, profiles, and optional Chrome data import.
+* [zz-cli crate](zz-cli.md) - Headless executable, CLI dispatch and daemon startup shared with the desktop app, remote host targeting and owned updates.
+* [zz-client crate](zz-client.md) - Renderer-independent client state, input routing, scrollback, layout and presentation rules shared by zz clients.
+* [zz-daemon-client crate](zz-daemon-client.md) - Command and interactive connections, local and remote routes, host discovery, identity and process facts shared with the server.
+* [zz-daemon crate](zz-daemon.md) - Server ownership of mux state, PTYs, agent runtimes, connection dispatch and per-client publication.
+* [zz-mux crate](zz-mux.md) - The mux model, cell layout, tmux command execution, target resolution, config parser, formats and change journal.
+* [zz-protocol crate](zz-protocol.md) - Shared Rust types and codecs for daemon messages, terminal frames, layout, agent chat, command discovery and keys.
+* [zz-terminal crate](zz-terminal.md) - Terminal session actors, PTY and libghostty-vt ownership, and the renderer-independent viewport, input and appearance types.
+* [zz-xtask crate](zz-xtask.md) - Build and validation commands for desktop CEF bundles on Linux, macOS and Windows.
+* [zz desktop crate](zz.md) - Native desktop startup, daemon connections, workspace reconciliation, terminal painting, browser sessions and agent chat.
 <!-- okf:listing:end -->
 
 Workspace members without a crate page here: `ala` and the `ala-*` crates (our ala, see

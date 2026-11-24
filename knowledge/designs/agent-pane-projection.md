@@ -1,86 +1,15 @@
 ---
 type: Design Plan
-title: Agent pane text projection
-description: "Removed 2026-10-23 with the Agent pane. Every Agent pane owned a PTY-free shadow TerminalSession fed with a text projection of its transcript (prompt between OSC 133 A/B and C, reply as output, D plus BEL at turn end), so capture-pane, show-last-output, pipe-pane, and activity/bell alerts worked on agent panes with no new verbs. Agents now run in real terminal panes, which the tmux read verbs already cover."
-status: Superseded (2026-10-23; removed with the Agent pane, see designs/agent-lens.md)
+title: "Shadow terminal for agent panes (superseded)"
+description: "SUPERSEDED: Agent capture reads chat events directly."
+status: "Superseded 2026-10-23"
+resource: crates/zz-daemon/src/agent/capture.rs
 tags:
 - agent
 - terminal
 - tmux-compat
 - daemon
-timestamp: 2026-10-23T00:00:00-03:00
+timestamp: 2026-11-24T00:00:00-03:00
 ---
 
-> **Superseded 2026-10-23.** The Agent pane is gone, and this projection went with it: the shadow
-> terminal, `PaneLane::project` and `AgentPublisher::feed_agent_pane_text` were deleted in
-> `e0608066e`. Claude Code and Codex now run in ordinary terminal panes, so `capture-pane`,
-> `show-last-output`, `pipe-pane` and the bell work on them as on any terminal, and the GUI draws an
-> [agent panes](/concepts/agent-panes.md) over them ([design](/designs/agent-lens.md)). The rest of
-> this page is history.
-
-# Why
-
-zz's Agent panes were not terminals, so `capture-pane -p -t %agent` answered
-`PaneExited`, `pipe-pane` had nothing to tap, and `alert-bell`/`monitor-activity` never fired for
-a turn that finished. `agent-send --wait` covers request/reply; this makes the whole tmux read
-grammar work on an Agent pane too.
-
-# Mechanism (shipped 2026-08-26)
-
-- **A PTY-free terminal per agent pane.** The `PaneKindSnapshot::Agent` arm of the daemon effect
-  loop (`resource: crates/zz-daemon/src/daemon.rs`) creates
-  `TerminalSession::spawn_empty_with_appearance` (the `-E` surface), sizes it from the layout
-  cell (`MuxEngine::pane_geometry`), inserts it into `inner.terminals`, and watches it like any
-  other terminal. It publishes `SessionStatus::Running` forever, so the watcher never closes the
-  pane; `kill-pane` removes it with the pane like any terminal.
-- **The feed.** `TerminalSession::feed(bytes)` (`resource: crates/zz-terminal/src/session.rs`) is
-  a control-queue `Command::Output`; the empty-pane worker writes it to the VT, marks output
-  activity, publishes a content frame, hands the bytes to the pane's shard sink, and — because the
-  worker now registers the bell callback — a fed BEL raises `TerminalEvent::Bell`. Sessions with
-  a real child ignore the command.
-- **The projection.** `PaneLane::project` in `AgentFanout::accept`
-  (`resource: crates/zz-daemon/src/agent/fanout.rs`) turns stream items into bytes in order:
-  `TurnStarted` emits `OSC 133;A` `> ` `OSC 133;B` *prompt* `OSC 133;C` (the prompt text was
-  remembered by `prompt_with_waiter` and is popped when its turn actually starts, so a queued
-  prompt lands after the running turn's output); `agent_message_chunk` text is output with
-  LF→CRLF, and a chunk with a new message id starts a new paragraph; `PromptFinished` emits
-  `OSC 133;D;<0|1>` and a BEL; `PermissionRequested` prints a `[zz] permission requested` line and
-  rings. `SessionReset` clears the screen and scrollback, and while a restoring reset replays
-  history, each replayed `user_message_chunk` is framed like a live prompt, so a restarted or
-  switched pane reads the same as one that ran live. Thoughts and tool calls are not projected. The
-  bytes leave `accept` after the lane lock drops, through `AgentPublisher::feed_agent_pane_text`,
-  which resizes the shadow to the current layout cell when it changed.
-
-# What it buys
-
-| Surface | Status |
-| --- | --- |
-| `capture-pane` (any flags, copy-mode, search) | Works — gated only on `inner.terminals` |
-| `show-last-output` / `send-last-output` | Works — the kind guard accepts Agent panes; a turn is a command |
-| `show-agent-permission`, `#{agent_state}`, `#{agent_pending_permission}` | Read the daemon's agent state directly; permission JSON comes from `AgentPaneWire`. |
-| `monitor-activity`, `monitor-silence`, `alert-activity` | Works via `mark_output_activity` |
-| `alert-bell` | Works — BEL at turn end and on permission requests |
-| `pipe-pane` | Works: the surface worker feeds the pane sink's pipe route; `-I` has nothing to write to |
-| `send-keys` / `send-text` into an agent pane | Refused as before (`resolve_input_sinks` checks kind before the terminal map; `send-text` keeps its Terminal-only guard) |
-
-# Hazards and how they were closed
-
-1. **Frame publication.** `visible_terminal_panes` now excludes Agent panes, so clients never
-   receive `TerminalViewport`/`TerminalPatch` frames for the shadow and never attach a view to it.
-2. **Geometry.** The daemon resizes the shadow from `pane_geometry` at creation and before each
-   feed when the cell changed; pixel sizes are zero (only kitty graphics care).
-3. **Control mode.** `control_route_panes` skips Agent panes, so their shard sinks never feed
-   `%output` to unadorned `-C`/`-CC` clients.
-4. **Memory.** One libghostty grid plus the session's `history-limit` per agent pane, holding
-   only assistant text — small next to the replay ring and journal. The standing decision in
-   [session persistence](/concepts/session-persistence.md) stands: the daemon keeps raw items; the
-   projection is a render, not a transcript store.
-5. **Empty facts.** `pane_pid`/`pane_tty`/`pane_current_command` stay empty for agent panes.
-6. **The TUI card.** The TUI still paints its static Agent card; rendering the projection there
-   is the obvious follow-up now that it exists.
-
-# Related
-
-- [Agent panes](/concepts/agent-panes.md) and its [design](/designs/agent-lens.md)
-- [Daemon-owned agent runtime](/designs/agent-daemon-runtime.md)
-- [tmux superset roadmap](/designs/tmux-superset-roadmap.md)
+The former agent pane fed a text projection and shell integration markers into a second terminal session to serve tmux read commands. Current agent panes render capture text from chat events in `agent::capture::chat_text`. See [agent panes](/concepts/agent-panes.md) for the current commands.

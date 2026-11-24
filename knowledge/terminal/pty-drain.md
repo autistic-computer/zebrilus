@@ -4,17 +4,17 @@ title: PTY drain topology (the IO fast path)
 description: How macOS keeps its tuned inline PTY actor while Linux reads idle panes on their shard and lends busy ones to a bounded gather stage that overlaps reads with VT parsing; includes the probe and benchmark results behind each platform choice.
 resource: crates/zz-terminal/src/session.rs
 tags: [pty, throughput, drain, spin-bridge, poll, benchmark, session]
-timestamp: 2026-10-03T22:15:00Z
+timestamp: 2026-11-24T00:00:00Z
 ---
 
 # Overview
 
-`run_terminal` in `session.rs` is the terminal actor. It owns the libghostty-vt state (see
-[libghostty-vt](/terminal/libghostty-vt.md)), command handling, and snapshot publishing.
-macOS and other Unix targets drain the PTY inline with the actor. Linux reads an idle pane on
-its shard too, and lends a busy one to a bounded gather thread per shard, which reads while
-the actor parses the previous batch. Windows keeps the
-portable blocking-reader path. Each platform keeps libghostty state on the actor thread.
+`PaneActor` owns live libghostty state, commands and frame publication. In
+`crates/zz-terminal/src/session/`, `pane_actor.rs` implements its turns and
+`shard.rs` drives multiple actors on one thread. The dedicated-thread path uses
+`run_terminal` in `session.rs`. macOS drains the PTY inline. Linux starts an idle
+pane on the shard and can lend a busy PTY to a gather thread, overlapping reads
+with parsing. Windows uses a blocking reader. See [libghostty-vt](/terminal/libghostty-vt.md).
 
 Benchmarked 2026-07-28 (`bench/`, Mac16,5, 180×50, medians of 5 hyperfine runs):
 
@@ -132,9 +132,9 @@ once per 256 KiB turn.
 
 # The code, piece by piece
 
-All symbols live in `crates/zz-terminal/src/session.rs`. The compile-time split keeps the
-macOS inline path under `cfg(all(unix, not(target_os = "linux")))`, selects
-`DirectReader` and `PtyGather` on Linux, and retains `read_pty` for non-Unix targets.
+Within `crates/zz-terminal/src/`, `session.rs` defines the drain limits, `DirectReader`,
+`PtyGather`, `PtyWriter` and the non-Unix `read_pty`.
+`session/pane_actor.rs` selects the reader for each platform and processes its output.
 
 ## The Linux gather pipeline (`DirectReader`, `PtyGather`)
 
@@ -215,67 +215,17 @@ writes that pipe at most once until the shard drains it.
 
 ## The macOS inline spin bridge (`Wake::PtyReadable` arm)
 
-The constants carry their own justification:
+In `PaneActor::on_readable_with_spin`, a burst under 1 KiB returns to the poller
+when the queue empties. At or above 1 KiB, the actor may retry a nonblocking read
+if only this pane is ready. A successful retry doubles the pane's spin budget,
+up to 512 on macOS. An exhausted budget halves it down to 8. During retries the
+actor checks elapsed time and checks for competing work every 32 spins.
 
-```rust
-/// A burst at least this large is a saturated stream, not interactive echo;
-/// only then is an empty queue worth bridging with spin retries.
-const PTY_BRIDGE_THRESHOLD_BYTES: usize = 1024;
-/// Nonblocking read retries that bridge a saturated producer's ~µs kernel
-/// queue refill gap before giving up and sleeping in poll(2). Probed on
-/// Mac16,5/macOS 27: blocking reads 218 MB/s, poll-per-KiB 136, spin 64/256/
-/// 512 → 281/332/348. FIONREAD-gated spins (the 2026-07-27 "7x worse" scar)
-/// never observe the refill and are NOT the same thing.
-const PTY_BRIDGE_SPIN_MAX: u32 = 512;
-const PTY_BRIDGE_SPIN_MIN: u32 = 8;
-```
-
-The budget adapts per pane: `bridge_spins` starts at 512, halves on every spin-out (floor 8)
-and doubles on every read that a spin bridged. The drain turn itself:
-
-```rust
-let mut burst = 0_usize;
-let mut spins = 0_u32;
-let turn_started = Instant::now();
-loop {
-    match rustix::io::read(&drain_fd, &mut read_buffer[..]) {
-        Ok(0) => { reader_eof = true; break; }
-        Ok(length) => {
-            terminal.vt_write(&read_buffer[..length]);
-            output_pending = true;
-            if spins > 0 { bridge_spins = (bridge_spins * 2).min(PTY_BRIDGE_SPIN_MAX); }
-            burst += length;
-            spins = 0;
-            if burst >= PTY_DRAIN_TURN_BYTES             // service commands
-                || turn_started.elapsed() >= PTY_DRAIN_TURN_TIME { break; }
-        }
-        Err(rustix::io::Errno::INTR) => {}
-        Err(rustix::io::Errno::AGAIN) => {
-            if burst >= PTY_BRIDGE_THRESHOLD_BYTES {
-                if spins < bridge_spins {
-                    spins += 1;
-                    continue;                             // bridge the refill gap
-                }
-                bridge_spins = (bridge_spins / 2).max(PTY_BRIDGE_SPIN_MIN);
-            }
-            break;                                        // interactive, or burst over
-        }
-        Err(_) => { reader_eof = true; break; }           // EIO: slave closed
-    }
-}
-```
-
-The two guards are the whole latency story: an interactive echo (burst < 1 KiB) hits the
-first `EAGAIN` and falls straight back to the poll sleep . an idle pane burns nothing .
-while a saturated stream stays hot. The turn budget is bounded twice: in bytes
-(`PTY_DRAIN_TURN_BYTES`, 256 KiB ≈ 0.8 ms at the release bench's ~320 MB/s cat-ascii
-rate) and, since 2026-08-19, in wall time (`PTY_DRAIN_TURN_TIME`, 1 ms). The byte bound
-is the fast-path break; the time bound is what the actor's 2 s command budgets actually
-assume, and it holds even when the parser runs far below the byte bound's assumed rate —
-under loaded parallel test runs with a Zig `Debug` VT build, a single 256 KiB turn was
-observed stretching to ~2.8 s (that figure is the dev-profile daemon test environment
-under CPU contention, not the release bench), blowing every capture timeout behind it
-before the time bound existed.
+A turn yields after 256 KiB, after 1 ms, or when the shard needs another turn.
+The wall-time check matters when parsing slows down. Before it was added,
+a 256 KiB turn under CPU contention took about 2.8 s in a Zig Debug daemon test
+and exhausted the two-second capture budget. At the release benchmark's
+320 MB/s rate the same byte budget took about 0.8 ms.
 
 ### Why the budget adapts: the loaded-host collapse (2026-09-28)
 
@@ -350,37 +300,20 @@ only return `EAGAIN`.
 
 ## The 16 ms gate (bookkeeping moved out of the hot loop)
 
-v2's other mistake was running per-burst bookkeeping per kilobyte. Now `output_pending`
-is the only thing the drain sets; the top of the loop owns the rest:
+`PaneActor::on_deadline` batches pending output at `CONTENT_PUBLISH_STALENESS`
+(16 ms) for watched panes and `UNWATCHED_NOTIFY_INTERVAL` (100 ms) for unwatched
+panes. EOF, synchronized-output expiry, a due echo, a pending window reply or a
+metadata hint can trigger earlier publication. On Unix it also flushes the PTY
+writer and drains terminal replies when the writer is ready, before the publish
+gate. A backlogged writer preserves byte order.
 
-```rust
-if output_pending
-    && (reader_eof || last_content_publish.elapsed() >= CONTENT_PUBLISH_STALENESS)
-{
-    drain_effects_if_writer_ready(&effects, &mut writer)?; // pty query replies
-    let output_screen = terminal.active_screen()?; // FFI . once per frame now
-    /* note_output for every view, reconcile_view_screen, search debounce */
-    publisher.publish(snapshot(/* Content */)?);
-    last_content_publish = Instant::now();
-    output_pending = false;
-}
-```
+`VtWriteDiagnostics` accumulates parsed bytes, calls and elapsed microseconds and
+emits at publication. To time parsing without raw PTY byte dumps, set
+`zz_terminal::diagnostics=trace,zz_terminal::diagnostics::pty=warn`.
 
-Interactive output still publishes immediately (elapsed is ≥ 16 ms when a pane was quiet);
-a flood pays for effects flushes, view reconciliation, and the snapshot **once per frame
-instead of once per kilobyte**. The gate is also where parse-rate visibility lives: each
-drain site accumulates bytes and elapsed µs into a `VtWriteDiagnostics` local (armed only
-when `zz_terminal::diagnostics` is at trace, a relaxed atomic check per read) and the gate
-emits one `vt_write parsed_bytes= calls= elapsed_us=` line per publish under the
-`zz_terminal::diagnostics::vt` target — the only measurement of `vt_write` itself. Note
-the arming gate is the parent target, which also arms the per-read raw-byte dump under
-`zz_terminal::diagnostics::pty`; to time the parser without drowning in byte dumps, use
-`zz_terminal::diagnostics=trace,zz_terminal::diagnostics::pty=warn`. The trade: terminal query replies (DA/DSR) batch up to
-16 ms mid-flood when the writer is ready; the actor holds replies while prior bytes drain.
-The search-refresh debounce runs from the same deadline sweep. Child status arrives as an event from the per-session
-`zz-child-wait` thread parked in `wait()`, so an idle actor sleeps `IDLE_SLEEP` (1 hour)
-rather than waking on a status tick. The `Wake::Deadline` arm stays empty; the top of the next actor
-turn handles due work, including a 16 ms writer retry.
+The deadline sweep also refreshes search. Child exit wakes the actor separately.
+macOS watches exits with kqueue. Linux uses a pidfd when available and falls back
+to a wait thread. Windows uses a blocking `zz-child-wait` thread.
 
 ## The writer (`PtyWriter`)
 

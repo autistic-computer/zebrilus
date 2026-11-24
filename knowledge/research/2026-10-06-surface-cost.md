@@ -24,7 +24,7 @@ building?
 
 MacBook Pro M4 Max, macOS 27.0, profiling bundles (`cargo xtask bundle-cef --profile
 profiling`) of `e9477ed21` and later commits, each in its own worktree. The driver reused
-`bench/gpui/frames.py` (isolated `HOME` and socket, perl writer at 240 rows/s, 5 s warmup, 20 s
+`bench/ala/frames.py` (isolated `HOME` and socket, perl writer at 240 rows/s, 5 s warmup, 20 s
 window, 3 repeats) with one added scenario, `fixed`: the streaming pane resized to 100x30 beside
 two idle panes. Windows sat on the secondary display (DELL P2725QE, 2688x1512 pt at scale 2)
 through a `window-state.json` that names the display's UUID; without the UUID zz centers the

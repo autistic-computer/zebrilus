@@ -1,9 +1,9 @@
 ---
 type: Design Plan
-title: Artifacts . agent-written HTML in browser panes and inline
-description: "Proposed plan for showing HTML an agent writes. zz html <path> registers the page with the daemon that ran the caller, browser panes load it from a zz://<token>/ scheme whose bytes the daemon sends over the client's existing connection (so it works on ssh hosts), the daemon reloads the pane when a file the page loaded changes, pages get no bridge by default, and --reply grants one call that sends text to the pane that opened the page. In the Agent pane, svg blocks render inline through the mermaid path, and html blocks show code with a Preview toggle that one hidden browser renders as cached images; a click makes that block a live page in place, and Open opens it as a pane. A block opened with html preview shows the picture first and wraps a fragment in a page with the theme colors, which is also what Codex's visualize references become. Replaces the 2026-07-28 userpanes plan."
-status: Built on desktop (2026-10-19; zz html, zz:// serving, reload, zz.reply, svg blocks, html Open, Preview and live blocks, html preview blocks and Codex visualize references; previews live in the agent chat since 2026-11-01 and were checked live end to end on 2026-11-15; since then html preview blocks draw bare with penna's HTML kit and whole documents draw as page frames; iOS draws both as pictures and loads zz:// pages; web and Android not started; since 2026-11-20 a pane keeps one page pane, a finished turn keeps a row for each page it edited, Antigravity's user-facing page writes open the pane, and Grok gets the agent context as session rules, desktop only)
-resource: libs/ala-cef/src/cef_runtime.rs
+title: "HTML pages and inline chat previews"
+description: "The daemon serves HTML files to browser panes. Desktop, iOS and web also render inline chat previews."
+status: "Implemented on desktop, iOS and web with different capabilities. Android shows inline HTML as code."
+resource: crates/zz-daemon/src/daemon/artifacts.rs
 tags:
 - browser
 - cef
@@ -13,76 +13,14 @@ tags:
 - agent-pane
 - artifacts
 - design-plan
-timestamp: 2026-11-20T00:00:00-03:00
+timestamp: 2026-11-24T00:00:00-03:00
 ---
 
 # Overview
 
-Claude's artifacts, ChatGPT's canvas and MCP Apps all do one thing: the model writes HTML and the
-host shows it in a sandboxed frame next to the conversation. zz has Chromium in every desktop
-window, and every agent running in zz already knows HTML and the shell. So the feature is: an agent
-writes a file, runs `zz html`, and a browser pane opens beside it showing the page, and shows it
-again each time the agent rewrites the file.
+`zz html <path>` opens a file written on the daemon's machine in a browser pane. Opening a directory serves its index and relative assets. Desktop and iOS clients fetch the bytes over their existing daemon connection, including when the opener runs on a remote machine. The pane reloads when a served file changes. An inline page can be supplied on standard input.
 
-```sh
-cat > /tmp/report.html <<'EOF'
-<!doctype html><title>Bench</title> ...
-EOF
-zz html /tmp/report.html
-```
-
-The model learns nothing new: HTML, a file path, one verb. Smaller drawings stay in the
-conversation: `svg` and `html` blocks in the agent chat preview inline (see Inline previews).
-
-# What changed since the July plan
-
-The 2026-07-28 version of this page planned "userpanes": HTML panes users install under
-`~/.config/zz/panes`, with a `window.zz` bridge that could run any verb. Agent canvases were one
-use among several. Three things it assumed no longer hold.
-
-1. **The file is not on the client's disk.** It served `zz://file/<abs-path>` from the GUI's own
-   filesystem. Since then zz attaches to daemons on other machines over ssh. An agent on a devbox
-   writes `/tmp/report.html` there, and the Mac running Chromium has no such file. The bytes have
-   to come from the daemon that ran the agent.
-2. **The verb catalog is not a safe boundary.** The plan gave pages `zz.run(cmd)` with no
-   allowlist, because the catalog had no exec verbs. It has two now: `run-shell`
-   (`crates/zz-daemon/src/daemon.rs:4514`) and `send-keys` into a shell pane. A page an agent
-   wrote, or one a prompt injection wrote through the agent, would get a shell. Pages get no
-   general bridge.
-3. **Reload is the main loop.** It deferred file watching. An agent writes, looks, rewrites; a
-   page that needs a manual reload after every write is a page agents stop using.
-
-The installed-panes registry and the general bridge are out of this plan (see Deferred). What
-stays from July: an artifact is a browser pane, not a new pane kind.
-
-## Goals
-
-* `zz html <path>` opens a page an agent wrote, on local and ssh hosts alike.
-* The pane reloads when a file the page loaded changes.
-* A page reaches its own files and the network, and nothing in zz unless the opener asks for
-  replies.
-* With `--reply`, the page can send text to the pane that opened it, so an agent can ask a
-  question as a form.
-* `svg` and `html` blocks in the Agent pane preview inline and cost an image while scrolling.
-* No new pane kind, no new escape sequence, one small protocol addition.
-
-## Non-goals (v1)
-
-* User-installed panes, a manifest, sharing or packaging.
-* Any verb from page JS other than the reply.
-* Web and iOS clients (see Other clients).
-* Pushing data into a live page without a reload.
-
-# Decision: a browser pane on a zz:// URL
-
-An artifact is `PaneKind::Browser` with a tab on `zz://<token>/<file>`. `BrowserDescriptor`
-(`crates/zz-protocol/src/snapshot.rs:205`) holds tabs as plain URL strings, so splits, tabs,
-titles from `<title>`, and reattach work as they do for any page. Floats come free:
-`new-pane --kind browser` already makes one, and every non-modal float draws as a
-[PiP](/designs/pip-panes.md).
-
-Rejected: an HTTP server on the daemon's loopback, reached through browser egress. Egress is a
-setting and is off on Windows, and every daemon would open a port.
+The daemon registers each page under its own `zz://<token>/` origin. Replies to the opening pane require `--reply`. A chat also supports inline HTML and SVG previews. The desktop, iOS and web implementations are described under [Other clients](#other-clients).
 
 # The verb
 
@@ -117,18 +55,7 @@ so agents find it through `zz tools browser`. The handler and the table live in
 
 # Serving
 
-**The table.** The daemon keeps the artifacts in memory beside the mux state:
-
-```rust
-struct Artifact {
-    root: ArtifactRoot,                  // File(PathBuf) | Dir(PathBuf) | Inline(Bytes)
-    opener: Option<PaneId>,
-    reply: bool,
-    served: HashMap<PathBuf, Stamp>, // what the page loaded, for reload
-    replied: Option<Instant>,
-}
-artifacts: HashMap<ArtifactToken, Artifact>
-```
+The daemon's `Artifacts` registry in `crates/zz-daemon/src/daemon/artifacts.rs` indexes tokens, roots and the open page pane per opener. Each entry keeps the file, directory or inline bytes, opener pane, reply permission, served paths and their last known stamps.
 
 The token is 128 random bits in lowercase hex. It is the URL's host, so each artifact is its own
 origin and pages can't read each other's storage, and it is the only name an artifact has, so a
@@ -648,4 +575,4 @@ chart's axis is cut off at the bottom; the live page in a browser pane shows it 
 * Page rows on the thin clients, and the agent context for Cursor.
 * Claude Code's own `Artifact` tool: it is not offered in the `-p` stream-json mode zz runs it in
   (checked on 2.1.329, 2026-11-20), so Claude pages go through `zz html` and the rows.
-* iOS and web, as above.
+* Android inline HTML previews. The iOS and web behavior and recorded verification limits are described under [Other clients](#other-clients).

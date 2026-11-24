@@ -1,132 +1,69 @@
 ---
 type: Rust Crate
 title: zz-cli crate
-description: Headless CLI, daemon entrypoint, and terminal attach client shared with the desktop app.
+description: Headless executable, CLI dispatch and daemon startup shared with the desktop app, remote host targeting and owned updates.
 resource: crates/zz-cli/src/lib.rs
 tags: [crate, cli, daemon, tui, headless, packaging]
-timestamp: 2026-11-23T00:00:00-03:00
+timestamp: 2026-11-24T00:00:00-03:00
 ---
 
-# Overview
+# Startup and commands
 
-`zz-cli` provides the CLI verbs, `zz daemon`, `zz proxy`, `zz fleet`, and `zz attach`.
-The `zz-cli` package builds the headless `zz_cli` binary; the `zz` package builds the
-ala desktop binary `zz` and links the shared `zz-cli` library for CLI dispatch,
-daemon spawning, and terminal attach through the `zz-tui` library.
+`crates/zz-cli/src/main.rs` builds the headless `zz_cli` launcher.
+`crates/zz-cli/src/lib.rs` provides `run_startup` for both that executable and the desktop
+app. The launcher handles local verbs, starts the daemon when needed, executes command chains,
+or enters [the TUI](/designs/tui-client.md) through `zz-tui`. `control_mode.rs` implements
+the tmux-style `-C` and `-CC` stdio front end.
 
-Desktop bundles install `zz_cli` as `cli`: `lib/zz/cli` on Linux and
-`Contents/MacOS/cli` on macOS. The `zz` symlink on PATH points to that `cli` file.
-Headless archives instead ship the same binary as `zz`, alongside the MIT and Apache licenses.
-The release workflow (`.github/workflows/release.yml`) builds the Linux headless binary with
-`cargo zigbuild --target <arch>-unknown-linux-gnu.2.28`, so it needs glibc 2.28 or newer
-(Debian 10, RHEL 8) and only `libc`, `libm`, `libpthread`, `libdl` and `librt`. The desktop
-tarball, AppImage and deb are still built natively on Ubuntu 24.04.
+macOS and Linux desktop bundles install the headless launcher as `cli` next to the GUI
+executable. Headless archives ship it as `zz`. The GUI can spawn its sibling launcher as the
+daemon, while a headless installation uses its own binary. `zz app` opens the desktop
+application where installed. See [desktop packaging](/crates/zz-xtask.md).
 
-The `daemon_executable` rule makes a GUI spawn the sibling `cli` and the headless
-binary spawn itself. Sessions survive when the desktop client quits.
-The spawner hands the daemon's `Child` to a `zz-daemon-reaper` thread that waits on it,
-so a daemon that stops while the GUI or an attach client is still running does not stay
-behind as a zombie.
-`zz app` opens the desktop app beside the headless binary, or explains that the
-app is not installed on a headless host.
+```sh
+zz --help
+zz tools --skill
+zz protocol-version
+zz build-info
+```
 
-The headless dependency tree contains no GUI crates. CI's "Headless binary stays
-GUI-free" step checks the normal dependencies with `cargo tree -p zz-cli`.
-Install it on Linux or macOS with `install.sh --headless`, or run
-`curl -fsSL https://zzmux.sh/install.sh | sh -s -- --headless`.
-The installer puts `zz` in `~/.local/bin`; `--prefix <dir>` selects another prefix.
+## Selecting a machine
 
-# Global flags and other machines
+Global `--host NAME` goes before the verb. A configured host name selects its endpoint.
+An unconfigured name can be an SSH destination. Arguments after `--` belong to the child
+command. For example, `zz run-pane -t %3 -- ls --help` runs the requested help in that pane.
 
-`application_arguments` reads zz's own flags only before the verb: `--host NAME` / `--host=NAME`
-there, and `--socket` there or after `daemon`, `proxy` and `app` (the launcher and the remote
-start scripts pass it in that spot). Nothing after `--` is a zz flag, so a nested
-`zz run-pane -t %3 -- zz --host xps inspect -a` or a `-- --host 0.0.0.0` payload stays intact;
-`diagnostics::application_args_from` and `verbose_requested` stop at that `--` too, so a
-`-- cargo test --verbose` payload keeps its word and leaves verbose logging off, and a verb's
-`--help` counts only before it, so `run-pane -t %3 -- ls --help` runs `ls --help`.
-`zz --help` lists the global flags and every catalogued verb; `zz -h` stays the pinned tmux banner.
+```sh
+zz fleet add build user@buildbox
+zz --host build list-sessions
+zz --host all list-panes -a --json
+zz --host build run-pane -t %3 -- pwd
+```
 
-`configured_host_endpoint` resolves `--host` through `zz_daemon_client::resolve_fleet_host`, which
-the raw TUI shares: a `host-NAME` line wins, otherwise the value is an ssh destination, and a value
-starting with `-` is refused. `local` and `all` are reserved. Before that, `names_this_machine` drops
-a `--host` whose name `zz/config` does not list and that matches this machine's hostname (whole or
-up to the first dot, any case), so a driver that keeps `<host> %N` pairs can address its own host;
-a configured `host-NAME` still wins. `--host all` re-runs the CLI once per
-configured host in parallel for a chain whose every command passes `!spec.mutates` (`inspect`,
-`list-hosts`, `show-last-output`, `protocol-version` and `--version` count as read-only). The parent checks the
-chain once first, so an unknown verb or a usage error prints a single time with its own exit
-status, and `events`, `wait-pane`, `fleet` and `tools` are refused with what they do and
-`run it per host with --host NAME`. Each child gets `ZZ_SSH_BATCH=1`, so every ssh it starts runs with
-`BatchMode=yes`, no security-key identities and a 3 s connect timeout, and on unix it also runs in its own session with
-no controlling terminal; a host that needs a password, a touch or a host-key answer fails with the
-hint below. Text lines get a `NAME: ` prefix, JSON lines under
-`--json` get `host_name` first (`from_host` when the row has its own `host_name`, as `list-hosts`
-rows do), and the exit is 1 when any host failed. Bare `zz --host NAME` runs `new-session -A`
-there.
+For a remote mutation whose target would default to the caller's pane, window or session,
+supply `-t`. Moves with a default source may also require `-s`. Creating a session or an
+attached window establishes a target for the rest of that command chain.
+`--host all` accepts eligible read-only chains, runs hosts in parallel with unattended SSH,
+identifies each host in the output and reports failure if any host failed.
+`untargeted_host_input` and `SINGLE_HOST_VERBS` in `lib.rs` define the exceptions.
+For a remote installation or login problem, see [client routes](/crates/zz-daemon-client.md)
+and [remote installation](/crates/zz-daemon.md#installing-zz-on-a-remote).
 
-A host's daemon does not know the name the caller reached it by, so the commands in its hints
-(`read %5's reply with: zz agent-send -t %5 --wait ''`) would run on the caller's machine as
-written. `with_host_commands` puts `--host NAME` after every `zz` that a catalogued verb follows,
-in the stderr a host command relays (`print_command_error`) and in its error message
-(`with_host_hint`); stdout is left alone, since it carries pane and chat text.
+## zz update and the owned copy
 
-A plain `zz --host NAME agent-send -t %N TEXT` run inside a pane (`ZZ_PANE` set) is offered to the
-local daemon first as `agent-send --relay NAME ...` (`relay_agent_send`), with piped stdin read
-into TEXT beforehand so both routes get it. A usage error back means the daemon did not take it
-(an older daemon, a caller that is no chat, a host it cannot reach unattended), and the CLI goes
-on to the host itself; any other answer is the command's result.
+`zz update --check` reports the installed and daemon versions. `zz update` installs the
+headless release in the application's `owned/` data directory. `--version V` selects an
+explicit release, `--beta` selects the beta channel and `--remove` removes the owned copy.
+Named hosts and `-a` select remote and fleet updates. In zz Dev the update command is disabled.
+The macOS app bundle has its own updater.
 
-Over `--host`, `untargeted_host_input` exits 2 for any command without `-t` whose spec mutates and
-whose `-t` names a pane, window or session (input verbs, `kill-*`, `respawn-*`, `split-window`,
-`pipe-pane`, `html`, `set-option -p`/`-w` and the rest), since nothing there is the caller's; the
-message asks for `-t %N`, `-t @N` or `-t NAME` by that kind, and for `run-pane` it also names
-`zz --host NAME run-shell 'COMMAND'`, which needs no pane. `join-pane`, `move-pane`, `break-pane`,
-`move-window` and `swap-window` also need `-s`, because their source defaults to the current pane or
-window. `new-window`, `attach`, `run-shell`, `if-shell`, `source-file` and `-g` forms stay allowed:
-their `-t` is a destination or only a format context. A chain stops being checked at `new-session`
-or at `new-window` without `-d`, since the commands after it land in what it made. The check reads
-`--name=value` as the daemon does, and when the arguments do not parse it refuses unless a `-t`
-comes before `--`.
+`crates/zz-config/src/owned.rs` takes an installation lock, verifies the archive checksum,
+runs the staged binary's `build-info`, swaps the binary and writes the metadata last.
+A newer owned copy can take over a packaged Unix launch. Bootstrapping a daemon also
+checks both peers' compatibility. `ZZ_OWNED_COPY=0` disables handover.
+`zz update --restart` additionally requests a daemon restart, which ends its sessions.
+See `crates/zz-cli/src/update.rs`, [process model](/architecture/process-model.md) and
+[wire epochs](/protocol/wire-protocol.md#wire-epochs).
 
-`host_connect_failure` turns endpoint errors into the fix, from the cold connect and from the first
-exec that verifies a kept forward alike (the chain, `--kill-server`, `events`, `-C`, `--progress`,
-the host-local passthrough and the raw TUI): `zz fleet install NAME` for a missing zz,
-`--restart-daemon` for a host on an older protocol, "update zz on this machine" for a newer one,
-`ssh DEST` once or `zz fleet sync` for a refused login, `ssh DEST` once for an untrusted host key,
-else `can't reach NAME: <reason>`, with `; known hosts: a, b` when NAME has no host line. DEST is
-the login zz tried (`user@box`, or `ssh://user@box:PORT` with a port). OpenSSH folds every failure
-into exit 255, so login and host-key refusals are read from the reason the endpoint built from
-ssh's stderr.
-
-# zz update and the owned copy
-
-`zz build-info` prints five `key=value` lines: `version`, `epoch`, `revision`,
-`min-client-revision` and `min-daemon-revision`. `zz update` installs a release's headless archive
-as the zz-owned copy in `<data dir>/zz/owned/` through `zz_config::owned`: an OS file lock on
-`.lock`, a sweep of `.staging-*` and `zz.old-*`, a refusal for a version not newer than the running
-zz (or already in the copy), the archive checked against its `.sha256`, the binary unpacked into
-`.staging-<pid>/` and run with `build-info` and `ZZ_OWNED_COPY=0`, then a swap that removes
-`build-info` first and writes it last. `ZZ_UPDATE_BASE_URL` replaces the release download origin.
-`--remove` deletes the copy, `--check` reports, `--version V` and `--beta` pick the target, and
-`--restart [-y]` sends `restart-server` afterwards, or `kill-server` to a daemon that lacks it.
-It refuses on zz Dev; inside a macOS app bundle it installs and removes nothing, since that
-Mac's zz updates through the app.
-
-Host names, `-a` (this machine and every host) and `zz --host NAME update` reach other machines in
-parallel, one line each: an ssh host runs `zz update --version V` in its own CLI through
-`remote_cli_output`, a tailnet host's daemon gets `update-server --version V` (or `--remove`) and
-`restart-server`, and a host whose zz knows neither answers "zz on NAME is too old to update
-itself; update it there once". A host is sent this machine's version unless `--version` or
-`--beta` says otherwise; this machine takes the newest release on its channel. `--check` reads
-each daemon's `#{zz_version}`, `#{zz_revision}`, `#{server_sessions}`, `#{zz_owned_version}` and
-`#{zz_owned_epoch}`.
-
-On Unix `run_startup` hands over to a newer owned copy before anything else when zz-cli's own
-`main` called it; see [process model](/architecture/process-model.md#the-zz-owned-copy). The
-`daemon` verb serves with `Daemon::serve` and, when it returns `Stopped::Restart`, execs the
-successor with `--start-lock-fd` (Unix) or starts it with `--retry-bind` (Windows).
-
-`zz tools` in every form is answered by the CLI from the guide text in `zz-daemon`, so it needs no
-daemon and never prints an older daemon's guide. `just tools skill` writes
-`.agents/skills/zz-workspace/SKILL.md` from `zz_cli tools --skill`.
+`cargo tree -p zz-cli -e normal` shows what the headless binary links.
+`install.sh --headless` selects a headless installation.

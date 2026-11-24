@@ -4,92 +4,46 @@ title: ala
 description: ala, our GPUI fork (libs/ala/crates/ala, ala-macros, ala-platform) - where its code lives, how to change it or pull an upstream fix, and what zz changed. gpui-component is not a dependency.
 resource: libs/ala/crates/ala/Cargo.toml
 tags: [ala, gpui, reference, vendored]
-timestamp: 2026-11-10T00:00:00Z
+timestamp: 2026-11-24T00:00:00Z
 ---
 
 # Overview
 
-ala is zz's UI framework: GPUI, split out of upstream on 2026-10-05 and owned since. It spent
-four days as its own repository, [`demfabris/gpui`](https://github.com/demfabris/gpui), moved
-into this repo on 2026-10-09 with its history (`git subtree add` of `4e4a4951`), and the same day
-went from 22 crates to three. On 2026-10-29 it moved out again, to
-[`autistic-computer/ala`](https://github.com/autistic-computer/ala) (the old `demfabris/gpui`,
-transferred), and zz carries it back as a git subtree in `libs/ala`: edited in place, committed with
-the zz code that needs it, and synced with `just libs push ala` and `just libs pull ala`. The
-widget kit took the same road to [`autistic-computer/penna`](https://github.com/autistic-computer/penna)
-and `libs/penna`. The same day both were renamed after bird anatomy in Latin: zz-gpui became `ala` (wing), with `ala-macros` and `ala-platform`, and zz-gpui-kit became `penna` (feather). Runtime names followed: `GPUI_*` and `ZZ_GPUI_*` environment variables are `ALA_*` and `ZZ_ALA_*`, and the web automation global is `globalThis.ala`. `libs/ala` is its own Cargo workspace, excluded from zz's:
+zz carries [ala](https://github.com/autistic-computer/ala) in `libs/ala` as a git
+subtree with its own Cargo workspace. Edit the subtree alongside its zz callers.
+`just libs push ala` and `just libs pull ala` synchronize the repositories.
 
-
-| Crate | What it holds |
+| Crate under `libs/ala/crates/` | Responsibility |
 | --- | --- |
-| `libs/ala/crates/ala` | gpui core, plus the upstream utility crates it needed, now modules: `collections`, `util` (merged with gpui's own), `shared_string`, `refineable`, `scheduler`, `sum_tree`, `http_client` |
-| `libs/ala/crates/ala-macros` | ala's proc macros and the `Refineable` derive |
-| `libs/ala/crates/ala-platform` | `current_platform` and every backend as a module built only for its target: `macos` with the Metal renderer in `apple`, `linux` (Wayland, X11), `windows` (DirectX), `web`, `ios` (UIKit), `android` (JNI and the NDK), and `wgpu`, the renderer Linux, web, iOS and Android share. One build script compiles the Metal shaders on macOS and the HLSL ones on Windows |
+| `ala` | UI core and shared utilities including collections, scheduler, sum tree and HTTP client |
+| `ala-macros` | Proc macros including the `Refineable` derive |
+| `ala-platform` | Platform selection, native and web backends, Metal, DirectX and wgpu rendering |
 
-zz never depended on the utility crates directly, and each target only ever compiled one
-backend, so the split bought nothing: the utility crates sat on the build's critical path before
-ala could start, and editing a backend still rebuilds only the platform crate. `ios`'s
-`keyboard`, `momentum` and `pinch` modules are plain logic and build everywhere, which is how
-`zz-app` tests them on every OS. Upstream's `zlog`, `ztracing` (a no-op without tracy) and
-`util_macros` were deleted rather than folded, along with upstream's `hello_web` demo and the wgpu
-layout bench. iOS bundle ids and the `ala` data directory kept their names. Since 2026-10-30
-every environment variable ala read under upstream's prefix or zz's (`ZZ_ALA_FRAME_LOG`,
-`ZZ_ALA_BENCH`, `ZZ_BENCH_*`, `ZZ_PATH_DUMP`) has an `ALA_` name instead; the unprefixed test and
-debug knobs it inherited, such as `SEED`, `ITERATIONS` and `LEAK_BACKTRACE`, kept theirs. The
-`ZZ_ALA_*` names left are zz's own, read by its iOS and Android apps. `libs/ala/UPSTREAM.md` maps
-upstream's paths and variable names to ours.
+`libs/ala/UPSTREAM.md` records the GPUI split at `933d8d9381`, the earlier patch
+branch through `5a00ac89a4`, the upstream path map and how to import an individual fix.
+Historical hashes below refer to that archived branch. Use
+`git log -- 'libs/ala/crates/ala*' 'crates/ala*' 'crates/zpui*' zpui ala` to trace the
+renamed directories. The framework's runtime knobs use `ALA_*`. zz owns the
+`ZZ_ALA_*` client knobs. Widgets and surface roles belong to [penna](/references/penna.md).
 
-`git log -- 'libs/ala/crates/ala*' 'crates/ala*' 'crates/zpui*' zpui ala` reaches back to the split. The first
-commit there is upstream at `933d8d9381`, limited to those crates; the next
-89 are the commits that lived on the old patch fork's `zz-patches` branch (tip `5a00ac89a4`),
-replayed under new commit IDs. Upstream fixes come in by hand, when we want them; upstream patches
-name `gpui`, so they need the paths and identifiers mapped to ala's.
+The desktop enables `font-kit`, Wayland and X11 on `ala-platform`. Its macOS and
+Windows backends compile on their respective targets. The web client enables
+`multithreaded` for wasm. The root dev profile builds `ala` at optimization level
+3 and `ala-platform` and `ala-macros` at 2.
 
-Commit IDs cited below come from the old patch fork, which stays up as an archive. The
-same commits exist here with the same subjects.
+**Renderer checks.** `just libs check ala` tests the workspace except `ala-platform`
+and lints the host backend. CI runs `ala-platform`'s full suite on Linux using Mesa
+lavapipe, including screenshot checks in `tests/headless.rs`. The live Wayland
+swapchain test is ignored. macOS and Windows CI run the platform crate's `--test ios`
+suite. Metal and DirectX rendering require separate local checks.
 
-On Linux, `ala-platform` is built with `font-kit`, Wayland, and X11 enabled; the same crate
-selects the native macOS and Windows backends automatically. The web client turns on its
-`multithreaded` feature.
-
-The ala crates sit outside the root workspace, so the root clippy run skips them;
-`just libs check ala` lints them with all features, but only for the host OS. `libs/ala/UPSTREAM.md` has the recipe for cross-checking the
-other backends from macOS. The Android backend checks with the NDK's clang as the C compiler and
-linker (`just android setup` installs it): `cargo clippy --manifest-path libs/ala/Cargo.toml --target aarch64-linux-android -p ala-platform --all-features`.
-Clippy 1.99 reports `missing_const_for_thread_local` on Android for `thread_local!`s that are
-already `const`, so `ala` allows it there, the `android` module allows it, and zz's
-`.cargo/config.toml` allows it for Android targets. Upstream's extras zz never used are gone: screen capture (the `scap` and
-ScreenCaptureKit backends; the `ScreenCaptureSource` API stays and reports unsupported), the
-tracy profiler, and upstream's `#[perf]` test harness (`tooling/perf`). CI's "Test libs" step runs
-every ala test except ala-platform's. The Linux leg runs that crate's whole suite on its
-own step with Mesa lavapipe, a software Vulkan driver (`mesa-vulkan-drivers`, selected with
-`VK_ICD_FILENAMES`), so the wgpu headless renderer's pixel tests run without a GPU. That step
-includes `tests/headless.rs`, which renders a laid-out window through `HeadlessAppContext` and
-`current_headless_renderer` and checks pixels of `capture_screenshot`. The one test that needs a
-live Wayland compositor stays `#[ignore]`d. macOS and Windows run only the plain-logic iOS tests
-(`--test ios`), so the Metal and DirectX renderers still need a local run. Locally on Arch,
-lavapipe is the `vulkan-swrast` package (`/usr/share/vulkan/icd.d/lvp_icd.json`). On an NVIDIA box
-`VK_ICD_FILENAMES` only hides the Vulkan driver: the atlas tests request any backend and take
-NVIDIA's GL one, which fails headless with "Parent device is lost", so also point EGL at Mesa
-(`__EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json`); with both set the
-whole suite passed on 2026-10-19. the SwiftShader ICD that ships with CEF
-(`vk_swiftshader_icd.json` beside `libcef.so`) also passes the suite. With NVIDIA's proprietary driver the
-wgpu tests hung in a parallel run (2026-10-19) and pass with `--test-threads=1`. Two things differ from the
-zz crates:
-
-| What | Where | Why |
-| --- | --- | --- |
-| Upstream's relaxed `[lints]` table | each upstream-derived crate's `Cargo.toml` | cargo allows one shared lint set per workspace, and the workspace one is zz's pedantic set |
-| `opt-level = 2` (3 for `ala`) | `[profile.dev.package]` in the root `Cargo.toml` | an unoptimized renderer makes debug builds too slow to use |
-
-`libs/ala/crates/ala/clippy.toml` empties `disallowed-methods`, since the root list bans `ala::rgb` and
-friends, which cannot resolve inside `ala` itself. `clients/web` has its own workspace and
-depends on the crates by path (`../../libs/ala/crates/ala`).
-
-**`gpui-component` is not a dependency.** It was forked into `libs/penna` and both
-`gpui-component` and `gpui-component-assets` are gone from the workspace and its lockfiles; nothing
-outside ala itself is left. The fork's source revision and per-module port notes live in
-`libs/penna/UPSTREAM.md`, not here.
+On Arch, install `vulkan-swrast` for lavapipe (`mesa-vulkan-drivers` on Ubuntu) and set
+`VK_ICD_FILENAMES` to its ICD JSON. On an NVIDIA host also set
+`__EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json` so atlas
+tests use Mesa for GL. On 2026-10-19 the suite passed with both set, or with the
+CEF SwiftShader ICD. Tests using NVIDIA's proprietary driver hung in parallel and
+passed with `--test-threads=1`. Cross-target compiler and Android NDK setup is in
+`libs/ala/UPSTREAM.md` under **Checking a change**.
 
 # Embedding on iOS and Android
 
@@ -97,39 +51,22 @@ On iOS, `IosPlatform::run` hands `AlaAppDelegate` to `UIApplicationMain`, and al
 other Objective-C classes it needs at launch: `AlaSceneDelegate`, `AlaView`, `AlaViewController`,
 `AlaTextPosition` and `AlaTextRange`. An app's `Info.plist` names `AlaSceneDelegate` as the
 `UISceneDelegateClassName` of its default scene configuration (zz's is `clients/ios/Info.plist`).
-Menu commands dispatch the `ala_ios::MenuCommand` action. `ALA_FRAME_LOG=1` prints frame pacing
+Menu commands dispatch the `ala_platform::ios::MenuCommand` action. `ALA_FRAME_LOG=1` prints frame pacing
 per burst of drawn frames, and `ALA_BENCH=swipe|scroll|drag|fling|sheet[:count]` plays a scripted
 gesture bench from the display link (zz also opens its bindings sheet for `sheet`); both log
 under an `[ala-ios]` prefix.
 
 On Android, the app's `JNI_OnLoad` calls `ala_platform::android::on_load(vm, natives_class, main)`
 with the JNI name of its own class that declares ala's static native methods (zz passes
-`"dev/zz/android/ZzNative"`). That class declares all 28 natives `natives()` in
-`android/bridge.rs` registers, with those signatures, or registration fails; `ZzNative.java` is
-the reference. The activity calls `onCreate(Activity, View, String filesDir, String cacheDir,
-String url, String[] environment)` once its view exists, where `View` is the `SurfaceView` that
-forwards surface, touch, pointer, key and input method events through the other natives, and
-`environment` holds key, value pairs set as environment variables before the app starts. ala calls
-back into the activity by method name, so it has to define these 13:
-
-| Method | Signature |
-| --- | --- |
-| `setLightSystemBars` | `(Z)V` |
-| `setKeyboardVisible` | `(Z)V` |
-| `restartInput` | `()V` |
-| `setKeyRow` | `(Z)V` |
-| `clearKeyRowLatch` | `()V` |
-| `updateSelection` | `(IIII)V` |
-| `setKeepScreenOn` | `(Z)V` |
-| `setBackEnabled` | `(Z)V` |
-| `openUrl` | `(Ljava/lang/String;)V` |
-| `showTextMenu` | `(FF)V` |
-| `setClipboard` | `(Ljava/lang/String;[BLjava/lang/String;)V` |
-| `clipboardText` | `()Ljava/lang/String;` |
-| `clipboardImage` | `()[Ljava/lang/Object;` |
-
-zz's `ZzActivity`, `ZzView` and `ZzInputConnection` in `clients/android/java` implement them;
-`clients/android/README.md` has the rest of the Java side.
+`"dev/zz/android/ZzNative"`). Match the native declarations in
+`clients/android/java/dev/zz/android/ZzNative.java` to `natives()` in
+`libs/ala/crates/ala-platform/src/android/bridge.rs`. A mismatched JNI signature
+fails registration. The activity passes itself, the `SurfaceView`, files and cache
+directories, initial URL and environment key/value pairs to `onCreate`. The
+view and its input connection forward touch, surface, key and IME events. ala
+also calls back into the activity by method name for system bars, keyboard,
+selection, back navigation, URLs, text menus and clipboard. Use zz's
+`ZzActivity.java` for those method signatures.
 
 # Pane renderer changes
 
@@ -213,7 +150,7 @@ Unmatched keys continue through ala's existing input path. The menu call precede
 the window-state lock and ala event callback because menu validation can call back
 into ala.
 
-Each is upstream-able as a small PR; if upstream merges an equivalent, drop it. In branch order:
+Changes carried from the original patch branch include the following.
 
 1. `RenderImage::into_frames` for OSR frame reclamation.
 2. Linux `WgpuDeviceContext` access.
@@ -562,8 +499,10 @@ and `just web build`.
 Pulling a fix from upstream: map the patch's paths and identifiers with the table in
 `libs/ala/UPSTREAM.md`, which also has the `format-patch | sed | git am -3` recipe.
 
-The two rebase sections below are history from the patch-branch era. Their layout sizes and
-test counts still hold.
+The dated checks below describe their respective checkouts. The current WebGL quad
+occupies 52 words (13 RGBA texels). `webgl_record_sizes_match_shader_word_strides` in
+`libs/ala/crates/ala-platform/src/wgpu/wgpu_renderer.rs` checks the Rust size against
+the fixed decoder in `shaders_webgl.wgsl`.
 
 # Rebase checks from 2026-09-12
 
@@ -578,10 +517,10 @@ zoom across touch predictions, direct gestures, viewport bounds and system
 insets, and Wayland blur updates alongside upstream's new frame scheduling.
 Upstream still uses wgpu 29, so zz retains the wgpu 30 patch and shared CEF device.
 
-Include `gpui/profiler` in validation: upstream's new debug overlay constructs a
+The rebase needed `gpui/profiler` validation because upstream's new debug overlay constructs a
 `Quad` and needs zz's `corner_smoothing` and padding fields. Also inspect new
 platform-gated test initializers; a Windows color-emoji test still used the
-removed `dilation` field. WGPU layout tests must expect 42 words for `Quad`,
+removed `dilation` field. At this revision the WGPU layout tests expected 42 words for `Quad`,
 26 for `PolychromeSprite`, and 14 for Linux `SurfaceParams`.
 
 The fork passed 332 ala tests, six Apple tests including Metal pixel comparisons,
@@ -593,7 +532,7 @@ on macOS with Rust 1.97.1. Native Linux and Windows validation needs those hosts
 
 The 59 commits on `zz-patches` (`9b46226e6f`) were replayed onto upstream
 `933d8d93819c749a607e561883855a9b95c79cea` (203 upstream commits) as the branch
-`zz-patches-2026-09-25`, which zz pins while `zz-patches` still points at the old tip.
+`zz-patches-2026-09-25`, which zz pinned at the time.
 Two commits were dropped because upstream now covers them: the Windows manifest path
 (upstream #62525) and the `TestWindow` raw handle error (upstream already returns an
 error instead of panicking). One commit was added: `Quad` is padded to 44 words because
@@ -608,7 +547,7 @@ is threaded through the new `&Keystroke` dispatch, Metal atlas retirement sits i
 now also see standalone Shift, Control, Alt, Cmd, and Fn taps, which zz's two interceptors
 ignore.
 
-WGPU layout tests now expect 44 words for `Quad`. The fork passed 410 ala tests plus 17
+This revision's WGPU layout tests expected 44 words for `Quad`. The fork passed 410 ala tests plus 17
 profiler and bench tests (these share global state and pass with `--test-threads=1`),
 14 Apple tests including the Metal atlas retirement and pixel tests, 12 macOS tests, and
 47 WGPU tests including WGSL validation. `gpui_linux` and `gpui_wgpu` were type-checked
@@ -619,5 +558,5 @@ for Linux (musl target, zig as the C compiler) and `gpui_windows` for
 
 - [Terminal rendering parity concept](/terminal/rendering-parity.md) . the work done against this revision
 - [`app` crate](/crates/zz.md) . the ala client consuming these dependencies
-- [UI design conventions](/configuration/ui-conventions.md) . the zz-ui fork that replaced `gpui-component`
+- [UI design conventions](/configuration/ui-conventions.md) . how zz composes penna widgets
 - [Prerequisites](/playbooks/prerequisites.md) . toolchain needed to build this ala source

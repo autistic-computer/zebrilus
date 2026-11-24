@@ -3,6 +3,7 @@ type: Design Plan
 title: Agent accounts by swapping the CLI's own login
 description: Claude Code and Codex accounts stop being per-account config folders. Each CLI keeps its one native login and its one native folder; zz parks the logins that are not in use and swaps the chosen one into the native store when no chat of that provider runs. zz remembers who each login is from its own sign-in, never from the CLI's profile cache.
 status: built
+timestamp: 2026-11-23T15:42:13-03:00
 ---
 
 # Why

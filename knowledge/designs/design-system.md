@@ -26,7 +26,7 @@ Before this, call sites picked their own colors. An audit on 2026-10-11 found:
 `ButtonVariant` mixed what a button means (Primary, Danger) with how loud it is (Ghost, Secondary) in one enum, and had an `outline` flag on top. `TagVariant` was a second, smaller system whose "Primary" meant something else.
 
 The palette itself was fine: six roots and a scrim (see
-[ui-conventions](../configuration/ui-conventions.md)). The layer between the roots and the widgets was missing.
+[ui-conventions](/configuration/ui-conventions.md)). The layer between the roots and the widgets was missing.
 
 # The model
 

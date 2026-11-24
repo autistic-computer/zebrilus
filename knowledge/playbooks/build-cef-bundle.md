@@ -1,307 +1,67 @@
 ---
 type: Playbook
 title: Building and verifying a platform CEF bundle
-description: Step-by-step use of cargo xtask and release recipes to assemble, sign, notarize, and validate platform CEF bundles.
+description: Assemble, verify and package the native desktop bundle on macOS, Linux or Windows.
 resource: crates/zz-xtask/src/main.rs
-tags: [cef, xtask, bundle, playbook, sha1, codesign, pacman, deb, apparmor, profiling, dsym, homebrew, release]
-timestamp: 2026-08-19T00:00:00Z
+tags: [cef, xtask, bundle, playbook, sha1, codesign, pacman, deb, apparmor, profiling, dsym]
+timestamp: 2026-11-24T00:00:00Z
 ---
 
-# Overview
+## Build and verify
 
-Producing a runnable zz bundle requires downloading Chromium's CEF distribution, verifying it,
-compiling its C++ wrapper, and assembling a platform-correct directory/app layout. The bundle is
-the required launch path on macOS and Windows; Linux also supports direct Cargo development runs.
-`cargo xtask bundle-cef` does all of this in one step; see
-[the `xtask` crate](/crates/zz-xtask.md) for what the CLI itself parses and validates, and
-[prerequisites](/playbooks/prerequisites.md) for the CMake/Ninja/compiler requirements this flow
-needs.
+Run the row for the build host from the checkout. Each build assembles a release bundle under
+`dist/zz` and calls `verify_bundle`. The verification commands also work on an existing bundle.
 
-On macOS, the bundle copies the checked-in `packaging/mac/Assets.car` and `zz.icns` fallback into
-`Contents/Resources` before signing. `CFBundleIconName` points macOS 26+ at the compiled catalog so
-the Dock renders every appearance (light, dark, tinted, clear) natively. Run
-`scripts/compile-macos-icon.sh` after editing `assets/zz.icon`, then commit the regenerated
-`Assets.car`. For the orange dev variant, run `scripts/compile-macos-icon.sh dev` after editing
-`assets/zz-dev.icon`; it updates `packaging/mac-dev` and the light/dark preview PNGs. Dev bundles
-select the `zz-dev` catalog entry and copy those dev resources before signing.
-The script requires Xcode 26+ because `actool` ships with Xcode proper, not the Command
-Line Tools. Bundling does not run `actool`: its GPU-backed renderer crashed repeatedly on virtualized
-CI runners. Local bundles use a sole installed Apple Development identity when available and fall
-back to ad-hoc signing otherwise. `just release mac build <version-label>` layers the separate public
-distribution workflow on top: Developer ID signing from the inside out, DMG packaging and signing,
-Apple notarization through a Keychain profile, ticket stapling, Gatekeeper assessment, and a final
-SHA-256 checksum.
+| Host | Build | Verify | Launch GUI |
+| --- | --- | --- | --- |
+| macOS | `just build mac` | `cargo xtask verify-cef-bundle dist/zz/zz.app` | `open dist/zz/zz.app` |
+| Linux | `just build linux` | `cargo xtask verify-cef-bundle dist/zz/zz` | `dist/zz/zz app` |
+| Windows (Git Bash) | `just build windows` | `cargo xtask verify-cef-bundle dist/zz/zz.exe` | `./dist/zz/zz.exe` |
 
-The macOS bundle carries `Contents/MacOS/cli`, the launcher every `zz` on `PATH` points at.
-macOS resolves an app bundle from the path the executable was launched with and does not follow
-symlinks doing it, so a symlink straight to `Contents/MacOS/zz` starts zz with no `Info.plist` .
-no bundle identifier, no icon, and none of the usage descriptions the browser pane's camera and
-microphone prompts require. Rust's `current_exe` has the same shape of problem on macOS, which
-would additionally send the CEF framework lookup beside the symlink. Linux ships the same launcher
-as `/usr/lib/zz/cli`. On both platforms bare `zz` runs `new-session -A` through the raw-terminal
-client, `zz app` opens the GUI, and tmux-shaped commands exec the neighbouring `zz`. The Linux
-launcher exists for that command split; `/proc/self/exe` already handles symlink resolution there.
+For a custom destination use `cargo xtask bundle-cef --release --output DIR`. Omit
+`--release` for debug. The bundler accepts `--features LIST` and named profiles on macOS.
+`just profile build mac` writes the optimized app to `dist/zz-profile` and verifies that
+the copied GUI and helper dSYMs match their executable UUIDs. [Profiling](/playbooks/running-zz.md#profiling-the-macos-bundle)
 
-# Examples
+The first native build resolves the matching CEF distribution, verifies its archive against
+the published index and builds the C++ wrapper. Set `CEF_PATH` to a stable cache directory to
+reuse the download across worktrees. [Prerequisites](/playbooks/prerequisites.md) · [CEF pin](/references/cef-artifacts.md)
 
-All supported platforms (release):
+## Platform checks
 
-```sh
-cargo xtask bundle-cef --release --output dist/zz
-```
+`crates/zz-xtask/src/main.rs` defines the required files in `platform_bundle_files`.
+Every required file must exist and be nonempty. Every bundle includes CEF's license and credits.
 
-Release-optimized macOS profiling bundle with source-level dSYMs:
+- **macOS.** The app contains the CEF framework, helper apps, `Contents/MacOS/zz` and
+  `Contents/MacOS/cli`. Point PATH links at `cli` so a shell launch can find the bundle.
+  Local builds sign inside out with the sole valid Apple Development identity, falling back
+  to ad hoc signing when there is no unique match. `MACOS_LOCAL_SIGN_IDENTITY` selects a name
+  or fingerprint, and `-` forces ad hoc. Verification checks the outer app's quarantine policy,
+  main and helper bundle versions, resources and strict recursive signature.
+- **Linux.** Keep `zz`, `cli`, libraries and resources together. The bundler unlinks the old
+  executable before installing its replacement so a running daemon can keep its mapped inode.
+  Release bundles strip `libcef.so`; debug builds retain symbols. The packaged PATH launcher
+  resolves to `/usr/lib/zz/cli`.
+- **Windows.** The flat bundle starts at CEF's `bootstrap.exe` copied as `zz.exe`, with
+  `zz.dll`, libraries and resources beside it. `verify_windows_executable` checks the icon
+  and per-monitor DPI manifest.
 
-```sh
-just profile build mac
-```
+After editing `assets/zz.icon`, run `scripts/compile-macos-icon.sh` with Xcode 26+.
+Pass `dev` for `assets/zz-dev.icon`. The build consumes the checked-in catalogs and fallback icons.
 
-Launch the resulting macOS app bundle:
+## Package
 
-```sh
-open dist/zz/zz.app
-```
-
-Validate an already-built bundle without rebuilding anything (pass the executable path on
-Linux/Windows, or the `.app` path on macOS):
-
-```sh
-cargo xtask verify-cef-bundle dist/zz/zz
-```
-
-Install the pinned release driver once, preview the next beta, then publish the exact preview:
-
-```sh
-just release setup
-just release bump beta
-just release bump beta --execute
-```
-
-`just release bump` is always a dry run. It checks the clean `main` branch and upstream state, previews
-the workspace and lockfile changes, and shows the release commit and tag. Adding `--execute`
-asks for confirmation, creates one version commit plus an annotated `v<version>` tag, and pushes
-both to `origin`. Pushing the tag starts `.github/workflows/release.yml`; no separate GitHub release
-command is needed.
-
-Run the macOS signing sequence locally when testing credentials or reproducing release CI:
-
-```sh
-just release mac setup
-just release mac check
-just release mac build 0.2.0-beta.1
-just release mac verify dist/zz-0.2.0-beta.1-macos-arm64.dmg
-```
-
-The Keychain profile defaults to `zz-notary`; override it with `MACOS_NOTARY_PROFILE`. The script
-auto-selects one valid `Developer ID Application` identity, or accepts an explicit
-`MACOS_SIGN_IDENTITY`. Credentials never enter command arguments or repository files after the
-interactive `notarytool store-credentials` setup.
-
-Pushing a `v*` tag runs the same sequence on `macos-15` and builds the Linux and Windows packages.
-The one-off squashed initial commit already declares `0.2.0-beta.1` and takes that tag directly.
-Afterward, `beta` advances the prerelease counter. The macOS job creates the GitHub release as a
-draft and every platform uploads into it; a final `publish` job takes it out of draft once all of
-them have succeeded, and the tap and AUR pushes hang off that. The draft is load-bearing: the
-unauthenticated releases API never lists drafts, so `install.sh` cannot resolve a version whose
-Linux tarballs are still building, and a cask or PKGBUILD is never published pointing at an asset
-that does not exist yet. A failed platform leg leaves the draft a draft, so nothing ships
-half-published and rerunning that leg finishes the release. The tap and the AUR then update by
-channel: a tag with a hyphen is a GitHub prerelease and renders only the beta channel (`zz@beta`
-cask, `zz-beta-bin`, pkgver with the hyphen stripped); a stable tag renders both channels, so beta
-users move up to it.
-Stable Homebrew users install with `brew install --cask demfabris/zz/zz`, beta users with
-`demfabris/zz/zz@beta`; the two casks conflict.
-
-`install.sh` at the repository root is the `curl -fsSL https://zzmux.sh/install.sh | sh` route
-over the same artifacts: POSIX `sh`, whole script parsed before anything runs (`main "$@"` last),
-release list from the GitHub API with `--beta` taking the newest tag and the default taking the
-newest tag without a hyphen, every download verified against its `.sha256`. It copies the DMG's
-`zz.app` into `/Applications` and links `Contents/MacOS/cli` the way the cask does, refusing when
-a Caskroom entry owns the install; on Linux it hands the `.deb` to `apt-get` where dpkg exists
-(root, and the only route that installs the AppArmor profile) and otherwise unpacks the tarball's
-`usr/` tree under `~/.local`, which is already the XDG layout, patching the desktop entry's `Exec`
-to the absolute launcher. `just site` copies it into `site/dist` and deploys, so that deploy is
-what publishes a change. The desktop app's Update takes the same assets and checks the same
-`.sha256` files itself for a `zz.app` bundle, a tarball under a prefix or an AppImage it can write
-to (`zz_config::update::prepare`, then `apply` on restart); it runs install.sh in a terminal window
-only for an install it cannot replace that way.
-Render the cask by hand with the same script the workflow uses. It takes the disk image or, as the
-workflow passes now that it renders on a runner that never held the DMG, that image's sha256:
-
-```sh
-scripts/render-cask.sh 0.1.0 dist/zz-0.1.0-macos-arm64.dmg
-```
-
-CI runs release bundles on every OS in the matrix (`.github/workflows/ci.yml`):
-
-```sh
-cargo xtask bundle-cef --release --output target/cef-bundle
-```
-
-Pull requests and pushes to main run Linux and macOS and build that bundle without fat LTO
-(`CARGO_PROFILE_RELEASE_LTO=false`, 16 codegen units). The nightly schedule, and a manual
-dispatch, add Windows; the nightly run builds with the shipped profile. Tags build every OS
-again in `release.yml`.
-
-The Linux and macOS jobs each publish two directly downloadable artifacts: the compiled release
-executable(s), and a platform distribution package containing the complete runnable CEF bundle.
-Windows publishes its complete runnable bundle as a ZIP. The workflow uploads each prebuilt
-artifact without GitHub's extra ZIP layer:
-
-| Runner | Binary artifact | Runnable package |
+| Output | Command | What it checks or installs |
 | --- | --- | --- |
-| `ubuntu-24.04` | `zz-linux-${RUNNER_ARCH}-binary.tar.gz` (`zz`) | `zz-linux-${RUNNER_ARCH}.AppImage` (complete CEF bundle in a relocatable AppDir) |
-| `macos-15` | `zz-macos-${RUNNER_ARCH}-binaries.tar.gz` (`zz` + `zz_helper` + `zz_cli`) | `zz-macos-${RUNNER_ARCH}.dmg` (`zz.app` plus an `/Applications` shortcut) |
-| `windows-2025` | n/a | `zz-windows-${RUNNER_ARCH}.zip` (complete flat CEF bundle) |
+| `dist/zz-macos.dmg` | `just package mac` | Creates and mounts the disk image, verifies the contained app. For public distribution use the Developer ID and notarization recipes. |
+| `dist/zz-windows.zip` | `just package windows` | Packages the flat bundle. The Release workflow also builds an installer. |
+| Arch package | `just package arch` or `just install arch` | Uses `makepkg` in `packaging/arch`, installs via pacman with the install recipe. |
+| `dist/zz-linux.deb` | `just package deb` or `just install deb` | Computes ELF dependencies with `dpkg-shlibdeps`, adds the AppArmor profile, installs via apt with the install recipe. |
+| Linux AppImage | Run `scripts/fetch-appimage-tools.sh`, apply its two printed exports, then run `scripts/package-appimage.sh dist/zz dist/zz-linux.AppImage`. | Uses verified tooling and validates the extracted AppDir. |
+| Headless tarball | `just headless mac`, `linux` or `windows` on that host | Packages the standalone CLI for supported release architectures. |
 
-The binary-only archives expose Cargo's release outputs for inspection and integration work. For
-normal launches, use the AppImage on Linux and drag `zz.app` from the DMG to Applications on macOS.
-The AppImage's `AppRun` keeps the full validated CEF directory together under `usr/lib/zz`, routes
-`usr/bin/zz` through the bundled `cli` launcher, supplies
-desktop metadata and the complete hicolor icon set from `assets/linux/hicolor`, and points the
-dynamic loader at the adjacent CEF libraries. CI pins
-`appimagetool` 1.9.1 plus type-2 runtime `20251108`, verifies both official SHA-256 values for the
-runner architecture, and passes the local runtime explicitly so packaging never falls back to the
-mutable `continuous` runtime. The DMG is built as a compressed HFS+ image with `ditto`/`hdiutil`,
-then mounted to verify its contents and the app's strict recursive code signature. The contained
-app remains ad-hoc signed; public distribution without Gatekeeper warnings requires Developer ID
-signing and notarization.
-
-Arch developers can run `just package arch` to turn the same validated Linux bundle into a native
-package, or `just install arch` to build it and install it through `makepkg`. The package keeps the
-runtime together in `/usr/lib/zz`, exposes `/usr/bin/zz` as a relative symlink, and installs the
-shared desktop entry and icons.
-
-Debian and Ubuntu have `just package deb` (emitting `dist/zz-linux.deb`) and `just install deb`,
-which hands the result to `apt` so its dependencies resolve. The release workflow builds the same
-package per architecture and attaches it to the GitHub release. Two things separate it from the Arch
-package. Its `Depends` is computed rather than curated: `dpkg-shlibdeps` reads the bundle's ELF
-`NEEDED` entries and resolves them against the build host, which is what ties a published deb to
-Ubuntu 24.04 and up, and leaves only the `dlopen`ed libraries (`libwayland-client0`,
-`libwayland-egl1`, `libegl1`) to the hand-written tail of `packaging/deb/control`. And it ships
-`/etc/apparmor.d/zz`, because Ubuntu 24.04+ denies unprivileged user namespaces to unprofiled
-binaries (`kernel.apparmor_restrict_unprivileged_userns=1`) and that namespace is the sandbox zz's
-CEF runtime keeps. Without the profile every browser pane dies at startup; the AppImage and bare
-bundles have the same exposure and no place to install a profile from.
-
-Artifact retention follows the repository's GitHub Actions retention setting.
-
-# Schema
-
-What `bundle-cef` does, in order:
-
-1. **`download-cef`** . the `cef` crate's `build_util` resolves the Rust package pin
-   (`cef = "=156.3.0"` / `cef-dll-sys` in `Cargo.lock`, currently `156.3.0+156.0.15`) to a CEF
-   release, then downloads the per-target minimal distribution archive.
-2. **SHA-1 verification** . the downloaded archive's SHA-1 is checked against the hash fetched from
-   CEF's own `index.json` (`https://cef-builds.spotifycdn.com/index.json`) before anything is
-   extracted. [`third_party/cef/ARTIFACTS.md`](/references/cef-artifacts.md) mirrors those values
-   for review; the downloader never reads it.
-3. **Extraction** . the verified archive is unpacked into the shared `CEF_PATH` cache (see
-   [running zz](/playbooks/running-zz.md) for why a stable path matters).
-4. **CEF C++ wrapper build** . `libcef_dll_wrapper` is configured with CMake (3.21+) and built with
-   Ninja, per [prerequisites](/playbooks/prerequisites.md).
-5. **Bundle assembly** . Linux builds `zz` plus `zz_cli`, uses the upstream bundler for the main
-   executable, and copies the launcher into the bundle as `cli`; Windows
-   builds `zz.dll` and lays the flat bundle out around CEF's `bootstrap.exe` (copied in as
-   `zz.exe`), then writes zz's icon and a per-monitor-v2 manifest into that executable's
-   resources; macOS discovers Cargo's actual
-   `zz`/`zz_helper`/`zz_cli` artifact paths for the selected profile and calls the public macOS
-   `bundle` API. The platform backend copies CEF runtime, resources, locales, and helper/bootstrap
-   artifacts into `--output` (default `dist/zz`). xtask then prunes the ~220 CEF locales down to
-   the one zz uses (`en.lproj` on macOS, `locales/en-US.pak` elsewhere; ~50 MB of packs) and, on
-   Linux release bundles, runs `strip` over `libcef.so`: Spotify's Linux CEF builds ship it with
-   full symbol tables (1.3 GB; a stripped copy is a fraction of that), unlike the pre-stripped macOS
-   framework. Debug Linux bundles keep the symbols for readable CEF backtraces. The upstream
-   bundlers know nothing about the `PATH` launcher, so xtask copies it after their assembly step.
-   macOS places it at `Contents/MacOS/cli` before signing because the bundle signature covers that
-   Mach-O file.
-6. **macOS profiling symbols** . the named `profiling` Cargo profile inherits release optimization
-   while retaining full DWARF. `install_macos_debug_symbols` copies `zz.dSYM` and
-   `zz_helper.dSYM` beside `dist/zz-profile/zz.app` and requires each copied symbol bundle's
-   Mach-O UUID set to match its exact executable before bundling can continue. The build command
-   explicitly sets `LIBGHOSTTY_VT_SYS_OPTIMIZE=ReleaseFast`: Cargo's `DEBUG` build-script variable
-   becomes true when the profile emits DWARF, which would otherwise select Zig `Debug` and retain
-   terminal integrity assertions that are absent from production.
-7. **macOS main-app policy** . `configure_macos_main_app` changes the upstream CEF default to
-   `LSFileQuarantineEnabled = false` on the outer app. zz hosts terminal processes that create local
-   executables and transient native modules; automatically tagging those outputs as downloaded code
-   makes Gatekeeper block trusted tools. Helper app policy remains unchanged, and this setting does
-   not remove quarantine from a downloaded DMG.
-8. **Notice install** . `install_cef_notices` copies `third_party/cef/LICENSE.txt` as
-   `CEF_LICENSE.txt` and the pinned distribution's `CREDITS.html` into the platform bundle root.
-9. **macOS local signing** . `sign_macos_bundle` queries Keychain and uses exactly one valid
-   `Apple Development` identity for the CEF framework, each helper app, the `PATH` launcher, and the
-   outer app in inside-out order. Stable signing keeps macOS privacy grants valid across rebuilds. With zero or
-   multiple candidates it falls back to ad-hoc signing; `MACOS_LOCAL_SIGN_IDENTITY` selects an
-   identity explicitly or accepts `-` to force ad-hoc signing. Public distribution still requires
-   Developer ID signing and notarization.
-10. **Validation** . `verify_bundle` checks every OS-required path is a non-empty regular file (see
-   the table in [the `xtask` crate doc](/crates/zz-xtask.md#schema)); missing, empty, or non-file paths
-   fail the whole task with a listed diff. On macOS it also verifies the main-app quarantine policy,
-   numeric product/build versions across the main and helper apps, and the strict recursive
-   `codesign` signature.
-11. **Distribution packaging** . `scripts/package-appimage.sh` maps the Linux bundle into an AppDir
-   and validates the resulting type-2 AppImage by extracting it; `packaging/arch/PKGBUILD` maps that
-   bundle into a dependency-declared native Pacman package; `scripts/package-dmg.sh` copies the macOS
-   app with `ditto`, adds the Applications shortcut, creates/verifies the compressed disk image,
-   mounts it, and re-verifies the contained app.
-12. **macOS public release** . `scripts/release-macos.sh` verifies the Keychain identity and notary
-    profile, re-signs every CEF library/framework/helper from the inside out with a secure timestamp,
-    enables Hardened Runtime on executable bundles, gives only the GPU and Renderer helpers the JIT
-    entitlement, signs the `PATH` launcher and then the main app with its device/privacy
-    entitlements, signs the DMG, submits it
-    with `notarytool --wait`, saves the notary log, staples the ticket, and checks both `stapler` and
-    Gatekeeper. `just release mac build <version>` drives the complete sequence, requires that version to
-    match the workspace manifest, and refuses to overwrite an existing artifact. Its layout
-    assertion requires the launcher, and its final sweep fails on any Mach-O file in the app that is
-    not Developer ID-signed.
-13. **Tag-driven publication** . `.github/workflows/release.yml` fires on `v*`, refuses a tag that
-    disagrees with the workspace version. macOS writes the numeric SemVer core to
-    `CFBundleShortVersionString` and the workflow run number to `CFBundleVersion`, so a tag such as
-    `v0.2.0-beta.1` keeps valid Apple metadata while the app and release retain the full SemVer.
-    The workflow loads the Developer ID identity and App Store Connect notary key into one throwaway
-    default Keychain, runs the release script, and publishes all platform artifacts plus checksums to
-    the GitHub prerelease. Tags with a hyphen reach only the beta cask and AUR package.
-    Repository secrets: `MACOS_CERTIFICATE_P12_BASE64`, `MACOS_CERTIFICATE_PASSWORD`,
-    `MACOS_SIGN_IDENTITY` (a SHA-1 fingerprint rather than the common name, which several Developer
-    ID certificates for one team share), `APPLE_API_KEY_P8_BASE64`, `APPLE_API_KEY_ID`,
-    `APPLE_API_ISSUER_ID` (Team API keys only), and `HOMEBREW_TAP_DEPLOY_KEY`. The tap push authenticates with a write
-    deploy key registered on the tap repository rather than a personal access token: it is scoped to
-    that one repository and does not expire. GitHub's host key is pinned in the workflow, since
-    trust-on-first-use authenticates nothing on a runner that is always first use.
-
-# Key files
-
-| File | Role |
-| --- | --- |
-| `crates/zz-xtask/src/main.rs` | Profile-aware bundle assembly, profiling dSYM UUID validation, macOS inside-out local signing, and platform validation |
-| `scripts/profile-macos.sh` | Runs the symbolized profiling bundle on an isolated socket and captures CPU, System Trace, or Metal Instruments data |
-| `third_party/cef/ARTIFACTS.md` | Reviewable mirror of the archive name + SHA-1 fetched from CEF's index per Rust target |
-| `third_party/cef/LICENSE.txt` | Installed into every bundle as `CEF_LICENSE.txt` |
-| `Cargo.toml` | `cef = "=156.3.0"` workspace pin that `download-cef` resolves |
-| `crates/zz-cli/src/lib.rs` | The macOS and Linux `PATH` launcher; maps bare launch to `new-session -A` and reserves `zz app` for the GUI |
-| `.github/workflows/ci.yml` | Exercises `bundle-cef` on `ubuntu-24.04` and `macos-15`, plus `windows-2025` nightly |
-| `.github/workflows/release.yml` | Tag-driven macOS, Linux, and Windows publication; prerelease channel gating |
-| `release.toml` + `scripts/release.sh` | Dry-run-first workspace SemVer bump, one release commit, annotated tag, and push |
-| `install.sh` (deployed by `just site`) | The `curl | sh` installer served at zzmux.sh/install.sh: DMG to `/Applications` on macOS, `.deb` via apt or tarball under `~/.local` on Linux, sha256-verified, `--beta`/`--version`/`--prefix` |
-| `packaging/homebrew/zz.rb` + `scripts/render-cask.sh` | Cask template for the `demfabris/homebrew-zz` tap, and the renderer that fills in version and checksum and derives the `zz@beta` cask |
-| `scripts/package-appimage.sh` + `packaging/linux/` + `assets/linux/hicolor/` | Builds and validates the AppDir/AppImage around a Linux CEF bundle with desktop metadata and the complete icon set |
-| `packaging/arch/PKGBUILD` | Installs the validated Linux bundle, desktop entry, and icons into a native Pacman package |
-| `scripts/package-deb.sh` + `packaging/deb/` | Renders the Debian control from `dpkg-shlibdeps` output, adds the copyright file, AppArmor profile, and maintainer scripts, and validates the built `.deb` |
-| `scripts/package-dmg.sh` | Builds, mounts, and validates the macOS drag-install disk image |
-| `scripts/release-macos.sh` + `packaging/macos-signing/*.plist` | Developer ID signs CEF code with the accepted entitlement split, notarizes/staples the DMG, and verifies Gatekeeper |
-
-# Citations
-
-- Apple, [Creating distribution-signed code for macOS](https://developer.apple.com/documentation/xcode/creating-distribution-signed-code-for-the-mac/)
-- Apple, [Customizing the notarization workflow](https://developer.apple.com/documentation/security/customizing-the-notarization-workflow)
-
-# Related
-
-- [xtask crate](/crates/zz-xtask.md) . the CLI this playbook drives
-- [CEF artifact pin reference](/references/cef-artifacts.md) . the version/hash table verified against
-- [Updating CEF](/playbooks/updating-cef.md) . what to do when the pin changes
-- [Prerequisites](/playbooks/prerequisites.md) . CMake/Ninja/compiler requirements
-- [Running zz](/playbooks/running-zz.md) . the `cargo run` equivalent that triggers the same download on first build
-- [CEF runtime concept](/browser/cef-runtime.md) . what the bundle ships at runtime
+Use `compat/packaged-cli.sh dist/zz/zz.app` to verify shell launches from a temporary path
+containing spaces. The checks use isolated daemons. CI's `scripts/ci.sh bundle` builds into
+`$CARGO_TARGET_DIR/cef-bundle`. Pushes and pull requests exercise Linux and macOS. Scheduled
+and manual CI runs add Windows. Release signing, channel selection and publication are in
+[releasing zz](/playbooks/releasing.md).

@@ -7,7 +7,7 @@ resource:
 - libs/penna/src/lib.rs
 - libs/penna/src/foundation/interface_theme.rs
 tags: [penna, ala, ui, theme, storybook, reference]
-timestamp: 2026-11-03T00:00:00Z
+timestamp: 2026-11-24T00:00:00Z
 ---
 
 # Overview
@@ -42,7 +42,7 @@ manifest into every Windows binary). nidus asks for `default` on ala and `font-k
 `crates/zz` and `crates/zz-ui`, and for the three ala-platform features in `crates/zz`, without
 `runtime_shaders`.
 
-Both libs follow `main` and have no tags yet, so the app's own `Cargo.lock` is what pins them, and
+With these git dependencies the app's `Cargo.lock` pins the revisions.
 `cargo update -p penna` can bring API changes. penna commits `Cargo.lock` and
 `storybook/Cargo.lock` for its own CI only; Cargo ignores a dependency's lockfile.
 
@@ -112,12 +112,12 @@ The order matters, and penna panics with a message that names the fix when it is
 
 1. **Define no roles.** penna owns every surface role, every theme's patches for them, the text
    styles and the spacing scale; an app composes penna's components (penna's
-   `knowledge/designs/kit.md`). zz and nidus register no roles or theme layers.
+   `libs/penna/knowledge/designs/kit.md`). zz and nidus register no roles or theme layers.
 2. **Give the application penna's assets** with `.with_assets(penna::Assets)`, or the icons draw
    nothing. An app with assets of its own passes an `AssetSource` that falls back to
    `penna::Assets` for paths it does not have, as `zz_ui::Assets` does. Then **`penna::init(cx)`**
    binds the kit's keys and actions (inputs, menus, dialogs, popovers, selects, text, the code
-   editor with `editor`) and activates the built-in Default theme in the OS appearance.
+   editor with `editor`) and activates `platform_theme()` in the OS appearance (macOS theme on macOS and iOS, Default elsewhere).
    A native app also sets `penna::blocks::appearance::AvailableFonts(platform.text_system())`
    as a global, so the UI font picker lists only installed families
    (`crates/zz/src/lib.rs` creates it before the platform moves into the application).
@@ -133,8 +133,7 @@ The order matters, and penna panics with a message that names the fix when it is
    it cannot know what the app sets over the theme. `InterfaceTheme::activate(mode, window, cx)`
    switches the mode (`None` follows the window's appearance, `Some(ThemeMode::Dark)` pins one),
    then writes the theme's colors for that mode, its materials and its role patches into the
-   `Theme` global in one step, and refreshes the windows; `default_theme().activate(None,
-   Some(window), cx)` is the whole call for an app without settings. The font is one of the
+   `Theme` global in one step, and refreshes the windows. An app following the platform uses `platform_theme().activate(None, Some(window), cx)`. The font is one of the
    materials: a theme with no font sets ala's system UI font (`ala::Font::default()`), as
    `Appearance::apply` does when no UI font is picked, so the last theme's font never stays.
    With an Appearance page, `Appearance::apply` does it (below). Call it from the root view's
@@ -183,24 +182,18 @@ meant. The file format is in [interface themes](/designs/interface-themes.md).
 
 # The Appearance page
 
-`penna::foundation::interface_theme::Appearance` is the model: `mode` (`system`, `light` or `dark`),
-the `ThemeOverrides` flattened in (`radius`, `accent`, `tint`, `tint-hue`, `controls`, `glass`),
-`contrast`, `ui_font_family`, `zoom`, `motion` (`off`, `default` or
-`fast`) and `density`. It is serde with defaults, so an app keeps it in its own preferences with
-`#[serde(flatten)]` (`clients/app/src/preferences.rs`), and those key names are what users' files
-hold. There is no theme to pick: the look starts from `platform_theme()` (the `macos` file on macOS
-and iOS, `default` elsewhere) and each override is a knob over it.
+`Appearance` in `libs/penna/src/foundation/interface_theme.rs` stores the mode,
+flattened theme overrides, UI, mono and chat font families, contrast, zoom,
+motion, density and pointer preference. It deserializes with defaults. The thin
+client flattens it into its preferences (`clients/app/src/preferences.rs`).
 
-- `Appearance::change(AppearanceChange)` applies one edit from the page; `Import` sets every knob
-  from a theme file (`ThemeOverrides::from_theme` and its `face`, leaving the mono font), `ResetLook`
-  clears them and the mono font.
-- `Appearance::shown_theme()`, `corner_radius()`, `neutral()`, `controls()`, `glass()`, `accent()`
-  and `ui_font()` read the look with the platform's value wherever a knob is unset.
-- `Appearance::apply(window, cx)` puts it on screen: reduce motion and animation speed from `motion`, the
-  platform's file with its overrides (`shown_theme`) activated in the mode, the UI font (when
-  installed, else ala's system UI font), the mono font (when installed, else
-  `platform_mono_font_family()`; an app with a default of its own, like the terminal font, sets it
-  after), contrast and zoom.
+- `change` applies one edit. `Import` replaces the theme overrides and UI font.
+  `ResetLook` clears the overrides and all three font choices.
+- `shown_theme` combines the platform theme and overrides. `apply` activates it
+  in the chosen mode, resolves installed fonts and applies motion, contrast,
+  density, pointer and zoom. The UI and mono fonts fall back to ala's system UI
+  font and penna's platform mono font respectively. An unavailable chat font
+  leaves the chat override unset.
 - `penna::blocks::appearance::appearance_page(title, appearance_page_items::<T>(), render)` lays
   the rows out in a virtual column, in the groups `LOOK`, `SIZE` and `ACCESSIBILITY`, and `render`
   draws each item with
@@ -212,9 +205,7 @@ and iOS, `default` elsewhere) and each override is a knob over it.
   and outer borders of its card.
 - `AppearanceControls::new(&appearance, on_change, window, cx)` holds the accent picker, the font
   select and the zoom field's focus, and reports edits as `on_change(AppearanceChange, window,
-  cx)`. Call `sync` when the appearance changed elsewhere. The page has no theme file row; an app that
-  reads theme files sets every knob from one with `AppearanceChange::Import` and clears them with
-  `AppearanceChange::ResetLook`.
+  cx)`. Call `sync` when the appearance changed elsewhere. The app can call `AppearanceChange::Import` from its own theme file picker.
 
 The Kit story's Appearance page (`libs/penna/storybook/src/kit/appearance.rs`) is the smallest
 complete page. zz's two pages wrap the same rows with its own `ZzRow` items
@@ -246,45 +237,19 @@ complete page. zz's two pages wrap the same rows with its own `ZzRow` items
 
 # A storybook for the app
 
-An app's storybook is a wasm crate in its own workspace that depends on `penna` and
-`penna-storybook` (both from the penna repo) and `wasm-bindgen` on wasm, and exports a `run` built
-on a `Catalog` ([storybook](/playbooks/storybook.md) has every field):
+An app's wasm entry calls `penna_storybook::start(&CATALOG, assets)`.
+`Catalog` in `libs/penna/storybook/src/catalog.rs` names its stories, plates,
+floating sections, knobs, logo and initialization. Use `..PENNA` to inherit the
+kit defaults. If replacing the Kit stories, supply matching `floating` entries
+(or `&[]`). A host test can assert that `CATALOG.problems()` is empty.
+The [storybook playbook](/playbooks/storybook.md) covers authoring and checking plates and stories.
 
-```rust
-pub static CATALOG: Catalog = Catalog {
-    title: "board storybook",
-    name: "board",
-    storage: "board-storybook",
-    init: board::init,
-    logo: IconName::Layers.path(),
-    plates: &[BOARD_PLATE, penna_storybook::creator::CONTROLS],
-    ..PENNA
-};
-
-#[cfg(target_family = "wasm")]
-#[wasm_bindgen::prelude::wasm_bindgen]
-pub fn run() -> Result<(), wasm_bindgen::JsValue> {
-    penna_storybook::start(&CATALOG, penna::Assets)
-}
-```
-
-`..PENNA` keeps penna's stories, knobs and floating sections for every field the app leaves out,
-so a field added later does not break it. An app that sets its own `stories` without
-`penna_storybook::KIT` also sets `floating` to its own list, `&[]` when it has none: penna's list
-names Kit stories, and `problems()` reports each one the catalog lacks. `plates` puts the app's own UI into the theme creator so the roles it draws can be tuned. A host test installs the catalog and asserts `CATALOG.problems()` is empty
-(`libs/penna/storybook/tests/creator.rs` plays such an app). Give the workspace the dev profile
-block above, and set `penna`, `penna-storybook` and the app's crates to `opt-level = 0` in it:
-optimized and incremental, an edit once left an rlib that failed to link on wasm with undefined
-`anon.*.llvm.*` symbols.
-
-`storybook/build.sh --manifest <app>/storybook/Cargo.toml [--release] [--out <dir>]`, run from
-any folder, builds the page in the manifest's folder, so the app's `.cargo/config.toml` patches
-and its `rust-toolchain.toml` apply: the crate's library as a wasm32 cdylib (with its `page` and
-`syntax-highlighting` features when it has them), bound by the wasm-bindgen CLI at the version the
-app's lockfile resolves (the script says how to install it when it is missing), and penna's
-`index.html`, `main.js` and `style.css` beside it. From a Cargo git
-checkout the script sits next to `penna-storybook`'s manifest, which `cargo metadata` reports.
-Serve the output folder with any static server and open it in a browser with WebGPU.
+Use `libs/penna/storybook/build.sh --manifest <path-to-Cargo.toml>` to build an
+app's page. It resolves the toolchain and Cargo config in the manifest's directory
+and requires the wasm-bindgen CLI version in the app's lockfile. Serve the output
+with a static server in a WebGPU-capable browser. The zz storybook keeps penna,
+the harness and its own crates at `opt-level = 0` in its dev profile. Optimized
+incremental wasm builds previously left an rlib with undefined `anon.*.llvm.*` symbols.
 
 # Lints
 
@@ -294,26 +259,18 @@ own `clippy.toml` (`disallowed-methods` and `disallowed-types`): no raw `ala::rg
 (name a tone and an emphasis), and no hand-drawn borders, shadows or `BoxShadow`, nor the kit
 helpers that would skip a look (draw with a kit component's look). A piece that breaks one on purpose
 takes a scoped `#[allow(clippy::disallowed_methods, reason = "..")]`. zz's root `clippy.toml`
-carries the same list, the kit lint against painting a role or setting text by hand (penna's
-`knowledge/designs/kit.md`), and a few rules of zz's own.
+carries the same list, the kit lint against painting a role or setting text by hand (`libs/penna/knowledge/designs/kit.md`), and a few rules of zz's own.
 
 # nidus, the worked example
 
-nidus was the first app on penna outside zz:
+In the nidus repository, the workspace manifest uses the two subtrees under
+`libs/` and enables penna's `tray` feature. Under `crates/nid-app/src/`:
 
-- `Cargo.toml`: the dependency lines above (penna with `tray`), the dev profile block.
-- `crates/nid-app/src/theme.rs`: `init` and `apply`, and no roles: the board, its chips, the
-  first-run steps and the banners draw with penna's `Well`, `Tile`, `Chip`, `Steps` and `Notice`.
-- `crates/nid-app/src/main.rs`: the window, opened with `TitleBar::title_bar_options`, client
-  decorations except on X11, and `Root::new(view, window, cx).bordered(cfg!(target_os = "linux"))`.
-- `crates/nid-app/src/window.rs`: the shell from `app_shell_surface`, the sidebar and settings
-  navigation rows, and `observe_window_appearance` applying the theme again.
-
-nidus was written before Root drew the dialog and toast layers and before `activate` existed. When
-it moves to this penna it drops its own `Root::render_dialog_layer` and `render_notification_layer`
-lines in `window.rs` (or sets `own_layers(false)`), or it draws them twice; its `theme::apply`
-becomes `default_theme().activate(None, window, cx)`, since `Root::new` sets the corners; and its
-callout and banner widgets can become `feedback::callout`.
+- `main.rs` supplies `penna::Assets` and calls `theme::init`.
+- `theme.rs` syncs appearance, applies the platform theme and refreshes windows.
+- `lib.rs` opens the main `Root`, observes window appearance and chooses server
+  decorations on X11. The root's border is enabled on Linux.
+- `window.rs` composes the title bar and page with `app_shell_surface`.
 
 # Checks
 

@@ -4,19 +4,15 @@ title: Browser runtime & session lifecycle
 description: Runtime/profile-context/session state machines and the browser-neutral events that CEF callbacks translate into.
 resource: libs/ala-cef/src/lifecycle.rs
 tags: [browser, lifecycle, events, state-machine]
-timestamp: 2026-09-24T00:00:00Z
+timestamp: 2026-11-24T00:00:00Z
 ---
 
 # Overview
 
-The lifecycle subsystem is `lifecycle.rs` (two strict state machines) plus
-`event.rs` (the browser-neutral event and cursor enums), driven by the runtime and
-session logic in `cef_runtime.rs`. It governs how the single CEF runtime starts and
-shuts down, how named persistent request contexts become ready, how each windowless
-`BrowserSession` is created, becomes ready, may
-crash, and closes, and how every CEF callback becomes an owned `BrowserEvent` that
-[`crates/zz`](/crates/zz.md) drains on the foreground thread. CEF handles never
-escape the crate; the app only sees these enums.
+`libs/ala-cef/src/lifecycle.rs` defines the runtime and session transitions.
+`BrowserRuntime` in `cef_runtime.rs` manages persistent request contexts and creates a
+`BrowserSession` for each windowless browser. The desktop drains session events on
+its foreground thread.
 
 # State machines
 
@@ -35,7 +31,8 @@ Creating -> Ready -> Crashed
    +----------+---------+-> Closing -> Closed
 ```
 
-Both expose `may_transition_to(next) -> bool` enforcing exactly these edges. A
+The runtime also accepts `Uninitialized -> Closed` and `Initializing -> Closing`.
+`may_transition_to` in each enum defines the allowed edges. A
 crashed session cannot go backward to `Creating`; recovery creates a **new** session
 generation against the same [profile](/browser/profile.md). `Failed` is terminal
 only when CEF never initialized; a failure after successful init still follows
@@ -58,22 +55,15 @@ only when CEF never initialized; a failure after successful init still follows
 `ActiveCountGuard` releases each count once through `on_before_close`,
 `mark_closed`, or destruction of an aborted creation's state.
 
-`cef::initialize` installs Chromium's SIGTERM, SIGINT, and SIGHUP handlers. They
-exit through a task posted to the UI thread (`ExitHandler` → `chrome::AttemptExit`
-→ `[NSApp terminate:]` on macOS), and under the external pump that task can stall:
-on 2026-09-24 four profiling runs whose window never reached the screen stayed
-alive after SIGTERM, with Chromium's detector parked in `ExitPosted` and an idle
-main thread. The desktop client owns these signals instead
-(`crates/zz/src/quit_signal.rs`): a one-shot handler installed at startup, and
-again once the runtime starts, asks ala to quit through the normal
-`on_app_quit` path, and the process `_exit`s with 128 + signal if it is still
-alive 2 s later. A second signal gets the default action.
+On Unix, zz handles SIGTERM, SIGINT and SIGHUP. `BrowserRuntime::start` sets
+`disable_signal_handlers = 1`. The desktop installs its handlers at startup and
+reclaims them after CEF starts. On the first signal, `crates/zz/src/quit_signal.rs`
+asks ala to quit and starts a two-second deadline for `_exit(128 + signal)`.
+A repeat of the same signal takes its default action. This lets zz quit even if
+the external CEF pump has stalled, as observed in four macOS profiling runs on 2026-09-24.
 
-A remote pane uses a local composite request context named
-`<profile>@egress-<hash8>`. Once that context becomes ready, the controller points
-its proxy preference at the managed `ssh -D` SOCKS port before creating the
-session. Local panes keep the plain named context. A reconnect can change the
-SOCKS port, so snapshot refresh re-applies the preference to the retained context.
+For remote panes, the controller applies the current SOCKS port before creating the session
+and refreshes it on reconnect. [Logical profiles and remote-egress jars](/browser/profile.md#logical-profiles-and-remote-egress-jars)
 
 # Session control (`BrowserSession`)
 
@@ -92,29 +82,16 @@ SOCKS port, so snapshot refresh re-applies the preference to the retained contex
 
 # Schema . `BrowserEvent`
 
-Owned events (`event.rs`), each tagged with its `SessionId` (retrievable via
-`BrowserEvent::session()`), delivered over an `async-channel` and produced by the
-CEF handlers noted:
+`libs/ala-cef/src/event.rs` defines the full enum and its payload types. Each event
+has a `SessionId` for one browser generation. `BrowserEvent::session()` lets the desktop
+discard late events after replacement.
 
-| Variant | Fields | CEF source |
-| --- | --- | --- |
-| `Created` | `session` | `LifeSpanHandler::on_after_created` |
-| `AddressChanged` | `url: Arc<str>` | `DisplayHandler::on_address_change` (main frame) |
-| `TitleChanged` | `title: Arc<str>` | `DisplayHandler::on_title_change` |
-| `LoadingChanged` | `loading`, `can_go_back`, `can_go_forward` | `LoadHandler::on_loading_state_change` |
-| `FrameReady` | `generation: u64` | `RenderHandler::on_paint` publish wake |
-| `LoadFailed` | `code`, `description: Arc<str>`, `url: Arc<str>` | `LoadHandler::on_load_error` (ignores `ABORTED`, non-main frames) |
-| `CursorChanged` | `cursor: BrowserCursor` | `DisplayHandler::on_cursor_change` |
-| `ElementPicked` / `ElementPickCancelled` / `ElementPickFailed` | `text?` | [element picker](/browser/element-picker.md) query handler |
-| `PopupCreated` | opener `session`, child `popup: SessionId`, `url: Arc<str>`, `foreground: bool` | Child `LifeSpanHandler::on_after_created`; app adopts the existing child through the opener's `take_popup` |
-| `PopupRequested` | `url: Arc<str>`, `foreground: bool` | `RequestHandler::on_open_urlfrom_tab`; app opens a new tab for the requested URL |
-| `RenderProcessTerminated` | `status: Arc<str>`, `error_code` | `RequestHandler::on_render_process_terminated` |
-| `Closed` | `session` | `LifeSpanHandler::on_before_close` |
-
-`SessionId(pub u64)` identifies one immutable CEF browser generation.
-`BrowserCursor` is a GPUI-representable cursor-shape enum (`Arrow`, `IBeam`,
-`PointingHand`, `Crosshair`, `Wait`, `Help`, `Move`, resize variants, `Grab`,
-`Grabbing`, `NotAllowed`, `None`) mapped from CEF `CursorType` by `browser_cursor`.
+| What changed | What the desktop receives |
+| --- | --- |
+| Page or load | Address, title, favicon, loading and progress, load failure, status text or fullscreen state. Favicon events carry the captured page URL and PNG. |
+| Rendering or input | Frame generation, shared-texture failure, cursor, IME character bounds or find results. |
+| User interaction | Context-menu, file-dialog, JavaScript-dialog and download requests, plus download progress. A completed [element pick](/browser/element-picker.md) carries text and an optional PNG. |
+| Tab lifetime | Creation, renderer termination, close, and the two popup events described below. |
 
 # Focus, resize, popups
 
@@ -128,15 +105,13 @@ CEF handlers noted:
   that child into a tab through `PopupCreated` and `BrowserSession::take_popup`,
   preserving Chromium's opener relationship, named-window reuse, and delayed
   navigation from an initially blank document. Chromium retains control over
-  JavaScript access between the windows. Popups use readback OSR with the opener's
-  external BeginFrame setting; this avoids texture-fallback recreation discarding
-  the live opener relationship. GPU page acceleration remains available.
+  JavaScript access between the windows. `LifeSpanHandlerBuilder::on_before_popup` copies the opener's shared-texture
+  and external BeginFrame settings into the child's windowless `WindowInfo`.
   The app displays popup content even at `about:blank`, and removes a popup tab
   when its browser closes itself. Closing an opener also closes any children still
   waiting for adoption. Adopted children have independent tab lifetimes.
   `on_open_urlfrom_tab` still emits `PopupRequested` for ordinary URL tab requests.
-  Only `NEW_BACKGROUND_TAB` dispositions open in the background. The `Denied*`
-  handlers continue to deny privileged operations.
+  Only `NEW_BACKGROUND_TAB` dispositions open in the background. `DeniedPermissionHandler` handles privileged permission requests.
 
 # Popup regression
 

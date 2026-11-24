@@ -1,112 +1,50 @@
 ---
 type: Playbook
 title: Updating the pinned tmux behavioral reference
-description: How to bump zz's pinned tmux upstream commit and re-verify the Rust tmux-compat reimplementation against it.
+description: Move the reference build and oracle to one tmux release and verify changes in zz's behavior.
 resource: third_party/tmux-reference/UPSTREAM.md
 tags: [tmux, upgrade, playbook, behavioral-reference]
-timestamp: 2026-10-09T00:00:00-03:00
+timestamp: 2026-11-24T00:00:00Z
 ---
 
-# Overview
+The reference build supplies the executable and source tree for differential tests.
+The shipped multiplexer implements the supported behavior independently.
+`third_party/tmux-reference/UPSTREAM.md` records the current tag, commit and source files
+by feature area. [Reference](/references/tmux-upstream.md)
 
-zz's multiplexer ([`crates/zz-mux`](/crates/zz-mux.md)) is a from-scratch Rust reimplementation of tmux
-behavior: it never compiles, links, or runs tmux, and no tmux C source is copied in. Instead,
-command names, key-table behavior, and configuration syntax are checked by hand against a single
-pinned upstream tmux commit recorded in
-[`third_party/tmux-reference/UPSTREAM.md`](/references/tmux-upstream.md). Updating that pin means
-re-diffing the relevant upstream files and porting any observed behavior change into the Rust
-implementation. That is a research-and-port task, unlike the mechanical version bump in
-[updating CEF](/playbooks/updating-cef.md).
+1. Resolve the new release tag to an exact commit. Diff the old and new source trees
+   across the areas in `UPSTREAM.md`, including parsing, keys, prompts, buffers, modes,
+   layouts, options, hooks and the client/server boundary. Update that file, its source
+   links and the retained license.
+2. Update `TMUX_TAG`, `TMUX_COMMIT` and `TMUX_VERSION` in `compat/fetch-tmux.sh`,
+   their counterparts in `compat/tmux-oracle.py` and `compat/startup-diagnostics.sh`,
+   and the version assertion in `compat/attached-client.sh`. Search for the old hash and
+   version in active fixtures, manifests and reference pages. Dated evidence keeps its
+   measured version.
+3. Build the new reference, then regenerate the oracle from it:
 
-# Steps
-
-1. **Pick the new pinned commit.** Choose a release tag and its exact commit (not a moving
-   branch) from `https://github.com/tmux/tmux`, as the current pin does (tag `3.8`,
-   `7f2a35ad3321f9ba57a1062ca73b1f3ff26aca53`).
-2. **Diff every relevant upstream file** between the old and new pinned commits. `UPSTREAM.md`
-   groups these by feature area. Diff each group for the behavior it documents:
-   - `cmd-parse.y`, `arguments.c`, `cfg.c` . tokenization and config loading
-   - `key-bindings.c`, `cmd-bind-key.c`, `cmd-unbind-key.c`, `cmd-list-keys.c` . root/prefix key tables
-   - `cmd-command-prompt.c`, `prompt.c`, `status.c` . command-prompt options, editing keys, history
-   - `cmd-rename-session.c`, `cmd-rename-window.c` . rename targets/aliases, prompt prefill
-   - `server-client.c`, `window-copy.c` . command output entering read-only view/copy-mode
-   - `cmd-choose-tree.c`, `mode-tree.c`, `window-tree.c`, `window-buffer.c` . chooser hierarchy/search/activation, `choose-buffer`
-   - `paste.c`, `cmd-set-buffer.c`, `cmd-load-buffer.c`, `cmd-save-buffer.c`, `cmd-paste-buffer.c`, `options-table.c` . paste-buffer storage, `buffer-limit`
-   - `cmd-display-panes.c` . pane-number overlay
-   - `cmd-resize-pane.c`, `layout.c`, `cmd-select-pane.c`, `cmd-split-window.c`, `window.c` . divider drag, resize, zoom, spatial navigation
-   - `cmd-swap-pane.c`, `cmd-break-pane.c`, `cmd-join-pane.c` . pane reparenting/swap
-   - `cmd-select-layout.c`, `layout-set.c` . named layout presets
-   - `cmd-rotate-window.c`, `cmd-find.c` . rotation, relative pane targets
-   - `options-table.c`, `cmd-set-option.c`, `window.c` . `history-limit`, `word-separators`, `mode-keys`, `synchronize-panes`
-   - `grid-reader.c`, `tmux.1` . word-class definitions for copy mode
-   - `server.c`, `server-client.c`, `proc.c` . client/server boundary semantics
-   Use the full up-to-date list already recorded in `UPSTREAM.md`; add or remove files from that
-   list here if the new commit's feature surface changed.
-3. **Port observed behavior changes.** For each diff that changes user-visible behavior in a file
-   zz already reimplements, update the corresponding Rust code path in
-   [`crates/zz-mux`](/crates/zz-mux.md), always as an independent reimplementation, never by copying
-   upstream C.
-4. **Re-verify.** Run the workspace test suite plus a manual pass over the affected bindings/commands:
    ```sh
-   cargo test --workspace
-   cargo run -p zz
+   tmux_bin="$(compat/fetch-tmux.sh)"
+   python3 compat/tmux-oracle.py --tmux "$tmux_bin" --write
    ```
-   Manually exercise the specific tmux-compat behaviors touched by the diff (e.g. `C-b` bindings,
-   `choose-tree`, `choose-buffer`, layout presets). The supported-command list lives in
-   [tmux command set](/tmux/commands.md) and the default bindings in
-   [key tables](/tmux/key-tables.md).
-5. **Update `UPSTREAM.md`.** Bump the pinned commit hash and its GitHub link, and adjust the
-   "most relevant upstream files" list if step 2 changed it. Keep the note that only the
-   deliberately supported subset is implemented and unsupported config is reported and skipped.
-6. **Move the differential harness to the new pin.** The pin hash lives in three more places
-   that must change together:
-   - `compat/fetch-tmux.sh` . `TMUX_TAG`, `TMUX_COMMIT`, and `TMUX_VERSION` if the reported `-V`
-     string moved; the fetcher refuses a tag that does not resolve to the commit and writes the tag
-     into the build stamp
-   - `compat/tmux-oracle.py` . `TAG`, `PIN`, `VERSION`, and any source-shape count the new tag
-     breaks; then `python3 compat/tmux-oracle.py --write` and register every new difference in
-     `compat/tmux-gaps.json` until `just compat check` passes
-   - `compat/startup-diagnostics.sh` and `compat/attached-client.sh` . their pin and version checks
-   - CI keys its tmux cache on a hash of `compat/fetch-tmux.sh` and the oracle, so it rebuilds by
-     itself
-   - [the compat harness playbook](/playbooks/compat-harness.md) . the commit hash in its overview
 
-   Then run `compat/run.sh` end to end. A behavior change in the new pin shows up as scenario
-   divergences; either port the change (step 3) or record it in
-   [the divergence matrix](/tmux/divergences.md) and `compat/scenarios/known/` before landing.
-   The alias-smoke corpus is independently pinned. When a plugin reference moves, update the
-   commit in both `compat/fetch-corpus.sh` and `third_party/tmux-plugin-corpus/UPSTREAM.md`, refresh
-   that plugin's retained license, then run its smoke scenario. The current set moves together as:
+   The fetcher checks the tag and commit, clean checkout, reported version and build stamp.
+   Use its normal build for a pin change. `ZZ_COMPAT_TMUX` only checks an override binary's
+   reported version. CI's cache key includes the fetcher, generated oracle and corpus fetcher.
+4. Review the generated diff. Port changed behavior to the responsible zz crate, or record
+   the specific difference in `compat/tmux-gaps.json` with its evidence. Run the closest
+   scenarios first, then the inventory checks and full differential corpus:
 
-   | Plugin | Pinned commit |
-   | --- | --- |
-   | TPM | `e261deb1b47614eed3400089ce7197dc68acc4eb` |
-   | tmux-sensible | `25cb91f42d020f675bb0a2ce3fbd3a5d96119efa` |
-   | vim-tmux-navigator | `e41c431a0c7b7388ae7ba341f01a0d217eb3a432` |
-   | tmux-yank | `acfd36e4fcba99f8310a7dfb432111c242fe7392` |
-   | tmux-resurrect | `cff343cf9e81983d3da0c8562b01616f12e8d548` |
-   | tmux-continuum | `0698e8f4b17d6454c71bf5212895ec055c578da0` |
-   | tmux-fpp | `878302f228ee14f0fa59717f63743d396b327a21` |
-7. **Refresh the retained license.** The upstream tmux license kept beside `UPSTREAM.md` for
-   provenance should match the newly pinned commit's license terms (rarely changes, but check).
-8. **Commit the commit-hash bump, any list-of-files changes, the ported Rust changes, and their
-   tests together.** A stale pin note with mismatched behavior is worse than no note.
+   ```sh
+   just compat check
+   just compat run
+   ```
 
-# Key files
-
-| File | Role |
-| --- | --- |
-| `third_party/tmux-reference/UPSTREAM.md` | The pinned commit and list of relevant upstream files |
-| `crates/zz-mux/src/**` | The Rust reimplementation being verified against upstream behavior |
-| `crates/zz-protocol/src/catalog.rs` | The supported command surface to manually re-check, mirrored in [tmux command set](/tmux/commands.md) |
-| `compat/fetch-tmux.sh` | Builds the pinned reference binary; carries `TMUX_COMMIT`/`TMUX_VERSION` |
-| `compat/fetch-corpus.sh` | Fetches and verifies the seven pinned plugin commits used by smoke scenarios |
-| `third_party/tmux-plugin-corpus/UPSTREAM.md` | Records plugin provenance, pins, and reference-only status |
-| `.github/workflows/ci.yml` | Caches the reference build under a key containing the pin hash |
-
-# Related
-
-- [tmux upstream reference](/references/tmux-upstream.md) . the pin this playbook updates
-- [tmux compat concept](/tmux/tmux-compat.md) . the Rust reimplementation being kept in sync
-- [compat harness playbook](/playbooks/compat-harness.md) . the differential corpus that re-verifies a bumped pin
-- [`mux` crate](/crates/zz-mux.md) . where ported behavior changes land
+   The full run checks terminal and attached-client behavior before writing the summary.
+   For an interactive desktop check use `just run mac` or `just run linux` and exercise
+   the affected commands and bindings. [Harness](/playbooks/compat-harness.md) ·
+   [Commands](/tmux/commands.md) · [Key tables](/tmux/key-tables.md)
+5. Keep the pin, generated inventory, behavior changes, fixtures and reference updates
+   together. Plugin pins move separately. For a plugin bump update `compat/fetch-corpus.sh`,
+   `third_party/tmux-plugin-corpus/UPSTREAM.md` and the retained license, then run that
+   plugin's scenario.

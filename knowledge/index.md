@@ -2,34 +2,27 @@
 okf_version: "0.1"
 ---
 
-# zz Knowledge
+# zz knowledge
 
-Agent- and human-readable knowledge for **zz**, a cross-platform ala workspace that multiplexes
-native terminal panes (libghostty-vt + daemon-owned PTYs), Chromium browser panes (CEF Alloy
-off-screen rendering), and an agent lens over terminal panes running Claude Code or Codex, over a
-persistent local daemon with a tmux-style model.
+The daemon owns sessions, windows, panes and PTYs. Desktop, terminal, web and mobile clients attach to it.
+Start with the [system overview](architecture/overview.md), [process model](architecture/process-model.md)
+and [data flow](architecture/data-flow.md).
 
-**Start here:** [System overview](architecture/overview.md) → [Process model](architecture/process-model.md)
-→ [Data flow](architecture/data-flow.md). Then dig into a [crate](crates/index.md) or a subsystem below.
+| Looking for | Start here |
+| --- | --- |
+| Code for a subsystem | [Crates](crates/index.md), [terminal](terminal/index.md), [browser](browser/index.md) |
+| Wire compatibility, pane snapshots and terminal frames | [Protocol](protocol/index.md) |
+| Command behavior and measured differences | [tmux](tmux/index.md) |
+| Agent chats, pane layout and persistence | [Concepts](concepts/index.md) |
+| Configuration, key bindings and UI conventions | [Configuration](configuration/index.md) |
+| Build, run, profile or release zz | [Playbooks](playbooks/index.md) |
+| Design decisions and open work | [Designs](designs/index.md) |
+| Measurements and their limits | [Research](research/index.md) |
+| Libraries, vendor contracts and upstream pins | [References](references/index.md) |
+| What changed | [Update log](log.md) |
 
-Each directory below has an `index.md` listing its documents; read that first, then the document.
-Load-bearing facts (exact versions, hashes, wire constants) cite a `resource:` source file . verify
-there before acting, because source is the ground truth and these pages are a map of it.
-
-| Section | What lives here |
-|---------|-----------------|
-| [architecture](architecture/index.md) | System overview, process/threading model, end-to-end data flow |
-| [crates](crates/index.md) | Crate-level concepts for `zz` and its major `zz-*` support crates |
-| [protocol](protocol/index.md) | Wire protocol (v120), stable IDs, packed terminal lanes, snapshots |
-| [tmux](tmux/index.md) | tmux-compat philosophy, config parser, key tables, commands, copy-mode, choosers |
-| [terminal](terminal/index.md) | libghostty embedding, ala terminal painting, interaction, appearance |
-| [browser](browser/index.md) | CEF runtime, OSR rendering + DPI/blur fix, lifecycle, profile, input, element picker |
-| [concepts](concepts/index.md) | Cross-cutting: agent lens, PTY worker, terminal frame, split-pane layout, session persistence, command palette |
-| [configuration](configuration/index.md) | Application configuration and [UI design conventions](configuration/ui-conventions.md) |
-| [designs](designs/index.md) | Feature plans and decision records, each carrying a `status:` field |
-| [playbooks](playbooks/index.md) | Prerequisites, running zz, building/updating the CEF bundle, updating the tmux reference |
-| [research](research/index.md) | Dated investigations that preserve reproduction evidence, source analysis, and unresolved proof gaps |
-| [references](references/index.md) | Our libs ala and penna, and external pins: CEF artifacts, tmux upstream, Ghostty colors |
+Each concept's `resource` points to its source when available. The current wire epoch and revision
+live in `crates/zz-protocol/src/message.rs`.
 
 <!-- okf:listing:start (managed by okf.py index — edit prose outside this fence) -->
 # Subdirectories

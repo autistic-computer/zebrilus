@@ -4,30 +4,21 @@ title: Named zz profiles & persistent request contexts
 description: Named zz-owned CEF profiles isolate browser state on the client's disk, remote egress uses host-keyed composite contexts, and explicit Chrome import uses bounded read-only snapshots.
 resource: libs/ala-cef/src/profile.rs
 tags: [browser, profile, cef, request-context, cookies, security]
-timestamp: 2026-10-29T21:45:10Z
+timestamp: 2026-11-24T00:00:00Z
 ---
 
 # Overview
 
-Every zz browser session runs against one **named, private, persistent CEF
-profile** owned by zz, never a Chrome, Chromium, or Edge live profile. A browser
-pane in an attached SSH session derives a client-local composite request profile
-from the logical profile and egress host, keeping that host's proxy preference
-and cookie jar separate.
-`profile.rs` resolves and locks the on-disk paths (`BrowserProfilePaths`), while
-`cef_runtime.rs` keeps one `RequestContext` per profile name. Sessions with the
-same name share cookies, cache, local storage, and other site data; sessions with
-different names are isolated. A user-invoked import may read ephemeral,
-read-only snapshots of one selected Chrome profile's cookie and history databases,
-but CEF is never pointed at those databases and zz never modifies them. Browser
-storage/credential material is never logged.
+On desktop, zz owns the CEF profile directories. Sessions that use the same request
+context share cookies, cache and local storage. A remote pane gets a context keyed
+by logical profile and egress host. Import reads snapshots of the source browser's
+databases and writes the selected data into zz.
 
 # Path layout
 
-`BrowserProfilePaths::under(data_dir, "zz-default", "zz-profile-")`, called from
-`crates/zz/src/browser/mod.rs` with the platform data dir, names both directories
-(ala-cef has no names of its own; a zz test pins these two) and builds a two-level
-layout under the platform application-data directory:
+`crates/zz/src/browser/mod.rs` passes `app_identity::browser_data_dir()` and both directory
+names to `BrowserProfilePaths::under`. An installed desktop uses the following paths.
+A development build substitutes `zz-dev` for `zz`.
 
 ```text
 <platform data dir>/zz/browser/root/          <- root  (CEF root_cache_path)
@@ -69,7 +60,7 @@ surface through `BrowserProfileError` / `BrowserError::Profile`.
 
 State isolation happens at two layers, both with `persist_session_cookies = 1`:
 
-1. **Global** (`Settings` in `bootstrap_args`): `root_cache_path = root`.
+1. **Global** (`Settings` in `BrowserRuntime::start`): `root_cache_path = root`.
 2. **Per-profile**: a `RequestContext` created with
    `RequestContextSettings { cache_path = profile_path, persist_session_cookies: 1 }`
    and a `ProfileRequestContextHandler` that fires profile-tagged
@@ -84,7 +75,7 @@ arrives. `BrowserRuntime` holds every context in `profile_contexts`, and each
 
 # Logical profiles and remote-egress jars
 
-Every browser pane still renders in the client's CEF. For a pane in an attached
+For a desktop browser pane in an attached
 SSH session, zz derives `<profile>@egress-<hash8>` and creates a distinct local
 CEF request context. Its proxy preference points to the existing `ssh -D`
 SOCKS5 listener, including Chromium's loopback-bypass override, so hostnames and
@@ -161,15 +152,9 @@ discovery after the user changes permission.
 - Persisted in the selected profile: ordinary cookies (including session
   cookies), HTTP cache, and local storage, proven by the local fixture's persistent
   cookie/local-storage counters.
-- Persisted beside the root (never read by CEF): `recent-pages`, the app-owned,
-  profile-scoped browser history and learned-omnibox store. Version 2 page rows
-  retain URL, title, last visit, visit count, typed count, and last typed use;
-  shortcut rows retain normalized input, destination, selection count, and last
-  selection. Page and shortcut collections are each capped at 5,000 across
-  profiles, the file is capped at 64 MiB, writes are atomic and user-only, and
-  legacy three-column rows migrate into `default`. Only HTTP(S) URLs are recorded.
-  The store backs the eight-row blank-page surface and non-empty address-bar
-  autocomplete. See [history and omnibox autocomplete](/browser/history-autocomplete.md).
+- `recent-pages` lives beside the CEF root. zz keys HTTP(S) visits, favicons and learned
+  selections by logical profile. [History and omnibox autocomplete](/browser/history-autocomplete.md#stored-records)
+  gives the record format, limits and migration rules.
 - Persisted beside the root (never read by CEF): the bounded, user-only Chrome
   profile-label cache described above. It contains no Chrome browsing state or
   credential material.
@@ -213,18 +198,12 @@ to a subdomain and session DOM storage are outside this command's contract.
 
 # Restore on reattach
 
-The daemon retains each browser pane's canonical profile name alongside its last
-URL. Closing every ala window detaches the client without keeping transient
-Chromium renderer state alive; when a GUI reattaches, a browser pane
-[re-creates its session](/browser/lifecycle.md) with that name and URL, and the
-selected profile's persisted cookies/cache/local storage are already present. See
-[session persistence](/concepts/session-persistence.md) for how panes and their URLs
-survive detach in the daemon.
-
-The daemon stores the logical profile name and nothing else. On reattach, a
-local pane returns to that profile's local jar; an SSH-attached pane
-deterministically returns to the composite jar for that logical profile and
-egress host.
+The daemon retains the pane's URL and logical profile in its descriptor.
+On GUI reattach, the desktop [creates a new session](/browser/lifecycle.md).
+A local pane reopens its local profile directory. An SSH pane derives its
+context from the logical name and egress host again. Restoring cookies and
+local storage requires that directory on the attaching client. See
+[session persistence](/concepts/session-persistence.md).
 
 # Key files
 

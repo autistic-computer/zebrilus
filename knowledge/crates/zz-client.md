@@ -1,158 +1,36 @@
 ---
 type: Rust Crate
 title: zz-client crate
-description: Renderer-free client state, effects, chrome keymaps, and normalized pane geometry shared by native and terminal skins.
+description: Renderer-independent client state, input routing, scrollback, layout and presentation rules shared by zz clients.
 resource: crates/zz-client/src/lib.rs
 tags: [client, core, sans-io, keybindings, crate]
-timestamp: 2026-10-27T00:00:00-03:00
+timestamp: 2026-11-24T00:00:00-03:00
 ---
 
-# Overview
+# Client state and effects
 
-`zz-client` is the renderer-free client brain shared by the ala app, the raw-terminal client, and
-the C ABI. It depends only on `zz-protocol` and the model-only half of `zz-terminal`. It owns no
-socket, thread, clock, renderer, or toolkit type.
+`ClientCore` in `crates/zz-client/src/core.rs` consumes protocol messages. It retains the
+shared tree and private client view, current attachment, options, key tables, terminal
+viewports and agent state. The shell drains `CoreEvent` for presentation and local work and
+`Outbound` for requests the reducer needs to send. Seeding or replacing a connection with
+a hello establishes its server identity, capabilities and clock.
 
-The crate also resolves recursive `LayoutNode` ratios into normalized pane rectangles. Native
-toolkit shells consume those rectangles through the C ABI, keeping split semantics out of Swift,
-while each surface multiplies them by its current local bounds.
+A tree delta with a bad base queues one `TreeSync`. A terminal patch without a matching
+viewport queues `RequestFull(pane)`. Repair is scoped to what failed. The desktop
+`MuxClient` handles terminal and command-output frames on its retained paint path to keep
+row revisions and history in one place. See [snapshots](/protocol/snapshots.md),
+[terminal frames](/protocol/terminal-lanes.md) and [the desktop client](/crates/zz.md).
 
-`StatusBarModel::from_snapshot` projects one attached session into renderer-free native status
-data. It carries the optional session name, the complete window list, per-client
-focus, bell/activity/agent markers (the compact view reads them for page attention; the title bar
-draws none), and the live terminals running Claude Code or Codex
-(`window_summary::pane_agent`, which reads `PaneSummary.process`). Views own truncation,
-overflow, actions, colors, and time formatting. This path does not read the daemon-expanded
-`StatusLine`.
-
-`ClientCore` accepts decoded `ProtocolMessage`s and retains the current handshake data, mux
-snapshot, attachment, terminal viewports, daemon key-table snapshots, status, prefix state, and
-daemon-owned overlays. A shell drains two queues after each message:
-
-- `Outbound::RequestFull(pane)` asks the transport to repair a patch that could not apply.
-- `CoreEvent` reports state changes and carries effects that the core does not retain, including
-  clipboard writes, URI opens, browser/terminal commands, GUI work, history, and Kitty image data.
-
-`InteractiveClient` consumes `ServerHello` during connection setup, so each shell seeds the core
-with `client.server_hello().clone()` before starting its receive loop. A reconnect may call
-`adopt_hello` alone to keep frozen frames, or handle the full hello to reset attachment and overlay
-state.
-
-Connection-time caller facts stay outside this crate. `zz-daemon::InteractiveClient` constructs a
-local Control hello with the process cwd, an stdin-only `client-tty-v1:` identity when available,
-and `client-nested-v1` for a nonempty `$TMUX`. `ClientCore` neither discovers nor retains those
-facts. The Control path sends no `client-size-v1:` fact and no `ClientTerminalSize` update, so it
-adds no implicit geometry or renderer state here.
-
-`ClientCore` accepts and ignores the Control-only v77 `ControlCommandGuard` event, including its
-frame flags and independent sticky-status bit. It does not own `-C`
-frame rendering, stdin ordering, or process exit state; `crates/zz-cli/src/control_mode.rs` owns those
-front-end concerns. That front end now closes `control-mode.source-file-exit-status` by retaining the
-pin's bounded retval. A Return captured during a preceding non-detach command precedes later queued
-stdin, while a Return observed during self-detach is discarded when the caller receives its own
-`Detached` event. The shared interactive reducer needs no new state or wire message. Generic config
-Warning typing remains separate.
-
-# Desktop hot-path boundary
-
-The desktop `MuxClient` sends non-frame messages through `ClientCore` and drains the resulting
-requests and events into ala state. It intercepts `TerminalViewport`, `TerminalPatch`, and
-`CommandOutput` first because `RetainedTerminalViewport` also owns history, row revisions, and paint
-diff scratch. Passing those frames through both stores would duplicate the highest-rate work. The
-TUI and C ABI use the core's viewport retention directly.
-
-# Scrollback retention and pixel scrolling
-
-`scrollback.rs` holds the retained viewport both kinds of shell paint from: the live grid, its row
-revisions, and a `HistoryRing` of rows above the server's viewport, filled from rows that scroll off
-the top and from `HistoryChunk` replies. `apply_retained_patch` keeps the ring aligned with the
-server's offset and drops it when a patch cannot be reconciled; a scroll back that arrives together
-with output appended below keeps it. The desktop `MuxClient` stores one per pane itself; `ClientCore`
-stores one per pane too, with an empty ring unless the shell calls `retain_history`, so the TUI and
-the C ABI pay nothing for rows they never paint. `history_request_range` sizes a backfill or
-prefetch request, and `HistoryPacer` is the request policy as a sans-IO value: one request in flight
-per pane, prefetch targets merged into it, a retry after 3 s, and backfill deferred until 100 ms
-pass without ring changes. The caller passes the clock. The desktop keeps one pacer per host
-connection and the thin client one per connection; the desktop also drops every deferral on a
-snapshot change (`clear_deferred`) so its backfill goes out at once.
-
-`local_scroll.rs` holds the pixel scroll state machine. `LocalScrollState` turns pixel deltas into a
-local target row plus a sub-row offset, decides when the daemon should follow (`ScrollToOffset`),
-when to prefetch history, and when to sync and retire, and returns those as `LocalScrollEffect`s for
-the shell to send. The desktop `TerminalView` and the ala thin client's `TerminalPane` both drive
-it; see [interaction](/terminal/interaction.md#local-scroll-client-side).
-
-# Command-output actor state
-
-Protocol v79 gives each real command-output actor a nonzero daemon-lifetime ID. `ClientCore` retains
-the current `(output_id, pane, viewport)` plus a watermark for the newest actor it has observed. A
-newer populated frame installs that actor, a same-ID frame updates it, and older frames or closes do
-nothing. A newer close advances the watermark before clearing the current actor, so a delayed frame
-cannot reopen an output that already closed. The zero-ID empty-resync sentinel clears the current
-output without lowering the watermark.
-
-`adopt_hello` resets the watermark for every newly adopted handshake because that handshake may come
-from a restarted daemon with a fresh ID lifetime. Reconnecting to the same daemon does not restart
-its counter. The method keeps the frozen frame that a reconnecting shell may still be painting; the
-first output state from the new connection replaces or clears it. The TUI reads
-`command_output_id()` with the existing viewport accessor. It keeps search, swallowed-key, and
-geometry caches across same-actor updates and resets them only for a new actor or a close.
-
-# Chrome keymap
-
-`ChromeKeymap` stores the client-owned `ui`, `sidebar`, `browser`, `terminal`, and `prefix` tables
-(`prefix` answers the key after the prefix when the daemon's prefix table leaves it unbound). It uses the
-same `KeyTables` resolution rules as the daemon contract, with a chrome-only grammar that preserves
-Command/Super (`D-`) and Shift (`S-`) chords. `ChromeProfile` supplies TUI, desktop, and Apple
-defaults; `chrome-keybind` and `chrome-unbind` apply user overrides, parsed by `chrome_override`
-(`parse_bind`, `parse_unbind`, the ala spelling bridge) and applied with `ChromeKeymap::apply`, which
-the desktop config and the thin clients' preferences share. Skins resolve a key to a
-`ChromeAction` and apply the action instead of matching chords in view code.
-
-# Overlay and palette rules
-
-The rules the daemon overlays and the palette follow outside of drawing live here so every client
-calls the same code. `menu.rs` resolves menu keys, pointer reports, pastes and confirm keys, maps a
-pointer to the menu cell it lands on (`menu_hit_cell`) and fits menu rows to the window
-(`menu_row_height`). `floating.rs` places a menu or popup on its client cell grid
-(`overlay_frame`) and sizes the confirm prompt (`confirm_size`). `chooser.rs` holds the
-choose-tree and choose-buffer titles, subtitles, key labels, footer hints and buffer row text.
-`palette.rs` holds the palette's fuzzy matcher, which catalog commands ask for a target or more
-arguments, and the tmux key spelling a shortcut cap draws. `tmux_style.rs` splits a styled label
-into its left, centre and right runs and reads literal colours out of a style. zz-ui's ala views
-and the HTML client (`clients/dom`) both call these.
-
-# Testing
-
-`tests/simulator.rs` boots a real daemon and drives seeded client cores. It checks snapshot and
-viewport convergence, patch/full duality, and recovery after a requested full frame. Sequence gaps
-are not errors because the daemon may supersede an unread terminal frame under backpressure.
-
-# Key files
-
-| File | Role |
+| Source under `crates/zz-client/src` | Shared behavior |
 | --- | --- |
-| `crates/zz-client/src/lib.rs` | Crate facade and public contract. |
-| `crates/zz-client/src/core.rs` | `ClientCore`, retained state, protocol reduction, `CoreEvent`, and `Outbound`. |
-| `crates/zz-client/src/scrollback.rs` | `RetainedTerminalViewport`, `HistoryRing`, patch and chunk application, and `HistoryPacer`. |
-| `crates/zz-client/src/local_scroll.rs` | `LocalScrollState` and the pixel scroll, follow, and prefetch math. |
-| `crates/zz-client/src/chrome.rs` | `ChromeKeymap`, profiles, action names, chord grammar, defaults, and override API. |
-| `crates/zz-client/src/layout.rs` | Recursive split ratios projected into normalized pane rectangles. |
-| `crates/zz-client/src/status_bar.rs` | Pure native status projection from `MuxSnapshot`, an attachment, an optional host, and typed settings. |
-| `crates/zz-client/src/window_summary.rs` | Pure sidebar rows from a host's `MuxSnapshot`: window title, second line with tones, age from `PaneSummary.changed_at`, pane tiles, attention and rollups, plus `DaemonClock` for daemon-time ages. No client draws it yet. |
-| `crates/zz-client/src/menu.rs` | Menu key, pointer, paste and confirm resolution, menu hit cells and row height. |
-| `crates/zz-client/src/chooser.rs` | Chooser titles, subtitles, key labels, footer hints and buffer row text. |
-| `crates/zz-client/src/palette.rs` | Palette fuzzy matching, command target and argument rules, tmux shortcut spelling. |
-| `crates/zz-client/src/tmux_style.rs` | Styled label alignment buckets and literal style colours. |
-| `crates/zz-client/tests/simulator.rs` | Real-daemon deterministic convergence harness. |
+| `scrollback.rs`, `local_scroll.rs` | `RetainedTerminalViewport`, `HistoryRing`, patch application, local pixel scrolling and history prefetch. `HistoryPacer` tracks pending requests per pane, retries after 3 s, and defers background backfill until 100 ms of quiet. |
+| `input.rs`, `chrome.rs`, `chrome_override.rs` | Input ownership and effects, client key tables and profiles, `chrome-keybind` and `chrome-unbind` overrides |
+| `layout.rs`, `floating.rs` | Split geometry, hit tests, drop targets and floating-pane placement |
+| `window_summary.rs`, `sidebar.rs`, `status_bar.rs` | Window summaries, attention and age from daemon time, and status/sidebar presentation |
+| `menu.rs`, `chooser.rs`, `palette.rs` | Shared overlay actions, navigation and command matching |
+| `agent_lens.rs`, `agent_timeline.rs`, `chat_rows.rs` | Agent state and timeline projection into rows for the shell to draw |
 
-# Related
-
-- [Wire protocol](/protocol/wire-protocol.md) and [key tables](/tmux/key-tables.md) supply the
-  renderer-neutral contract.
-- [ala client](/crates/zz.md) uses the hybrid core plus retained-painter path.
-- [Client core decision record](/designs/client-core-and-contract.md) records the extraction and its
-  remaining ABI scope.
-- [Native status bar](/designs/native-status-bar.md) records the desktop presentation boundary.
-- [Flat sidebar data](/designs/flat-sidebar-data.md) records the sidebar view model and the tree
-  fields it reads.
+For the real-daemon convergence checks, run `cargo test -p zz-client --test simulator`.
+The test drives clients through frame and snapshot updates and requests full frames to repair
+a missing base. See [client core design](/designs/client-core-and-contract.md) and
+[key tables](/tmux/key-tables.md).

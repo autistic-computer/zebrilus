@@ -2,323 +2,115 @@
 type: Playbook
 title: Running the browser client
 description: Build the shared ala browser client and connect it, through the local WebSocket gateway, to the gateway machine's daemon or any host its zz config lists.
-resource: clients/web/src/lib.rs
-tags:
-- browser
-- wasm
-- client
-- websocket
-- ala
-timestamp: 2026-11-15T00:00:00-03:00
+resource: crates/zz-web/src/main.rs
+tags: [browser, wasm, client, websocket, ala]
+timestamp: 2026-11-24T00:00:00Z
 ---
 
-# Overview
+## Run
 
-`clients/web` compiles the shared ala components from `zz-ui` and the state reducer from
-`zz-client` to WebAssembly. The app shell, navigation, settings, palette, overlays, pane entities, connection reducer,
-and image caches in `clients/app/src` also compile into the native iOS ala app. `zz-web` serves the page and forwards the existing binary protocol
-between each browser WebSocket and one daemon connection: the gateway machine's own daemon, or
-any host listed in its `zz/config`. The daemon owns sessions, PTYs,
-key bindings, copy mode, and Agent processes.
-
-# Run
-
-Start the development daemon with `just run mac` or `just run linux`, then run from the repo root:
+Start a development daemon with `just run mac` or `just run linux`. In another shell:
 
 ```sh
 just web setup
+just web run
+```
+
+Open the token link printed by the gateway. The dev recipe builds into
+`clients/web/dist-dev`, serves on `127.0.0.1:8081` and watches shared and client sources.
+Reload after a rebuild. For a one-off build or a specific socket:
+
+```sh
 just web build
-just web serve
+just web serve --bind 127.0.0.1:8081 --socket /tmp/zz-web-dev.sock
 ```
 
-Open the link the gateway prints (`http://127.0.0.1:8081/?token=...`). `just web run` builds the assets, starts the gateway, and watches
-the client and shared crates for changes. Refresh the page after a rebuild.
-`just web build` produces dev assets under `clients/web/dist-dev`. Dev builds use a separate
-local-storage key for preferences. `just web build --release` produces optimized release assets
-under `clients/web/dist` with the ordinary zz identity. Serve those with
-`ZZ_DEV_BUILD=0 cargo run -p zz-web -- --assets clients/web/dist` (port 8080 by default).
-Both builds enable code highlighting (tree-sitter compiled to WASM), which needs `llvm-ar`
-(`brew install llvm` on macOS); `WEB_SYNTAX_HIGHLIGHTING=0` builds without it. The grammars add
-roughly 0.7 MB gzipped.
+Replace the socket argument with the existing daemon's path or omit it for the dev default.
+The dev recipes clear inherited pane and socket context. `just web setup` installs nightly,
+the wasm32 target, cargo-watch and the pinned wasm-bindgen CLI. Syntax highlighting needs
+`llvm-ar` (`brew install llvm` on macOS), or set `WEB_SYNTAX_HIGHLIGHTING=0`.
+For release assets use `just web build --release`, then from a shell targeting the installed
+daemon run `ZZ_DEV_BUILD=0 cargo run -p zz-web -- --assets clients/web/dist` (port 8080).
+The defaults live in `crates/zz-web/src/main.rs`.
 
-The dev recipes compile the gateway with `ZZ_DEV_BUILD=1` and connect to the existing
-`zz-dev` daemon socket. They clear inherited `ZZ_SOCKET` and pane context. An explicit
-`--socket` selects another daemon:
+## Remote access
+
+The gateway accepts loopback binds. To reach a remote dev gateway over SSH, keep the
+local and remote ports equal so Host and Origin match:
 
 ```sh
-just web serve --bind 127.0.0.1:8081 --socket /tmp/ala-cef.sock
+ssh -N -L 8081:127.0.0.1:8081 user@host
 ```
 
-The browser and daemon must use the same protocol version. If an installed daemon reports a
-version mismatch, rebuild the client against that version or restart the daemon with the matching
-binary when its sessions can be stopped.
+Use 8080 at both ends for a default release gateway. Open the printed token URL locally.
+The redirect exchanges the token for an HttpOnly, SameSite=Strict, port-named cookie.
+Assets and WebSockets require the cookie. Host changes and WebSocket upgrades also require
+the matching origin. After restarting the gateway, open its newly printed link.
 
-# Hosts
+## Hosts
 
-One gateway serves every host configured on its machine. At start it reads the
-`host-<name> = ssh://…|unix://…|tailnet://…` lines from `zz/config`; restart it after adding a
-host. `GET /hosts` answers with the list the page builds its machines from, this machine first:
+The gateway reads its configured hosts at startup. Change the gateway machine's
+`zz/config` (or `zz-dev/config`), then restart to pick up configuration edits. The
+client keeps hosts added through **Settings > Hosts** in local storage. Remove those
+hosts from the same page. Each connected machine has a WebSocket. The selected machine
+gets an attachment, background machines keep the navigation tree current.
+[Multi-host attachment](/designs/fleet-attach.md)
 
-```json
-[{"name":"local","title":"This computer","local":true},
- {"name":"alienware","title":"alienware","local":false}]
-```
+| Request | Result |
+| --- | --- |
+| `GET /hosts` | Returns this computer first, then configured entries. An older gateway without this endpoint still serves a single local connection. |
+| `POST /hosts` with a plain-text SSH destination | Returns the validated host row for the page to save, or 422 with a reason. The gateway leaves its config on disk untouched. |
+| `/ws`, `/ws?host=local` | Connects to the gateway machine's daemon. |
+| `/ws?host=NAME` | Connects to the configured Unix socket, tailnet or SSH route. A valid SSH endpoint can also be supplied directly. Unknown names return 404, malformed SSH endpoints and duplicate host parameters return 400. |
 
-`/ws?host=NAME` relays to that host's daemon; no parameter, or `host=local`, is the local daemon
-exactly as before. `NAME` is a config entry's name or an `ssh://` endpoint the page added; any other
-value gets 404 before anything is dialed, an `ssh://` value that does not parse gets 400, and two
-`host` parameters get 400.
+SSH runs on the gateway using its user's identities. Password, host-key and agent prompts
+travel over the host's authenticated WebSocket. The gateway queues up to 64 binary frames
+during sign-in, including the client's hello. The browser shows the sign-in prompt and
+sends the answer or cancellation on that connection. `crates/zz-web/src/lib.rs` implements
+the relay, and `clients/app/src/connection.rs` defines `retry_after` and `page_out_of_date`.
 
-`POST /hosts` takes a destination as its plain-text body (`user@host[:port]`, with or without
-`ssh://`), checks it with `parse_add_host` from `zz-daemon-client`, the desktop's Add host check,
-against the configured names, and answers the row the page keeps, or 422 with the reason as text:
+| Symptom | Action |
+| --- | --- |
+| 4401 close | Sign-in was refused or cancelled. Read the reason and use **Connect** to retry. |
+| 4502 close | Check the host, SSH route, remote binary and protocol. A failed first connection waits for **Connect**. Following a previously successful connection the page retries, backing off to 60 s on repeated 4502 closes. |
+| Local connection dropped | The page retries every 2 s. **Reload page** means the local daemon is ahead of the page. Reload to fetch the gateway's current client. |
+| Remote host is newer than the page | Align the gateway and remote versions. Reloading the same gateway's client cannot change its protocol. |
 
-```json
-{"name":"ssh://fabrico@gpu-box:2222","title":"gpu-box","local":false}
-```
+## Browser behavior
 
-It needs the same Origin and cookie as the WebSocket and writes nothing on the gateway machine:
-the page keeps the hosts it added, and the gateway's `zz/config` is never written.
+`clients/web/src/lib.rs` launches the same `clients/app` shell used by iOS and Android
+and registers Plumula and Lilex. The daemon owns terminals, agents, sessions and files.
+The browser draws terminal frames and images, handles input and clipboard pastes, replays
+agent state, and persists appearance and host choices in its own local storage. ala attempts
+WebGPU, then WebGL2. The WebGL2 fallback supports one ala window.
 
-The gateway reaches the host itself, the way the desktop does (`DaemonRoute::open_with_prompts` in
-`zz-daemon-client`): `unix://` dials the socket, `tailnet://` starts the tailnet forward, and
-`ssh://` reuses or opens the kept ssh forward, probing and starting the remote daemon as needed.
-ssh signs in with the gateway user's identities (zz's own key first, then the agent and
-`~/.ssh`), then asks the page for what it still needs. Its askpass helper is the `zz-web` binary
-itself (`ZZ_ASKPASS_SOCKET` set), and each question goes to the page over the host's own WebSocket
-as a text message, `zz_protocol::gateway::SignInPrompt` in JSON
-(`{"kind":"secret","text":"(me@box) Password:","echo":false}`; the kinds are `secret`,
-`host-key`, `agent-confirm`, `save-key`, `notification` and `key-added`). The page shows the
-desktop's sign-in dialogs (`clients/app/src/app/authentication.rs`) and answers with a
-`SignInAnswer` text message, `{"answer":"…"}` or `"cancel"`; `notification` and `key-added` are
-shown as toasts and get no answer. Answers travel only over that authenticated WebSocket and
-neither side logs them. Binary frames the page sends while ssh is still signing in, its hello
-first, wait at the gateway (64 at most) and go to the daemon once it is reached. Closing the page
-mid-question cancels it. The WebSocket closes with a code and a reason of at most 123 bytes when
-the host cannot be reached:
+Browser panes offer **Open in browser tab**. Native Chromium and its pane screenshot commands
+require a desktop client. Editor panes can load and save a host file via `file-edit-v1`
+(up to 2 MiB of text, writes in 256 KiB chunks). The editor waits for a successful read
+before accepting edits. Paths in daemon commands such as `source-file` resolve on the host.
 
-| Code | Meaning |
-|------|---------|
-| 4401 | the sign-in was refused or cancelled: a declined host key, a cancelled or wrong password, a key passphrase nobody gave |
-| 4502 | anything else: refused, unresolved, timed out, zz missing or on another protocol there |
+For clipboard or preview regressions, paste an image into a terminal and hover its
+`[Image #N]` marker. The daemon stores the image and pastes its path. On hover the client
+fetches the preview immediately and shows it after 250 ms if the pointer stays. The encoded
+preview cache holds up to 512 entries and 64 MiB.
+Terminals and agent composers share `zz_ui::attachment::normalize`. PNG, JPEG, GIF and
+WebP within 5 MiB and 1568 pixels on the long edge pass through. Larger images are
+re-encoded, with JPEG kept as JPEG. BMP and TIFF become PNG. The client rejects images
+still over 5 MiB after encoding.
 
-The reason starts with the host name, then ssh's advice, for example
-`box: known_hosts has no matching key for the host: verify the host before connecting`. The
-gateway then reads until the page answers the close, so frames the page sent first cannot turn
-the close into a reset that hides the code and reason.
-
-The page fetches `/hosts` once at start and uses every host the way iPad uses its saved hosts
-(`clients/app/src/app/hosts.rs`, `clients/app/src/app/fleet.rs`): the session tree, the chat
-sidebar, the palette, the `@` menu and New chat's machine rows list them all, and opening
-something on another host switches the page to it. Each host gets its own WebSocket; the one on
-screen is attached and the rest hold only their tree. The page opens on this computer, and the
-hosts it was connected to before reconnect in the background (the list lives in local storage
-under `zz-web-hosts`, `zz-dev-web-hosts` for dev builds); when the page was last on another host,
-it switches back to that host once it connects, and stays on this computer if it does not.
-Settings > Hosts lists the gateway's hosts with Connect, Disconnect and Open, then an Add host
-field: a destination goes through `POST /hosts`, its reason shows under the field when refused,
-and an accepted one is saved in the same local storage list, keyed by its `ssh://` endpoint, and
-connected. Hosts added this way have a remove button; the ones from `zz/config` do not, since
-removing them is an edit to the gateway machine's `zz/config` and a gateway restart.
-
-This computer keeps retrying every 2 s, as before. Another host is never redialed after a
-failed first connect, nor after a 4401: it shows the close reason as its state and waits for
-Connect. After it has been connected once, a dropped connection is redialed in 2 s, and each
-4502 doubles the wait from 4 s up to 60 s (`retry_after` in `clients/app/src/connection.rs`).
-A page older than this computer's zz stops redialing and offers Reload page instead: a frame of
-a newer protocol version, or a hello refused as too old (`page_out_of_date`). That is a tab left
-open across a zz update, and reloading fetches the gateway's current client. The same answer from
-another host means that host runs a newer zz than the gateway machine, which a reload cannot fix:
-it shows as that host's state and waits for Connect.
-When `/hosts` fails (an older gateway), the page is the single-host client it was, with no Add
-host field. When it lists only this computer and the page added no host, Settings > Hosts shows
-this computer and the Add host field.
-
-# Remote access
-
-Run the gateway beside the daemon on the remote host, then forward its port:
-
-```sh
-ssh -L 8080:127.0.0.1:8080 user@host
-```
-
-Open the link the remote gateway printed, locally. Keep the forwarded local port equal to the
-gateway port.
-
-The gateway accepts only loopback bindings and matching HTTP Host and WebSocket Origin headers,
-and it serves nothing without its token. Each start makes a random token and prints it in the
-link; opening the link sets an `HttpOnly`, `SameSite=Strict` cookie named after the port and
-redirects to the page, keeping any other query parameters. Every asset and the WebSocket upgrade
-then need that cookie, so another OS user on the same machine cannot reach the daemon through the
-gateway. After the gateway restarts, open its new link. It has no public listener or TLS
-termination.
-
-# Browser behavior
-
-The page uses the same `zz-ui` shell, navigation, pane borders, browser toolbar, Agent timeline,
-composer, settings groups, and overlays as the desktop client. ala selects WebGPU when available
-and falls back to WebGL2. The page fills the viewport and reacts to browser resizing and zoom.
-
-Terminal panes receive full frames and patches through `ClientCore`. Both clients use the
-`zz-ui` terminal painter, which caches shaped rows and resolves shared style and grapheme
-dictionaries. Scrollbars, selection autoscroll, cursor blinking, inactive cursor outlines, and
-Kitty image placement use the shared rendering rules; the cursor stops blinking after 10 seconds
-without input and while its pane is off screen. Keyboard input, text composition,
-selection, scrolling, search, and paste reach the daemon through its existing input messages.
-Ctrl-= and Ctrl-- step the saved Terminal font scale setting by 10%, so every terminal changes.
-A terminal bell, when the host's `bell-action` and `visual-bell` let it ring, plays the bell
-sound (at most once per 200 ms) and flashes a `•` in front of the page title three times.
-Reconnects attach to the remembered session and replay focus and Agent transcript state.
-Agent replay includes submitted prompts when the provider emits `user_message_chunk` updates;
-the daemon does not journal a separate copy of submitted prompt text. Browser image transfers
-are assembled in a bounded cache and retired textures are released from ala.
-Hovering a terminal `[Image #N]` marker fetches its preview from the daemon and shows it after
-250 ms in the desktop-style popover. The browser limits pasted-image transfers and cached encoded
-bytes to 64 MiB and 512 entries, drops them on reconnect or session attachment, and releases
-retired image assets from ala. Missing previews do not trigger repeated fetches while cached.
-Clipboard paste takes images through ala's browser paste callback and runs them through the
-desktop's step in `zz_ui::attachment::normalize`: PNG, JPEG, GIF, and WebP images of 5 MiB or less
-whose long edge is at most 1568 pixels go up as they are; anything larger, and BMP or TIFF, is
-scaled to that edge and re-encoded to PNG. The browser uploads the bytes in ordered chunks; the
-daemon writes the image on its host and pastes its path into the terminal. An image pasted into
-an agent composer goes through the same step before it is attached. The step adds about 190 KB
-gzipped to the release WASM. Popup terminals, command output, and search retain text paste
-behavior.
-Page blur and local dialogs cancel the daemon prefix; ordinary keys wait for the cancellation
-acknowledgement after the dialog closes or the page regains focus.
-
-Terminal panes show the shared desktop header: the title pill, which is the drag handle and
-shows an X that closes the pane when pointed at, and the split controls. Inactive pane headers
-reveal their controls on hover. Drag the title, or arm the daemon prefix and drag any pane, to
-swap at another pane's center or join at an edge. The
-browser draws the shared drop preview and predicts the resulting layout until the daemon sends
-its next snapshot. Both clients use `zz-client` for drop targets and commands, and `zz-protocol`
-for the layout transforms. Recursive split surfaces keep one divider between panes,
-with the desktop active-pane edge highlight. Terminal dimming changes text and header
-content without dimming the pane background. Pointer movement selects inactive panes when the daemon's
-`focus-follows-mouse` option is on; dragging leaves focus unchanged.
-
-When the fixed sidebar is hidden, a sidebar focus request opens it over the workspace with a
-scrim. Escape, confirmation, or clicking the scrim dismisses it and returns focus to the workspace.
-Opening this panel leaves the saved sidebar preference unchanged.
-
-Session and window selection, terminal splits and divider dragging, pane zoom, daemon command
-prompts, choosers, menus, confirmations, popups, command output, and agent chat prompt/permission
-controls use live daemon state. An agent pane draws its chat under a pane header with the agent's
-mark, and the app follows its stream for as long as the pane is an agent pane
-(`Connection::watch_agent_panes`). That header, and a terminal running Claude Code or Codex, carry
-the [flip button](/concepts/agent-panes.md), which switches the pane between the CLI and the chat;
-the busy choice and an armed flip show in the pane's corner, the armed one from the pane's
-`flip_armed` summary. Fork from a message opens the fork as a PiP over the chat, in the same
-window. Composer actions share the desktop presentation. Appearance preferences for the
-browser live in local storage: system/light/dark mode, zoom, animations, contrast, reduce
-transparency, and the knobs Interface sets over the platform's look (the default theme file in the
-browser): the accent, the tint, the corner radius, the control shape, the glass, the UI font and the Mono font.
-The Theme file menu copies the look, pastes a theme file over every knob, or resets them.
-The animation switch respects the platform’s reduced-motion preference. Terminal color schemes
-follow the effective light/dark mode after attachment and when that mode changes. Numeric fields,
-color pickers, mode previews, and pane-picker rows use the desktop components. Panes settings use the shared Layout, Focus, and
-Frame groups for gaps, inactive opacity, the selected pane's edge and margins; pane corners follow
-the theme's radius and the pane edge its glass, or its outline without glass. Sidebar rows share desktop labels, markers, layout and
-rename menus, add/split/close actions, and keyboard navigation. Drag the sidebar’s right edge to
-resize it; the browser saves the width and clamps it to 160–640 logical pixels and half the viewport,
-with a 160-pixel minimum. The window strip shares tabs, overflow, and rename/close menus.
-The window strip draws no badges, host or update items, the same as the desktop. The browser bundles Inter for chrome and Lilex for terminals, code, and command output; daemon font stacks retain families available on the client and fall back to Lilex.
-Terminal settings can override the local family and text scale, with a shared renderer preview.
-UI font selection uses the client’s available fonts. It ships no
-CJK or emoji fallback, so unsupported glyphs render as missing glyphs.
-
-The command palette shares desktop input, result rows, pills, and keyboard hints.
-Command-P/Command-K (Control-Shift-P/Control-Shift-K on non-Apple desktops) opens
-Workspace search. Prefixes `:` and `@` select commands and targets; in `@` mode `%` filters
-panes by id and `~/` names files, which the browser does not list. The window chooser uses the
-same compact navigation tree. Both clients
-use `zz-client` completion for commands, options, recent commands, and live session/window/pane
-targets. Menus and confirmations share floating frames and rows, while pane indicators and
-terminal search use the desktop overlays. Popup terminals also use the desktop cell geometry,
-style colors, border rules, title, and content insets. Dead, waiting, and synchronized panes share
-the desktop badges, and terminal panes stack them with search and mode tags. Command output
-replaces its pane's content. Display-panes labels render tmux styles and alignment through
-`zz_ui::tmux_style`, which desktop uses too. Agent permission, error, and empty-state cards share
-their presentation, and jump-to-bottom is available.
-Agent slash-command suggestions share desktop rows and `zz-client` matching and replacement
-rules, including argument hints. The browser retains the provider command catalog independently
-of transcript limits so older replay entries can be discarded without losing completion.
-
-Settings and the new-pane picker omit unsupported controls. Native window behavior, OS fonts and credentials,
-native file dialogs, desktop notifications, Chromium execution inside a pane, and
-direct SSH host setup require capabilities outside the browser client. Browser panes retain their
-toolbar and offer an external tab for their URL. Editor panes use the shared code editor on the
-host's files: `FileReadRequest` and `FileWriteRequest` (`file-edit-v1`) carry up to 2 MiB of text,
-the header's folder button or Ctrl/Command-O opens the palette's file list to pick one, and the check
-button or Ctrl/Command-S saves, sending the text in 256 KiB chunks. The editor stays read-only and
-refuses to save until the file has loaded. There is no Save As. File paths in `save-buffer`, `load-buffer`, and `source-file` resolve on the daemon host;
-the daemon only asks command-line clients for their files. Browser
-screenshot commands return an error because the page has no Chromium pane runtime. Daemon
-`OpenUri` requests open HTTP, HTTPS, and mailto links in a browser tab, and a pasted image
-placeholder opens the image preview; other schemes show a client error toast.
-
-# Checks
-
-The browser has its own Cargo workspace and lockfile. Keep both ala
-patch revisions aligned with the root workspace.
+## Checks
 
 ```sh
 cargo test -p zz-web --locked
 cargo clippy -p zz-web --all-targets --locked -- -D warnings
 cargo test --manifest-path clients/web/Cargo.toml --lib --locked
-rustup run nightly cargo check --manifest-path clients/web/Cargo.toml --target wasm32-unknown-unknown --all-targets --locked
+scripts/ci.sh web
 just web build
 ```
 
-Gateway integration tests start a real daemon, attach over WebSocket, resize and type into a
-terminal, execute commands, and check that disconnect closes the daemon attachment. Other tests
-reject foreign origins, invalid frames, and asset paths outside the served directory, check that
-`/ws?host=NAME` relays frames byte for byte to a second `unix://` host and that an unknown name
-is refused without reaching the local daemon.
-
-To try several hosts by hand, start throwaway daemons on sockets directly under `/tmp`, point a
-scratch `XDG_CONFIG_HOME` at a `zz-dev/config` with `host-second = unix:///tmp/second.sock`
-lines, and run `target/debug/zz-web --socket /tmp/first.sock` with that environment.
-
-# Source
-
-- `clients/web/src/lib.rs`: ala initialization, portable fonts, and browser entrypoint.
-- `clients/app/src/connection.rs`: protocol reduction, bounded receive queue, the `/ws?host=NAME` socket, reconnect and retry, and replay.
-- `clients/app/src/app/hosts.rs`: the gateway's host list, its saved connected hosts, and Settings > Hosts.
-- `clients/app/src/app/fleet.rs`: one connection per host, background connections, and switching host.
-- `clients/app/src/terminal.rs`: browser terminal input, selection, search, and shared-renderer adapter.
-- `clients/app/src/terminal_images.rs`: bounded Kitty and pasted-image transfer assembly and image retirement.
-- `crates/zz-ui/src/terminal.rs`: shared terminal painting, metrics, scrollbars, cursor, and image placement.
-- `clients/app/src/app.rs`: workspace, navigation, and daemon overlays.
-- `clients/app/src/command_palette.rs`: the web/iOS `PaletteBackend` for zz-ui's shared `CommandPaletteView`.
-- `clients/app/src/app/floating.rs`: daemon menu and confirmation interaction over shared floating surfaces.
-- `crates/zz-ui/src/command/`: shared palette, menu, confirmation, and frame presentation.
-- `crates/zz-client/src/completion.rs`: shared command, option, history, and live-target completion.
-- `clients/app/src/app/agent_pane.rs`: an agent pane's chat and composer.
-- `clients/app/src/app/settings.rs`: supported settings pages and shared previews.
-- `clients/app/src/preferences.rs`: local preference persistence and migration.
-- `clients/app/src/app/sidebar.rs`: session tree of every saved host, keyboard focus, disclosure controls, and row actions.
-- `clients/app/src/app/status_bar.rs`: live status model and command callbacks for the shared strip.
-- `crates/zz-ui/src/navigation/status.rs`: shared window tabs, overflow, session chip, and status items.
-- `crates/zz-ui/src/navigation/sidebar.rs`: shared tree markers, menus, action strips, and keyboard navigation.
-- `crates/zz-client/src/navigation.rs`: shared tree labels, layout order, and rename command construction.
-- `crates/zz-client/src/agent_transcript.rs`: shared streaming transcript, plan, permission, and tool reduction.
-- `crates/zz-client/src/pane_separator.rs`: active pane separator spans for desktop and thin clients.
-- `crates/zz-client/src/agent_completion.rs`: shared provider command matching, query replacement, and hints; the slash list leaves out commands that need the CLI's own screen.
-- `crates/zz-client/src/agent_flip.rs`: the flip button's state (idle, busy choice, armed), the `flip-agent` commands every client sends, and the composer's `agent-account` switch, which shares the busy card.
-- `crates/zz-client/src/agent_lens.rs`: the agent stream cursor (replay, gaps, command catalog), the chat journal reducer, parked permissions, restored drafts and context usage.
-- `crates/zz-client/src/agent_timeline.rs`: timeline rows, turn folding, trace labels and counts, plan and composer labels, shared by zz-ui and the HTML client.
-- `crates/zz-ui/src/agent/slash.rs`: shared Agent command suggestion rows and list.
-- `clients/app/src/app/picker.rs`: pane-picker interaction over shared desktop rows.
-- `crates/zz-ui/src/chrome_palette.rs`: shared presets and palette resolution.
-- `libs/penna/src/blocks/picker/mod.rs`: shared history and path picker layout and rows.
-- `crates/zz-ui/src/agent/controls.rs`: shared composer actions, option menus, Git counts, and context usage.
-- `crates/zz-ui/src/agent/presentation.rs`: shared permission, error, and empty-state cards.
-- `clients/app/src/attachments.rs`: agent composer images (scaled through `zz_ui::attachment::normalize`), browser image selection, and protocol limits.
-- `crates/zz-web/src/lib.rs`: `Gateway`, asset serving, `/hosts`, and the binary WebSocket bridge.
-- `crates/zz-daemon-client/src/route.rs`: `DaemonRoute`, the unattended route to any endpoint's daemon socket.
-- `scripts/build-web-wasm.sh`: build and static distribution assembly.
-
-See [client core and contract](/designs/client-core-and-contract.md) and
-[running zz](/playbooks/running-zz.md) for the shared client rules and daemon lifecycle.
+`scripts/ci.sh web` checks formatting and the standalone client's locked nightly WASM build.
+The gateway tests in `crates/zz-web/tests/gateway.rs` exercise asset access, Origin checks,
+host routing and a real daemon attachment. For a manual two-host check, run two throwaway
+daemons with short sockets under `/tmp`, put `host-second = unix:///tmp/second.sock` in a
+scratch `$XDG_CONFIG_HOME/zz-dev/config`, and launch `just web serve --socket /tmp/first.sock`
+with that configuration. Open **second** and confirm the sessions belong to that daemon.

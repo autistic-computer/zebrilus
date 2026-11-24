@@ -7,11 +7,12 @@ tags: [storybook, zz-ui, penna, ala-platform, bugs, wasm]
 timestamp: 2026-10-09T00:00:00Z
 ---
 
-# How to use this
+# Scope of the October observations
 
-Each item names the storybook section that shows it: `just storybook run`, then open
-`#/<story>/<section>`, or `just storybook shot <story>/<section> out.png`. Check light, dark and a
-few presets. Fixed items should be deleted from this page.
+The findings and route names below describe the first storybook pass. Current visual status
+requires a fresh capture of the corresponding story and theme. The desktop and agent catalog
+runs with `just storybook run`. Kit and theme-creator stories live in `just storybook penna`.
+See the [storybook playbook](/playbooks/storybook.md) for the current routes and capture command.
 
 # Crashes and broken rendering on web
 

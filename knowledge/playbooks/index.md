@@ -3,16 +3,16 @@
 <!-- okf:listing:start (managed by okf.py index — edit prose outside this fence) -->
 # Concepts
 
-* [Agent benchmarks](agent-benchmarks.md) - Measure zz as an agent target: browser-pane capability parity over CDP against standalone browser tools, whether the zz-workspace skill helps weak agents, what a fresh user's Claude Code and Codex get, and the agent-send gaps an agent hits when it hands work to Claude Code or Codex workers across machines; harness layout, prerequisites, results, and traps.
+* [Agent benchmarks](agent-benchmarks.md) - Run the browser, guide, fresh-user and mention fixtures and reproduce the dated zz results.
 * [Running the browser client](browser-client.md) - Build the shared ala browser client and connect it, through the local WebSocket gateway, to the gateway machine's daemon or any host its zz config lists.
-* [Building and verifying a platform CEF bundle](build-cef-bundle.md) - Step-by-step use of cargo xtask and release recipes to assemble, sign, notarize, and validate platform CEF bundles.
-* [Running the tmux compatibility harness](compat-harness.md) - How to run the pinned tmux differential corpus, read topology, geometry, format, and query-stdout results, and record known divergences.
-* [Toolchain and system prerequisites](prerequisites.md) - The exact toolchain versions and per-platform system libraries required to build zz, pinned by rust-toolchain.toml, mise.toml, and CI.
-* [Releasing zz](releasing.md) - Ship a zz release from the Mac with just release ship, building every platform on our own machines through single-use self-hosted runners instead of hosted CI.
-* [Building and running zz](running-zz.md) - How to build and run the zz ala client and its daemon, what the first build downloads, and how to exercise the browser pane with the loopback fixture.
-* [Working with the zz storybook](storybook.md) - Run the zz storybook and penna's own, add a story, add an app's plates to the theme creator, change a look and check it in every theme, and drive or screenshot it from an agent.
-* [Running tmux compatibility cohorts](tmux-compat-cohorts.md) - A bounded, parallel workflow for closing the practical alias tmux=zz gap without letting new oracle findings extend one campaign forever.
-* [Running the TUI parity campaign](tui-parity-campaign.md) - Run the TUI parity campaign: the ledger, the proof surfaces, and the worker, reviewer, and gate cycle that turns measurements into verified obligations.
-* [Updating the CEF pin](updating-cef.md) - The coordinated steps required to bump zz's CEF dependency, refresh its artifact reference and cache key, and run all three platform bundle smoke tests.
-* [Updating the pinned tmux behavioral reference](updating-tmux-reference.md) - How to bump zz's pinned tmux upstream commit and re-verify the Rust tmux-compat reimplementation against it.
+* [Building and verifying a platform CEF bundle](build-cef-bundle.md) - Assemble, verify and package the native desktop bundle on macOS, Linux or Windows.
+* [Running the tmux compatibility harness](compat-harness.md) - Run a differential against the pinned tmux, interpret its five result channels and register an exception.
+* [Toolchain and system prerequisites](prerequisites.md) - Toolchain pins, native build dependencies and platform packaging requirements.
+* [Releasing zz](releasing.md) - Preview or ship a version, operate the four release runners and verify which assets were published.
+* [Building and running zz](running-zz.md) - Launch an isolated desktop or thin client, exercise a native browser pane and collect logs and profiles.
+* [Working with the zz storybook](storybook.md) - Build and inspect zz and penna stories, add sections and theme creator plates, and capture reproducible screenshots.
+* [Running tmux compatibility cohorts](tmux-compat-cohorts.md) - Select a bounded compatibility change, coordinate ownership and close it against the pinned behavior.
+* [Running the TUI parity campaign](tui-parity-campaign.md) - Read or repeat a raw-TUI proof and record a new obligation against the correct tmux pin.
+* [Updating the CEF pin](updating-cef.md) - Update the Rust packages, generated bindings, distribution hashes and CI caches together, then check each native bundle.
+* [Updating the pinned tmux behavioral reference](updating-tmux-reference.md) - Move the reference build and oracle to one tmux release and verify changes in zz's behavior.
 <!-- okf:listing:end -->

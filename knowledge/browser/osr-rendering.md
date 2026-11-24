@@ -4,7 +4,7 @@ title: Off-screen rendering & the frame mailbox
 description: How CEF frames cross the one-slot mailbox through the universal readback tier, Linux wgpu tier, macOS Metal-IOSurface tier, or Windows D3D11 tier, how popup widgets are composited into them, and how zz paces visible sessions.
 resource: libs/ala-cef/src/frame.rs
 tags: [browser, osr, frame, gpu, iosurface, hidpi, wayland, pacing]
-timestamp: 2026-10-31T00:00:00Z
+timestamp: 2026-11-24T00:00:00Z
 ---
 
 # Overview
@@ -289,61 +289,16 @@ the newest frame.
 
 # Frame pacing
 
-Before creating a session, `BrowserController::resolve_frame_rate_ceiling`
-resolves the paint ceiling. An explicit `ZZ_BROWSER_FPS=1..240` wins; otherwise
-zz uses the fastest attached display: `NSScreen.maximumFramesPerSecond` on macOS,
-ala's reported refresh rates elsewhere. The controller caches the first available
-rate; when no display reports one, it uses 60 FPS and retries on the next session
-creation. Focused sessions use the ceiling. Visible unfocused
-sessions normally use `min(ceiling, 30)`, but wheel input temporarily raises
-them to the ceiling and restarts a one-second decay timer. Hidden panes call
-`was_hidden` and do not paint.
+`BrowserController::resolve_frame_rate_ceiling` uses a valid `ZZ_BROWSER_FPS` override
+or the fastest attached display. If the display rate is unavailable it uses 60 FPS and
+retries at the next session creation. An unfocused visible pane normally gets at most
+30 FPS. Scrolling restores the ceiling for one second. Hidden panes stop painting.
 
-Delivery is additionally pump-bound: accelerated frames only arrive during
-`do_message_loop_work` turns, so the controller pumps at the ceiling's frame
-interval while a visible session delivered a frame within the last 500 ms
-(`PUMP_HOT_WINDOW`), decaying to the 30 Hz visible watchdog once frames stop.
-See [cef-runtime](/browser/cef-runtime.md).
-
-On macOS, external BeginFrames are the default
-(`ZZ_BROWSER_EXTERNAL_BEGIN_FRAME=0` reverts to CEF's internal timer, which caps
-shared-texture OSR at 60 FPS). Linux/FreeBSD retain their internal timer by
-default and enable the same pump-driven scheduler only for exact
-`ZZ_BROWSER_EXTERNAL_BEGIN_FRAME=1`:
-
-- a frame or browser input makes a visible session hot for about 500 ms;
-- BeginFrames are sent from the message-pump turn itself (immediately before
-  `do_message_loop_work` processes them), decoupled from ala's render loop:
-  riding `on_next_frame` pipelined production one ala frame behind consumption
-  and halved the effective browser frame rate;
-- each pane owns an anchored next deadline: hot and visibility edges send
-  immediately, on-time turns advance by one interval, and late turns send once
-  before skipping every missed interval without moving the anchor;
-- pump scheduling takes the minimum of the ordinary fallback and the earliest
-  pane deadline, so incidental or immediate turns may run early but cannot make
-  the compositor clock jitter;
-- hot sessions run at the frame-rate ceiling; with the `ZZ_BROWSER_BF_ADAPTIVE=1`
-  opt-in they also compare roughly one second of BeginFrames with delivered
-  `FrameReady` events. Delivery below 85% selects the next 2× interval tier,
-  bounded at 30 FPS, while at least 95% delivery for about two seconds probes
-  one tier faster; zero-delivery windows are ignored and going cold resets the
-  tier to the ceiling;
-- when cold, the visible pump watchdog's turns supply about 30 BeginFrames per
-  second so CSS/JavaScript animations can discover work; this keepalive does not
-  participate in adaptive sampling;
-- hidden sessions receive no external BeginFrames.
-
-The external BeginFrame scheduler controls Chromium compositor cadence. It is
-separate from CEF's external message pump. Linux/FreeBSD use ala's reported
-display rates, with a 60 FPS fallback; `ZZ_BROWSER_FPS` overrides that ceiling.
-Adaptive tiers stay opt-in because delivery is demand-driven:
-a scroll pause inside the hot window reads as a delivery shortfall and
-downshifts a tier the renderer could sustain, which compounded into a one-way
-ratchet to the 30 FPS floor when adaptation defaulted on.
-
-Why a stable divisor beats a larger instantaneous frame count on a fixed refresh
-grid is argued in [the CEF runtime's external BeginFrame
-section](/browser/cef-runtime.md).
+The CEF message pump delivers paint callbacks. On supported platforms zz can also
+clock the compositor with external BeginFrames. macOS enables them by default,
+Linux and FreeBSD require opt-in, and Windows uses CEF's internal timer. For the
+500 ms hot interval, adaptive thresholds, late-frame behavior and the Linux measurements,
+see [external BeginFrames](/browser/cef-runtime.md#external-beginframes).
 
 # Device scale factor / DPI handling
 
@@ -371,7 +326,7 @@ suppressed by equality checks.
 | `libs/ala-cef/src/metal_osr.rs` | macOS Metal source import, synchronized blit, and destination `IOSurface` pool. |
 | `libs/ala-cef/src/d3d11_osr.rs` | Windows shared-NT-handle import, in-callback `CopyResource`, and destination D3D11 texture pool. |
 | `crates/zz/src/browser/controller.rs` | Tier decoding, frame-rate policy, fallback recreation, and external BeginFrame activity state. |
-| `crates/zz/src/browser/view.rs` | Latest-frame consumption, retained surfaces, and hot/idle BeginFrame scheduling. |
+| `crates/zz/src/browser/view.rs` | Pane presentation, viewport updates, and the resize cover. |
 | `crates/zz/src/browser/macos_surface.rs` | Cached `IOSurface` to `CVPixelBuffer` wrapping. |
 | `crates/zz/src/browser/underlay.rs` | macOS per-pane `CALayer`, host view, placement, and the end-of-frame `UnderlayFlush`. |
 | `crates/zz/src/browser/element.rs` | ala image, wgpu external-texture, and macOS surface painting. |

@@ -8,19 +8,20 @@ tags:
 - cargo
 - dependencies
 - proc-macro
-timestamp: 2026-09-12T23:50:00Z
+timestamp: 2026-11-24T00:00:00Z
 ---
 
 # Retirement
 
-The September 2026 dependency cleanup removed the unused Cargo override and
-`third_party/rust/proc-macro-error2/` snapshot. Neither `proc-macro-error2` nor
-`stacksafe` appears in the resolved workspace graph at the
-[current ala revision](/references/ala.md).
+The September 2026 dependency cleanup removed the Cargo override and
+`third_party/rust/proc-macro-error2/` snapshot. The old chain was
+`ala → stacksafe → stacksafe-macro → proc-macro-error2`. In zz commit
+`78df1544`, `stacksafe-macro` 1.0.3 switched to `proc-macro2`.
 
-The old dependency chain was `ala → stacksafe → stacksafe-macro → proc-macro-error2`.
-In zz commit `78df1544`, `stacksafe-macro` 1.0.3 replaced its dependency on
-`proc-macro-error2` with `proc-macro2`; the later ala rebase removed `stacksafe`.
+The standalone [ala](/references/ala.md) manifest still offers the optional
+`stacker` feature backed by `stacksafe`. Its lockfile includes `stacksafe`
+and `stacksafe-macro`. Neither the ala lockfile nor zz's root lockfile lists
+`proc-macro-error2`.
 
 # Historical provenance
 

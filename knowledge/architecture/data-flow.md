@@ -1,141 +1,57 @@
 ---
 type: Architecture
 title: End-to-end data flow
-description: How terminal frames, browser pixels, agent lens updates, and user input move among the daemon, GUI, PTY workers, CEF, and agent CLIs.
+description: How terminal frames, browser pixels, chat events and input reach the pane that owns them.
 resource: crates/zz-daemon/src/daemon.rs
 tags: [architecture, data-flow, frames, input, rendering]
-timestamp: 2026-10-24T00:00:00-03:00
+timestamp: 2026-11-24T00:00:00Z
 ---
 
-# Overview
+## Terminal
 
-Three rendering paths coexist in a GUI client. The daemon produces terminal content and streams it
-as renderer-neutral frames; CEF produces browser content locally; for a terminal running Claude
-Code or Codex the daemon also reads the CLI's transcript and streams it as agent items, which the
-GUI reduces into the lens timeline. Browser pixels never cross the zz daemon protocol; agent items
-do, as opaque JSON blobs on their own lane.
+The PTY writes bytes to a terminal actor. Libghostty-vt parses the stream once.
+The actor publishes immutable viewports for subscribed views, each with its own
+scroll position, selection and copy-mode state. The daemon's `shard_sink::PaneSink`
+can deliver them directly to subscriber mailboxes. A client receives a full
+viewport or a patch against its retained grid. If its base generation is wrong,
+`RequestFull { pane }` repairs the affected pane. History requests backfill the
+client's `HistoryRing`. The desktop paints the resulting rows as an ala element.
+[PTY worker](/concepts/pty-worker.md) · [Terminal lanes](/protocol/terminal-lanes.md) · [Terminal interaction](/terminal/interaction.md)
 
-# Terminal path (daemon → client)
+## Browser
 
-```
-PTY child ──bytes──▶ libghostty-vt (worker thread)  [zz-terminal]
-        │
-        ▼ one immutable renderer-neutral frame per active client view
-   server frame fanout  [server]
-        │  packed terminal lanes over the wire protocol
-        ▼
-   mux_client  [app] ──▶ terminal_element paints in ala
-```
+Desktop CEF off-screen rendering publishes its latest frame to a local mailbox.
+The client paints a shared GPU surface when available and falls back to BGRA pixels.
+Page keys, pointer events, IME and focus go to the browser input handler.
+The daemon tracks the tab list, selected tab and profile so a client can reopen them.
+[OSR rendering](/browser/osr-rendering.md) · [Browser input](/browser/input-translation.md) · [Browser lifecycle](/browser/lifecycle.md)
 
-- The worker thread owns the PTY and every libghostty object and publishes one immutable
-  [terminal frame](/concepts/terminal-frame.md) per active view on each update. A view is a client:
-  each attached client holds `TerminalViewId(client.0)` with its own scroll anchor, selection, copy
-  mode, and search, so two devices read one pane at two scroll positions.
-- The [server](/crates/zz-daemon.md) diffs every (pane, view) stream against that view's previous
-  frame and sends the patch or a full viewport to that view's client alone, encoded as
-  [packed terminal lanes](/protocol/terminal-lanes.md) inside the
-  [wire protocol](/protocol/wire-protocol.md).
-- Every frame is delivered reliably and in order, local socket or ssh forward alike, and uncompressed.
-  Backpressure is handled a step earlier, in the daemon's outbound mailbox: one pending frame per
-  pane, newest replacing stale, so a slow client converges on the latest frame rather than draining a
-  backlog. A client that cannot apply a patch repairs one pane at a time with `RequestFull { pane }`.
-- The [app](/crates/zz.md) reconciles panes by [ID](/protocol/ids.md), keeping terminal entities
-  stable, and paints frames with a [custom ala element](/terminal/rendering-parity.md).
-  Rows the grid scrolls away land in that
-  pane's client-side `HistoryRing`, backfilled deeper by `HistoryRequest`/`HistoryChunk`, which is
-  what makes scrolling back a local read.
+## Agent chat
 
-# Browser path (local to the GUI process)
+1. The composer sends `AgentPrompt`. The daemon routes it to the pane's
+   `AgentHost`, which drives the provider's headless protocol.
+2. The driver translates provider events. `AgentFanout` batches sequenced stream
+   items into `AgentUpdates`. `AgentState` carries the current status and the first pending
+   permission. The client tracks all open requests from the stream’s `RequestOpened` and
+   `RequestClosed` events alongside messages, tool calls and turns.
+3. The client sends `AgentRespondPermission` for a pending request or `AgentCancel`
+   for a running turn. The driver performs the requested operation.
+4. On attach or a gap, `AgentReplay` asks for the stream from a sequence number.
+   The daemon serves retained items or rebuilds the missing history for that client.
 
-```
-CEF renderer ──shared GPU texture or BGRA──▶ one-slot mailbox (latest only)  [ala-cef]
-        │
-        ▼
-   browser_element paints the latest frame (external_texture / paint_surface / D3D11 / BGRA)  [zz]
-```
+The driver, replay and reducer live in `crates/zz-daemon/src/agent/host.rs`,
+`crates/zz-daemon/src/agent/fanout.rs` and `crates/zz/src/agent/controller.rs`.
+A vendor TUI running in a terminal uses the terminal path. [Agent panes](/concepts/agent-panes.md)
 
-- CEF Alloy OSR publishes into a **one-slot mailbox**; only the latest frame is kept. The default
-  tiers are Linux wgpu `external_texture`, macOS Metal-IOSurface, and Windows D3D11; owned BGRA
-  readback is the fallback. See [OSR rendering](/browser/osr-rendering.md).
-- The daemon never transports browser video frames; the browser lives entirely in the
-  GUI process. The daemon only persists a browser pane's tab list + [profile](/browser/profile.md).
+## Commands and configuration
 
-# Agent lens path (through the daemon, since v113)
+The window's prefix handler can claim the tmux prefix even when a composer or an
+address bar has focus. The daemon resolves its key tables. An unbound prefix key
+leaves the table, while an unbound root key can reach the pane. `ChromeKeymap`
+resolves client actions. CLI commands reach the same mux command engine.
+[Key tables](/tmux/key-tables.md) · [Commands](/tmux/commands.md)
 
-```text
-lens composer ──AgentPrompt──▶ lens runtime ──bracketed paste + Enter──▶ claude / codex TUI
-   ▲                                ▲                                      │ writes
-   │                                └──── tail every 250 ms ───── transcript (jsonl / rollout)
-   │                                │
-   │                        fanout: 25 ms coalesce, wire seq, 18 MiB replay ring
-   │                                │
-   │  AgentUpdates (JSON items) + AgentState                              [agent lane]
-   ▼                                ▼
-AgentController reducer ──────▶ chat_surface + composer                   [client]
-```
-
-- The daemon runs one driver per agent `PaneId`, on its own thread. It translates the CLI's
-  protocol frames into stream items with the vendor translators and fans them out. `AgentController` is the reducer, rebuilding messages, thoughts, tool calls and turns from
-  the stream it replays and tails. See [agent panes](/concepts/agent-panes.md).
-- A replay deliberately overlaps the live tail; the client's per-pane sequence cursor is what makes
-  that idempotent. A lane overflow sends `AgentLagged` rather than closing the connection, and the
-  client answers with `AgentReplay` from its cursor.
-- A Claude permission prompt rides `AgentState` out to every client on the session and every
-  client watching the pane (one that sent `AgentReplay` for it, attached or not), so a
-  late-attaching client and a client watching from another host see the same card. `AgentRespondPermission` answers it with the key the
-  dialog takes (`1` allows, Esc denies); first answer wins. Codex approvals are answered in the
-  terminal. Cancel sends `AgentCancel`, which presses Esc.
-- Nothing about the agent lives in mux state. Opening the lens again rebuilds the timeline from the
-  CLI's transcript.
-
-# Input path (client → target)
-
-```
-ala event ─┬─ prefix chord (any focus) ─▶ window-root claim ─▶ mux key tables       [server]
-            ├─ chrome action ─▶ ChromeKeymap ─▶ local or protocol-backed effect      [client]
-            ├─ terminal raw key ─▶ mux key tables ─▶ Pass ─▶ PTY                     [server]
-            ├─ browser page key ─▶ browser-surface route ─▶ CEF sink                 [server/client]
-            └─ lens focused ─▶ composer / cancel / approval ─▶ AgentController
-```
-
-- The renderer-free [mux](/crates/zz-mux.md) handles prefix key tables and command
-  resolution; the same [commands](/tmux/commands.md) are also reachable from any shell as
-  CLI clients (e.g. `send-keys -t %0 …`). The prefix is one-shot, exactly as in tmux: it arms the
-  prefix table for a single following key; an unbound prefix-table key is swallowed and exits the
-  table, while an unbound root key passes through to the pane.
-- The tmux prefix is authoritative from **every** focus context. Terminal and Browser keys reach
-  the daemon; local text widgets (composer, address bar) are covered by the window-root
-  prefix claim, which forwards the chord (and the armed sequence that follows it, tracked via
-  `PrefixArmed` events) with the active pane as command source.
-- `zz-client::ChromeKeymap` resolves client-owned `ui`, `sidebar`, `browser`, and `terminal`
-  actions after the prefix claim. The daemon publishes all of its pane tables through
-  `ServerHello.key_tables` and `KeyTablesChanged`, but keeps authority over their execution.
-- Browser page input uses dedicated Browser-surface messages that skip root-table resolution and
-  feed the synchronized CEF sink. The prefix claim remains available from the page.
-- Browser input translation (pointer, wheel, keyboard, committed text, IME, focus, resize) lives in
-  [input translation](/browser/input-translation.md).
-- Trackpad scroll over a live pane with a warm history ring repaints from the ring on the next frame,
-  by pixels, and tells the daemon through follow steps plus one `ScrollToOffset` debounced by 120 ms.
-  A discrete upward wheel still goes to the daemon. See [terminal interaction](/terminal/interaction.md).
-
-# Configuration & appearance flow
-
-At GUI startup, the app independently resolves the first platform-appropriate
-[`zz/config`](/configuration/app-config.md) file into client-local ala globals used by native
-window rendering. A file watch (500 ms polling outside Linux) hot-reloads it; daemon-owned appearance and mux entries cross the
-override channel, and the three agent adapter keys are among them; they configure the native
-drivers, which no pane opens now.
-
-The daemon resolves [appearance](/terminal/appearance.md) as built-in defaults plus the
-client-pushed `zz/config` overrides. With config loading enabled, it sources explicit `-f` files
-in order, or only `zz/mux.conf` when no explicit files were supplied. `reload-config`/`C-b r` replays that selection and pushes the resolved state
-to GUI clients and live terminal actors without killing PTYs, scrollback, selections, searches,
-layouts, or browser panes. See `startup_mux_config_files` and `selected_mux_config_files` in
-`crates/zz-daemon/src/daemon.rs` for the selection and precedence rules. The client imports Ghostty appearance into `zz/config`; the daemon's
-`import-tmux-config [path]` copies tmux commands into `zz/mux.conf`.
-
-# Related
-
-- [System overview](/architecture/overview.md)
-- [Process model](/architecture/process-model.md)
-- [Terminal frame](/concepts/terminal-frame.md) · [OSR rendering](/browser/osr-rendering.md)
+The desktop loads and watches its platform's `zz/config`. Local chrome settings
+apply in the client. `SetConfigOverrides` carries ordered appearance and mux
+overrides to the local daemon. The daemon loads `zz/mux.conf` or explicit `-f`
+files, then reapplies overrides on reload. [App config](/configuration/app-config.md) · [Terminal appearance](/terminal/appearance.md)

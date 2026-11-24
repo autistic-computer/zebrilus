@@ -2,7 +2,8 @@
 type: Research
 title: Linux browser pane pacing and dma-buf import cost
 description: Measured CEF frame delivery on Linux with CEF's own BeginFrame timer against zz-driven external BeginFrames at 60 and 120 Hz, on the readback and GPU tiers, plus what each dma-buf import costs; external BeginFrames stay opt-in.
-resource: crates/zz-browser/src/cef_runtime.rs
+resource: libs/ala-cef/src/cef_runtime.rs
+timestamp: 2026-10-28T18:44:35-03:00
 tags:
 - linux
 - browser
@@ -10,42 +11,28 @@ tags:
 - nvidia
 ---
 
-# Question
+# Frame delivery on the tested NVIDIA host
 
-Two ideas came out of comparing zz's browser pane with another app's WPE
-backend: let GPUI's display clock drive Chromium's BeginFrames on Linux, and
-cache dma-buf imports by buffer identity instead of importing each frame.
-Neither was worth building without numbers. This note has the numbers.
+CEF's internal timer kept the page at the display refresh rate. zz-driven external BeginFrames sometimes
+stalled. Page animation, CEF delivery and frames consumed by the UI were measured separately. The
+desktop still selects external frames on Linux only when `ZZ_BROWSER_EXTERNAL_BEGIN_FRAME=1`, in
+`crates/zz/src/browser/environment.rs` (`external_begin_frame`).
 
-# Setup
+**Fixture.** zz `0fc63e82b` plus a resize-cover change, debug build with dependencies at optimization
+level 2, on a CachyOS 7.2.11 host with RTX 3070 Laptop and NVIDIA 615.78.08. Headless gamescope 3.17 ran
+at 1,600 × 1,000 and 60 or 120 Hz with private socket, profile and HOME. The browser viewport was 393 ×
+580 beside a terminal. The host was on AC, governor powersave, with intermittent builds (load average
+7–10). The local page animated a gradient each rAF and reported its own rate/gaps in its title.
+Diagnostics counted CEF callbacks and successful mailbox takes. The first fifth of each run was
+excluded.
 
-- alienware: RTX 3070 Laptop, NVIDIA 615.78.08, CachyOS 7.2.11, on AC with the
-  `powersave` governor. Another session's cargo builds ran on and off during the
-  runs (load average 7 to 10), which is the noise in rep 1.
-- zz at `0fc63e82b` plus the resize-cover change, debug build (dependencies at
-  `opt-level = 2`, so wgpu, ash and the driver run optimized).
-- Headless gamescope 3.17 at 1600x1000, `-r 60` or `-r 120`, isolated socket,
-  XDG dirs and `HOME`. One terminal pane and one browser pane split side by side
-  (browser viewport 393x580 logical).
-- The page fills a canvas with a new gradient every `requestAnimationFrame` and
-  writes its own rAF rate and frame gaps into `document.title`, sampled once a
-  second through `list-panes -F '#{pane_title}'`.
-- Delivered: CEF paint callbacks (`zz_browser::diagnostics::cef_paint` for
-  readback, `zz_browser::diagnostics::accelerated_copy` for the GPU tier).
-  Consumed: `frame_mailbox take` lines that returned a frame. First fifth of each
-  run dropped as warmup.
-- Readback tier: the default on this NVIDIA box, where the GPU tier gets no first
-  frame and the two-second guard recreates the pane in readback mode
-  ([NVIDIA OSR](/research/2026-08-07-nvidia-cef-accelerated-osr.md)).
-- GPU tier: a temporary, uncommitted `enable-features=Vulkan` switch, which makes
-  CEF deliver dma-bufs on this driver. Not a production setting; it only made the
-  GPU path measurable here.
+On this host the normal shared-texture attempt timed out into readback. A temporary Vulkan feature
+switch supplied DMA-BUFs for the GPU-tier measurements. Both the failure and the switch are
+configuration-specific. [NVIDIA OSR study](/research/2026-08-07-nvidia-cef-accelerated-osr.md)
 
-# Pacing results
+## Pacing results
 
-Delivered / consumed frames per second (p95 consumed gap) and the page's rAF
-median, two reps each. `int` is CEF's internal timer (the Linux default), `ext`
-is `ZZ_BROWSER_EXTERNAL_BEGIN_FRAME=1`.
+Each cell gives delivered/consumed FPS, p95 consumed frame gap and median page rAF. Each configuration ran twice.
 
 | Tier | Hz | BeginFrames | Rep 1 | Rep 2 |
 | --- | --- | --- | --- | --- |
@@ -58,57 +45,26 @@ is `ZZ_BROWSER_EXTERNAL_BEGIN_FRAME=1`.
 | GPU | 120 | internal | 120 / 120 (10 ms), rAF 120 | 119 / 119 (10 ms), rAF 120 |
 | GPU | 120 | external | 114 / 113 (13 ms), rAF 116 | 10 / 9 (380 ms), rAF 8 |
 
-Rep 1's 60 Hz readback rows ran while the other session's build was compiling.
-With CEF's timer, `on_paint` calls landed in bursts of four to six after 50 to
-80 ms gaps in the message pump, so GPUI took 18 of the 48 frames CEF painted,
-but the page itself kept its 60 rAF. With the external clock the page fell to
-7 to 9 rAF by the end of the run. Rep 2's GPU external run at 120 Hz painted
-nothing for its first eight seconds and then crawled at 6 to 16 rAF. Under
-CEF's own timer the page's rAF never dropped below the display rate in any run.
+During the busy first 60 Hz readback run, the internal timer delivered paints in bursts of four to six
+after message-pump gaps of 50–80 ms. The UI consumed 18 FPS while the page maintained 60 rAF. With the
+external clock, page rAF fell to 7–9 by the end. In the second 120 Hz external GPU run there were no
+paints for eight seconds, then 6–16 rAF. Build overlap was a possible contributor, not an established
+cause. Mesa AMD/Intel, real desktop compositors, release builds and rates above 120 Hz remained
+unmeasured. [CEF runtime](/browser/cef-runtime.md) · [OSR rendering](/browser/osr-rendering.md)
 
-# Pacing conclusion
+## DMA-BUF import cost
 
-External BeginFrames buy nothing on Linux here and are fragile. With CEF's
-internal timer every configuration holds the display rate (60 at 60 Hz, 120 at
-120 Hz), and the external clock is at best the same, slightly behind at 120 Hz,
-and in two of eight runs it collapsed to single-digit rates, which is the blank
-or stalled pane the opt-in default was guarding against
-([CEF runtime](/browser/cef-runtime.md)). They stay opt-in on Linux/FreeBSD.
-Why the external clock collapses is not understood yet; both collapses may
-have overlapped the other session's builds.
-The "let GPUI's vblank drive Chromium" variant was already ruled out on
-macOS: riding `on_next_frame` halved the browser frame rate
-([OSR rendering](/browser/osr-rendering.md)).
-
-Unmeasured: AMD and Intel (Mesa), a real KDE or GNOME session instead of
-headless gamescope, displays above 120 Hz, and release builds.
-
-# dma-buf import cost
-
-The GPU tier imports CEF's dma-buf as a new Vulkan image and memory every
-callback, then copies it into a zz-owned texture. `AcceleratedFrameProducer::produce`
-now logs both halves under `zz_browser::diagnostics::accelerated_copy`
-(`import_us`, `copy_us`; enable with `RUST_LOG=zz_browser::diagnostics=trace`).
-
-861 frames at 60 Hz, 393x580 device pixels, NVIDIA with the Vulkan switch:
+The GPU path delivered 861 frames at 60 Hz and 393 × 580 device pixels.
 
 | Step | p50 | p95 | p99 | max |
 | --- | --- | --- | --- | --- |
 | Import (`vkCreateImage`, memory import, bind, wgpu wrap) | 338 µs | 556 µs | 736 µs | 996 µs |
 | Copy into the destination, submit, error scope | 110 µs | 219 µs | 293 µs | 709 µs |
 
-CEF rotated three buffers (`unique_handles=3`, `reuse_gap_callbacks=3`). With
-zz's external message pump this callback runs on the main thread, so the import
-is about 2% of the main thread at 60 Hz and 4% at 120 Hz, or 4 to 7% of a
-120 Hz frame budget. A three-entry cache keyed by the identity zz already
-computes (device, inode, offset and size per plane) would remove nearly all of
-it. It was not built: the GPU tier is not the default on NVIDIA, Mesa's import
-cost is unmeasured, and a cached image needs explicit acquire barriers that a
-fresh import currently gets by accident.
-
-# Related
-
-* [OSR rendering](/browser/osr-rendering.md)
-* [CEF runtime](/browser/cef-runtime.md)
-* [Linux stack performance](/research/2026-10-16-linux-performance.md)
-* [NVIDIA OSR](/research/2026-08-07-nvidia-cef-accelerated-osr.md)
+CEF rotated three buffers with three callbacks between reuses. Median import cost was about 2% of one
+main thread at 60 Hz or 4% at 120 Hz if paid once per frame. A cache by device, inode, offset and size
+was proposed, but cache hit rate and end-to-end savings were never measured with a cache installed.
+Reuse would also have to respect ownership and synchronization. Current diagnostic target
+`ala_cef::diagnostics::accelerated_copy` in `libs/ala-cef/src/cef_runtime.rs` reports `import_us` and
+`copy_us`. The importer and explicit ownership transfers live in `libs/ala-cef/src/linux_dmabuf.rs`.
+[Linux stack study](/research/2026-10-16-linux-performance.md)

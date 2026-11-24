@@ -4,7 +4,7 @@ title: Input translation (ala → CEF)
 description: Browser-neutral pointer/wheel/keyboard/text/IME input, IME candidate placement, ordered GPUI-to-CEF dispatch, pane shortcuts, address resolution, history-backed omnibox interaction, and why page drag and drop is off.
 resource: libs/ala-cef/src/input.rs
 tags: [browser, input, ime, keyboard, url, history, omnibox]
-timestamp: 2026-10-19T00:00:00Z
+timestamp: 2026-11-24T00:00:00Z
 ---
 
 # Overview
@@ -14,7 +14,7 @@ leaking ala or CEF types across the crate boundary. `input.rs` defines the
 browser-neutral input value types (`Viewport`, `Modifiers`, pointer/wheel/key
 records); `BrowserSession` and its main-thread `BrowserCommandSink` in
 `cef_runtime.rs` perform the actual CEF `SendMouse*`/`SendKeyEvent`/`ImeX` calls.
-`url_input.rs` handles the address field:
+`crates/zz-client/src/url_input.rs` handles the address field,
 deciding between navigating and searching, normalizing typed text into an allowed
 URL, and redacting URLs before diagnostics.
 [`crates/zz`](/crates/zz.md) builds these neutral records from ala events and
@@ -24,7 +24,7 @@ calls the session methods on the foreground thread.
 
 | Type | Shape / notes |
 | --- | --- |
-| `Viewport` | `{ width, height, scale_factor, window_zoom, screen_x, screen_y, visible }`; `sanitized()` clamps `scale_factor` to `[0.5, 8.0]` and `window_zoom` to `[0.25, 4.0]` (non-finite or non-positive → 1.0). `window_zoom` is what `GetScreenPoint` folds into view-relative coordinates so Chromium-owned popups land correctly while the app UI is zoomed. |
+| `Viewport` | `{ width, height, scale_factor, window_zoom, screen_x, screen_y, visible }`; `sanitized()` clamps `scale_factor` to `[0.5, 8.0]` and `window_zoom` to `[0.25, 4.0]` (non-finite values use 1.0, as does non-positive zoom). `window_zoom` is what `GetScreenPoint` folds into view-relative coordinates so Chromium-owned popups land correctly while the app UI is zoomed. |
 | `Modifiers` | `#[repr(transparent)]` packed `u8`: SHIFT, CONTROL, ALT, PLATFORM, LEFT/MIDDLE/RIGHT_MOUSE, IS_REPEAT. Const builder + accessors. |
 | `PointerButton` | `Left \| Middle \| Right`. |
 | `PointerPhase` | `Move \| Leave \| Down \| Up`. |
@@ -34,9 +34,7 @@ calls the session methods on the foreground thread.
 | `BrowserKey` | `Character(char)`, named keys (Backspace…Delete), `Function(u8)`, `Unidentified`; `windows_key_code()` → Chromium cross-platform virtual key. |
 | `KeyInput` | `{ action, key, modifiers }` (12 bytes). |
 
-The packed layout is asserted by tests (`Modifiers` = 1 byte, `KeyInput` = 12,
-`PointerEvent` = 16, `WheelEvent` = 20), matching the wire-size reductions the
-README records for Chromium input records.
+These are in-memory Rust sizes, checked by the layout tests in `libs/ala-cef/src/input.rs`.
 
 # Translation to CEF (`BrowserSession` / `BrowserCommandSink`)
 
@@ -199,75 +197,32 @@ percentage.
 
 # Address / URL input (`url_input.rs`)
 
-`normalize_url(input)` produces an allowed browser URL:
+`normalize_url` trims the input and accepts HTTP, HTTPS, file URLs, internal `zz://` URLs
+and `about:blank`. Only file URLs may omit the host, apart from the special `about:blank`
+case. A bare host defaults to HTTPS. Localhost, its subdomains, loopback and unspecified
+IP addresses default to HTTP. An explicit scheme is preserved or rejected as unsupported.
 
-- trims; empty → `UrlInputError::Empty`;
-- `about:blank` (case-insensitive) passes through;
-- text without a scheme defaults to `https://`, except `localhost`,
-  `*.localhost`, loopback IPs, and unspecified local bind IPs, which default to
-  `http://` for development servers;
-- a numeric `host:port` suffix is treated as an authority rather than a custom
-  URL scheme, so `localhost:3000` resolves to `http://localhost:3000/`;
-- an explicit `http://` or `https://` is always preserved;
-- only `http`/`https` are accepted (else `UnsupportedScheme`); a missing host or
-  parse failure → `Invalid`.
+`resolve_address` runs on address-bar submit. An explicit scheme goes through `normalize_url`.
+With no scheme, a host with a numeric port, an IP literal, localhost or a dotted name with
+an alphabetic final label of at least two characters navigates if it parses. Other text goes
+to the configured Google, DuckDuckGo or Brave search endpoint as a form-encoded `q` parameter.
+`browser-search-provider` is read on submit. See [app config](/configuration/app-config.md).
 
-`resolve_address(input, provider)` is what the address bar actually submits, and
-is the omnibox rule on top of `normalize_url`:
-
-- an explicit scheme goes straight to `normalize_url` . `file:///tmp/a` names a
-  URL the user meant, so it stays `UnsupportedScheme` rather than becoming a
-  query, and `about:blank` still passes through;
-- otherwise the entry navigates only if it *looks like a host*: no whitespace,
-  and an authority carrying a numeric port, a bracketed IPv6 literal, an IPv4
-  literal, `localhost`/`*.localhost`, or a dotted name whose last label is two or
-  more alphabetic characters. `nas:5000`, `example.com/path`, `user@example.com`
-  navigate; `rust lifetimes`, `weather`, `3.14`, `example.c0m` search;
-- a search builds `<endpoint>?q=<form-encoded>` from `SearchProvider`
-  (`Google` → `www.google.com/search`, `DuckDuckGo` → `duckduckgo.com/`,
-  `Brave` → `search.brave.com/search`). All three read the query from `q`.
-
-The provider comes from `browser-search-provider`
-([app config](/configuration/app-config.md)), read per submit so a config edit
-applies to open panes immediately. `normalize_url` stays strict and is what the
-CLI's `open-uri` route and new-tab URLs use . a link that is not a URL must not
-silently become a search.
-
-`diagnostic_url(input)` redacts URLs before logging: it strips username/password
-(except for `about:` URLs) and always drops query and fragment, returning
-`"<invalid URL>"` for unparseable input. `UrlInputError` variants: `Empty`,
-`UnsupportedScheme`, `Invalid`.
+`diagnostic_url` removes credentials, query and fragment, returning `<invalid URL>` when parsing fails.
 
 # History-backed omnibox
 
-The address field's ala input layer searches the current logical browser
-profile after each non-empty edit. Results match every whitespace-delimited term
-across URL and title, then rank address fit, learned selection, typed use, visit
-frequency, and recency. At most eight native title-and-URL rows appear below the
-toolbar. Empty focus does not open a generic history popup; blank tabs retain
-their separate recent-page surface.
-
-Up and Down wrap through the rows and temporarily preview the selected URL.
-Enter accepts that row or resolves the original text through `resolve_address`.
-Escape first restores an original query from a preview, then closes the popup,
-then restores the current page URL and returns focus to the page. Shift+Delete
-removes the selected URL and its learned mappings from the current profile.
-
-The top eligible URL-prefix result can complete a one-character append inline.
-The appended suffix stays selected so another keystroke replaces it. Root URLs
-need one successful typed use, while deeper URLs need two; deletes and
-multi-character replacements do not inline-complete. Typed and learned-selection
-credit is committed only after the submitted navigation starts and finishes
-successfully; bulk direct replacements remain ordinary visits.
-See [history and omnibox autocomplete](/browser/history-autocomplete.md) for the
-store, significance filter, scorer, Chrome import, and privacy boundary.
+The desktop address field searches the pane's logical profile. Accepting a suggestion
+navigates to its URL. Submitting free text passes it to `resolve_address`. The shared
+store, ranking, inline completion, keyboard gestures and rules for crediting a completed
+navigation are in [history and omnibox autocomplete](/browser/history-autocomplete.md).
 
 # Examples
 
 ```rust
 assert_eq!(normalize_url(" example.com/path ").unwrap(), "https://example.com/path");
 assert_eq!(normalize_url("localhost:3000").unwrap(), "http://localhost:3000/");
-assert_eq!(normalize_url("file:///tmp/a"), Err(UrlInputError::UnsupportedScheme));
+assert_eq!(normalize_url("file:///tmp/a").as_deref(), Ok("file:///tmp/a"));
 
 // Omnibox: address vs. query, on the configured engine.
 assert_eq!(
@@ -293,7 +248,7 @@ assert_eq!(
 | `src/input.rs` | Browser-neutral `Viewport`/`Modifiers`/pointer/wheel/key types + `windows_key_code`. |
 | `src/ime.rs` | `ImeCharacterBounds` (view rect to pane pixels) and `ime_range_bounds`. |
 | `src/page_zoom.rs` | Chromium percentage ladder and factor-to-CEF-level conversion. |
-| `src/url_input.rs` | `resolve_address`, `SearchProvider`, `normalize_url`, `diagnostic_url`, `UrlInputError`. |
+| `crates/zz-client/src/url_input.rs` | `resolve_address`, `SearchProvider`, `normalize_url`, `diagnostic_url`, `UrlInputError`. |
 | `src/cef_runtime.rs` | `BrowserSession`, main-thread `BrowserCommandSink`, CEF input/edit helpers, `event_flags`, coordinate scaling. |
 | `crates/zz/src/browser/controller.rs` | Ordered foreground CEF command queue and the ala re-entrancy boundary. |
 | `crates/zz/src/browser/view.rs` | Platform keybindings, nested omnibox key context, input events, selection and Escape stages, page edit actions, zoom actions, and menu controls. |

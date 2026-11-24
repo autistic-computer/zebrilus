@@ -1,180 +1,66 @@
 ---
 type: Architecture
-title: Process & threading model
-description: How zz splits work across the persistent daemon, GUI and CLI clients, CEF subprocesses, agent lens runtimes, and per-PTY worker threads.
+title: Process and threading model
+description: Which process owns mux state, terminal actors, native chats and browser runtimes.
 resource: crates/zz-daemon/src/daemon.rs
-tags: [architecture, process-model, daemon, threading, ipc]
-timestamp: 2026-11-23T00:00:00-03:00
+tags: [architecture, daemon, threading, ipc]
+timestamp: 2026-11-24T00:00:00Z
 ---
 
-# Overview
+## Processes
 
-zz runs as several cooperating processes rather than one monolith. A single persistent **daemon**
-owns durable multiplexer state and PTYs; **GUI clients** and **CLI clients** attach to it over an
-owner-only local IPC endpoint; the browser runs as its own tree of **CEF subprocesses**. Claude Code and Codex are ordinary
-terminal processes; the daemon only reads their transcripts for the agent lens. The separation
-lets terminal sessions survive GUI detach while keeping the mux state a single source of truth.
+| Process | Responsibility and lifetime |
+|---|---|
+| Daemon | Owns the mux engine, PTYs, native agent runtimes and client connections. Survives client detach while sessions remain under the default exit policy. |
+| Desktop client | Owns ala windows, presentation, local CEF browser instances and the tray. A GUI can hold connections to several hosts. |
+| CLI and raw-terminal client | A command client connects, executes and exits. Raw-terminal attach maintains an interactive connection. |
+| Chromium helpers | The desktop starts CEF renderer, GPU and utility subprocesses for local browser content. [CEF runtime](/browser/cef-runtime.md) |
+| Provider processes | A vendor TUI runs in a terminal pane. For a native chat the daemon hosts a headless driver. The Codex driver can also connect to a shared app server. [Agent panes](/concepts/agent-panes.md) |
 
-# Processes
+`zz app` opens the desktop. A terminal invocation with no command runs
+`default-client-command` (normally `new-session -A`). Clients can start a local
+daemon on demand. On Unix the spawned daemon creates its own session so closing
+the launching terminal leaves it running. The daemon accepts connections during
+startup, but ordinary clients wait for startup configuration. Daemon-owned
+startup jobs can re-enter through the startup token. See `spawn_daemon` in
+`crates/zz-cli/src/lib.rs` and `Daemon::run_foreground` in `crates/zz-daemon/src/daemon.rs`.
 
-| Process | Owns | Lifetime |
-|---------|------|----------|
-| Daemon ([server](/crates/zz-daemon.md)), running from the headless binary (`cli` in a bundle install, `zz` on a headless install, or the newer zz-owned copy below) | mux state, PTYs, terminal frame fanout, IPC listener | persistent; survives GUI detach; exits on `kill-server`, or once it has **zero sessions and zero interactive clients**; dies on crash, logout, reboot |
-| GUI client ([app](/crates/zz.md)) | ala windows, rendering, local CEF sessions, agent lens stream reducers | attached to at most one session; a session takes as many clients as devices attach |
-| CLI client ([headless binary](/crates/zz-cli.md)) | one short-lived command (`list-sessions`, `send-keys`, …) | request/response, then exits |
-| CEF browser process | Chromium main/GPU/renderer/utility (zygote) tree | spawned inside a GUI process; not kept alive without a GUI |
+## Terminal and chat workers
 
-The daemon's default exit rule deliberately differs from tmux's `exit-empty`: destroying the last
-session is not enough while a GUI client is still attached, because that client outlives its last
-pane and must be able to show an empty workspace and make a new session. Quitting the app drops the
-last subscriber and lets the empty daemon exit; live sessions keep it alive across app restarts. The
-opt-in `quit-daemon-on-exit` key makes app quit send `kill-server` regardless. Since Wave C
-(2026-08-21) a config that EXPLICITLY sets `exit-empty`, `exit-unattached`, or
-`destroy-unattached` swaps in the pin's policy for that knob; the zero-subscribers guard survives
-every one of them, so an attached client still never has the daemon die under it. See
-[session persistence](/concepts/session-persistence.md).
+A terminal actor owns one PTY and its libghostty-vt state. By default up to four
+shard threads host multiple actors. `ZZ_PTY_SHARDS=0` selects the dedicated-thread
+path. The actor publishes immutable frames per client view to a daemon frame sink.
+The daemon routes commands, pane events and subscriber mailboxes.
+[PTY worker](/concepts/pty-worker.md) · [Data flow](/architecture/data-flow.md)
 
-A GUI process auto-starts a daemon from its sibling `cli` if none is running, then attaches as a
-client. The headless binary spawns itself as the daemon. `zz app` is the
-one command that opens the GUI; a command line with no command word is a tmux client and runs
-`default-client-command` (`new-session -A` by default) through the raw-terminal path, whether it
-reaches the executable through the installed `zz` symlink or directly. Two launches open the GUI
-without the verb because they cannot pass one: LaunchServices on macOS (Finder, the Dock, `open`),
-which the executable recognizes by its launchd parent, and the Windows bundle, which ships no CLI
-entrypoint. The headless binary's `zz app` passes `--args app` through `open` as well, so a hidden running
-instance is reopened rather than duplicated. On Linux `zz app` runs the first desktop binary among the
-`zz` beside the launcher, `/usr/lib/zz/zz` and `~/.local/lib/zz/zz` that is not the launcher itself,
-so a headless `~/.local/bin/zz` opens a package or tarball GUI instead of spawning itself forever.
-On Unix the spawned daemon gets its own session, so Ctrl+C or a closing tty in the launching
-terminal never signals the daemon and its sessions. The daemon initially has no session unless
-config created one; the GUI's actual empty-target Interactive attach lazily creates numeric session
-`0`. Registration and background fleet connections do not. Neither client kind is capped:
-`ServerState.attached` maps each session to a `BTreeSet<ClientId>`, so a desktop and a laptop watch
-one session together while command-only clients come and go. The rule runs one way only: a client
-attaches to at most one session, and attaching to a second detaches it from the first. See
-[session persistence](/concepts/session-persistence.md) for attach, detach, eviction, and the state
-each client owns alone.
+`AgentHost::open` in `crates/zz-daemon/src/agent/host.rs` starts a thread per
+native chat. `AgentFanout` uses a shared flusher for its 25 ms batching window.
+The daemon applies events only if the pane still holds the matching runtime
+generation. Closing the GUI leaves these runtimes available to other clients.
 
-The daemon starts its accept loop before it loads startup config. Normal GUI, Control, and Command
-clients wait at the handshake until config finishes. A shell job that the starting daemon owns gets
-a one-daemon re-entry token, `ZZ_SOCKET`, and a private `tmux` shim on its `PATH`. Foreground
-`run-shell` and `if-shell` config entries can call `tmux` back into zz without deadlocking or exposing
-half-loaded config to other clients.
+## IPC
 
-# The zz-owned copy
+Local IPC uses a Unix-domain socket or a Windows named pipe. `ZZ_SOCKET` selects
+the local endpoint. `TMUX` inside a pane provides tmux-compatible metadata.
+Unix desktop SSH connections can forward a remote socket. Mobile SSH clients
+use an in-process SSH transport and a remote `zz proxy`. Tailnet endpoints and
+Windows WSL distribution endpoints are additional routes to a daemon.
+[Wire protocol](/protocol/wire-protocol.md) · [Fleet attach](/designs/fleet-attach.md) · [Tailnet](/designs/tailnet-node.md)
 
-The daemon's binary normally belongs to the package that installed the app. `zz update` adds one
-more: a zz-owned copy of the headless binary at `<data dir>/zz/owned/zz` (`zz.exe` on Windows),
-with a `build-info` file beside it that `zz build-info` printed when the copy was installed. It
-is written last and removed first, so a `build-info` means the copy beside it is complete.
+## Update and shutdown
 
-On Unix the headless binary reads `build-info` before it acts and, when the copy is newer than
-itself, `exec`s it with the same arguments, so the process id and inherited descriptors stay and
-`zz --version` answers for the copy that would become the daemon. It stays itself for the helper
-entry points, under `ZZ_TMUX_EXECUTABLE` (panes and the daemon's shell jobs run the daemon's
-pinned build), with `ZZ_OWNED_COPY=0`, after a handover (the `ZZ_OWNED_HANDOVER` marker, removed
-at startup), and, when a local client started it with `--bootstrap-server-id`, unless the copy is
-on the same wire epoch and meets both revision floors, so the app always gets a daemon it can
-attach to. On Windows, where there is no `exec` and the app's own executable is the daemon,
-`daemon_executable()` returns the owned `zz.exe` under the same rule. The desktop binary never
-hands over.
+`zz update` can install a newer headless executable in zz's data directory.
+The `build-info` file marks a complete owned copy. A packaged Unix CLI can hand
+over to that copy. The bootstrap path checks wire and revision compatibility,
+and `ZZ_OWNED_COPY=0` disables handover. A running daemon keeps its executable
+until restarted. `restart-server` ends its sessions. On Unix it holds the start
+lock across exec so another client cannot start a competing daemon.
+[Daemon update](/designs/daemon-update.md) · [Session persistence](/concepts/session-persistence.md)
 
-`restart-server` moves a running daemon onto that copy in place: it ends every session as
-`kill-server` does, stops its tailnet thread, holds the socket's start lock, removes the socket,
-identity file and tmux pin, and execs the owned copy when it is newer than itself (else its own
-binary) with the same socket and config arguments and `--start-lock-fd`. The successor binds,
-then drops the lock, so a client that reconnects in between waits on the lock instead of starting
-another daemon. On Windows the old process starts the successor with `--retry-bind` and exits.
-See [daemon update](/designs/daemon-update.md).
+## Tray
 
-# Tray icon
-
-The GUI process draws its own native tray icon through `crates/zz/src/tray/`, one icon per GUI.
-`penna::blocks::tray` (`libs/penna/src/blocks/tray/`) owns the platform icon: StatusNotifierItem through ksni on Linux,
-`NSStatusItem` on macOS, `Shell_NotifyIcon` on Windows. zz keeps the menu, the icon images and what each
-menu action does; a menu action reaches zz as a string (`session <name>`, `pane %<id>`, `settings`).
-The GUI builds the menu from the client's local mux snapshot.
-While agent panes wait, the tooltip says how many, the macOS item shows the count, Linux marks the item
-as needing attention, and the Windows icon gains a dot.
-Closing the window or pressing cmd-q hides zz only when `tray` is enabled, the icon is available,
-`quit-daemon-on-exit` is false, and the local daemon snapshot contains at least one session.
-On macOS, hiding switches the app to the Accessory activation policy; showing restores Regular.
-**Quit and Stop Sessions** in the tray menu sends `kill-server` and quits the GUI.
-**Restart Daemon to Update…** shows while the local daemon is stale or runs an older revision than
-the GUI ([session persistence](/concepts/session-persistence.md#guarded-recovery-of-an-incompatible-daemon)).
-Daemons started without a GUI have no tray icon.
-The `tray` config key applies live; disabling or losing the icon brings a hidden window back.
-
-# IPC transport
-
-The [wire protocol](/protocol/wire-protocol.md) is a versioned, length-prefixed control protocol
-carried over a platform-native, owner-only endpoint:
-
-| Platform | Endpoint |
-|----------|----------|
-| Linux / macOS | Unix-domain socket |
-| Windows | local named pipe |
-
-That is the only binding the daemon has. A remote host adds no third one: the client spawns a managed
-`ssh -N -L` child, which forwards the remote daemon's own socket to a local scratch path, and then
-speaks the identical envelope over it. Auth, encryption, and host identity are ssh's problem. See
-[wire protocol](/protocol/wire-protocol.md) and [fleet attach](/designs/fleet-attach.md).
-
-`ZZ_SOCKET` selects a zz endpoint. `TMUX` remains tmux-compatible session metadata for programs
-inside panes and plugin jobs; zz does not treat its socket field as a transport address. A
-tmux-compatible CLI command that sees `TMUX` without `ZZ_SOCKET` exits with a targeted error instead
-of sending the zz protocol to a real tmux server.
-
-A dead forward starts a roaming loop. The client moves that host to
-`HostState::Reconnecting { attempt }`, leaves the last snapshot and frames on screen, and redials on
-a 1/2/4/8/16/30-second backoff; a successful dial re-attaches the same session, or the default
-session when one exists. An empty replacement daemon lazily creates the next numeric session on
-that fallback attach. The attached host retries until it comes back, and so does every saved
-background fleet host while it stays in the config; only a background host that asked the user to
-sign in gives up after three attempts and keeps its typed error state.
-
-`kill-server` never starts a missing daemon, and when an older daemon cannot complete the current
-protocol handshake, zz verifies the process that owns the exact local socket (identity, ownership,
-executable, command line, start time) before requesting termination.
-
-# CEF single-binary multi-process model
-
-CEF uses the same executable for every Chromium role. `crates/zz` ships a helper entrypoint
-(`zz_helper`) that CEF re-invokes for its subprocesses; [cef-runtime](/browser/cef-runtime.md)
-dispatches on subprocess type. On Linux, Chromium's user-namespace sandbox stays enabled and only the
-legacy setuid sandbox layer is disabled (no `--no-sandbox`).
-
-# Agent lens model
-
-Claude Code and Codex run either as the user's own CLIs in terminal panes, or headless under an agent
-pane. For an agent pane `agent::host::AgentHost` runs the CLI's native driver on its own
-`zz-agent-{n}` thread: `claude -p` over stream-json, or a client of Codex's shared app server
-daemon (an app server of its own when `agent-command` has arguments). It lives until the pane closes
-or flips to the CLI. Pane removal and **daemon** shutdown stop it; a GUI quit does neither. See
-[agent panes](/concepts/agent-panes.md).
-
-The desktop client keeps only the rendering half: the reducer, view, composer draft and permission
-cards. `zz-tui` links only
-[zz-daemon-client](/crates/zz-daemon-client.md), so a build that never hosts a daemon pulls in
-neither the server nor `agent-client-protocol`.
-
-# Threading inside the daemon
-
-Each terminal pane's PTY child and all of its `libghostty-vt` objects live on **one dedicated worker
-thread** ([zz-terminal](/crates/zz-terminal.md)); the objects are never shared across threads. The
-worker publishes one immutable [terminal frame](/concepts/terminal-frame.md) per active client view,
-each rendered against that view's own scroll, selection, copy-mode, and search state. One
-`zz-pane-{id}` thread per pane diffs each view stream separately and fans the patch or full viewport
-to that view's client. See [PTY worker](/concepts/pty-worker.md) for the ownership boundary between
-server and zz-terminal.
-
-Agent lenses use one `zz-agent-{n}` thread per lens pane and one shared `zz-agent-flush` thread to
-close the fanout's 25 ms coalescing windows. The flusher parks while no pane has gathered output.
-The daemon builds the runtime on the first lens it opens, so a daemon that never opens one spawns
-none of these threads.
-
-# Related
-
-- [System overview](/architecture/overview.md)
-- [Data flow](/architecture/data-flow.md)
-- [Wire protocol](/protocol/wire-protocol.md) and [IDs](/protocol/ids.md)
+The desktop builds the tray menu from its snapshot. With the tray enabled and
+available, local sessions open, and `quit-daemon-on-exit` false, ordinary quit
+can hide the window. **Quit and Stop Sessions** kills the local daemon and
+quits. Disabling the tray brings a hidden window back. See `crates/zz/src/tray/mod.rs`
+and `crates/zz/src/tray/desktop.rs`.

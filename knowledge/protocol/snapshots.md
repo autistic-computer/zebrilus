@@ -1,356 +1,76 @@
 ---
 type: Protocol
-title: Mux snapshots (snapshot.rs)
-description: The MuxSnapshot state tree (sessions, windows, recursive split layouts, pane descriptors, pane status and summary records, behavior flags, per-client focus, and viewer presence) that clients reconcile on attach and after a resync, plus the daemon clock that dates pane changes.
+title: Mux snapshots and client views
+description: The shared session tree, per-client presentation, pane summaries and delta repair used on attach.
 resource: crates/zz-protocol/src/snapshot.rs
 tags: [protocol, snapshot, layout, state, presence, sidebar, pane-summary]
-timestamp: 2026-11-10T00:00:00-03:00
+timestamp: 2026-11-24T00:00:00-03:00
 ---
 
-# Overview
+# Shared tree and client view
 
-A **`MuxSnapshot`** is the complete, renderer-neutral picture of the daemon's session/window/pane/split
-tree at a point in time. Defined in `crates/zz-protocol/src/snapshot.rs`, it is the model an interactive client
-materializes from its initial state, tree deltas and per-client view.
-The snapshot carries *structure and metadata* (layout, titles, active/zoomed panes, pane kind). It
-deliberately does **not** carry terminal cell contents, which stream separately over the
-[packed terminal lanes](/protocol/terminal-lanes.md). A monotonically increasing `generation` counter
-lets clients detect staleness. The [ala app](/crates/zz.md) reconciles this tree into live pane
-entities, reusing them by stable [`PaneId`](/protocol/ids.md).
+`MuxSnapshot` in `crates/zz-protocol/src/snapshot.rs` is the renderable session tree.
+An attached subscriber receives a raw tree for its requested scope and a separate
+`ClientView`. The latter supplies the attachment, focus, read-only state, client flags and
+presentation operations. `MuxSnapshot::focused_window_for` uses the recipient's focus if
+that window is in the session, otherwise the session's active window. Each session viewer
+has a device name, window and recipient-relative `is_self`.
 
-# When it is produced and consumed
+| Record | What it describes |
+| --- | --- |
+| `MuxSnapshot` | Generation, sessions and optional focused window |
+| `SessionSnapshot` | Stable ID, name, active window, windows and viewers |
+| `WindowSnapshot` | Index, title, active and zoomed panes, split layout and pane map, pane order and z-order, floating and modal panes, window cell dimensions and presentation |
+| `PaneSnapshot` | Stable ID, title, kind, synchronized input, bell and dead state, borders, mode, optional status and summary |
 
-The daemon sends one raw scoped snapshot in the initial attach or repair `Batch`, then sends
-`TreeDelta { base, version, ops }` on tree changes. The client retains the raw tree and applies a
-separate `ClientView` overlay to expose the same `MuxSnapshot` renderer model. Tree subscriptions
-select no tree, the attached session, or all sessions. The daemon sends no event for an empty diff.
+`LayoutNode` is `Empty`, `Pane(PaneId)` or `Split { id, axis, ratio, first, second }`.
+The mux projects its cell layout into this binary tree. Floating panes have separate position,
+extent and visibility records. The deserializer caps each layout at depth 256 and 65,535 nodes.
+See [split-pane layout](/concepts/split-pane-layout.md) and [stable IDs](/protocol/ids.md).
 
-A delta applies only when its base equals the retained tree generation. On a mismatch the client
-queues `TreeSync` and keeps its current tree until the daemon supplies a fresh scoped snapshot.
-Event sequence gaps alone do not trigger repair: the daemon can supersede stale terminal frames.
+## Updates and repair
 
-`ClientView` supplies the client's focus, presence and presentation fields, plus layout and
-attachment generations. A reattach increments the attachment generation even for the same
-session, clearing overlays and terminal bases once. Ordinary label or presence updates keep the
-attachment generation. Geometry reports name the layout generation the client rendered, so the
-daemon can reject a late report after zoom, unzoom or another layout change. Generation
-validation and geometry application share one model lock. A new layout generation requires
-a fresh tagged report even if the measured grid and cell pixels are unchanged; same-connection
-attachment follows that rule too. Ordinary presentation changes retain the geometry tag.
+1. The daemon sends the initial scoped snapshot in an attach batch. Subsequent tree changes
+   arrive as `TreeDelta { base, version, ops }`.
+2. `TreeDelta::apply` checks the retained generation and operation targets. An invalid delta
+   leaves the prior tree intact. `ClientCore` queues one `TreeSync` and waits for a fresh
+   snapshot before accepting more deltas.
+3. `ClientView` overlays the retained tree for this recipient. Its `attachment_generation`
+   changes on reattach, including to the same session. A changed attachment clears per-session
+   overlay and viewport state. Its `layout_generation` tags geometry reports. A resize measured
+   before a zoom or layout change is stale even when its dimensions still match.
 
-The legacy `Attached` and `Snapshot` forms remain usable by internal fixtures. Normal control
-plane v2 clients receive grouped state and deltas. Produced by [zz-daemon](/crates/zz-daemon.md)
-from [the mux state machine](/crates/zz-mux.md), and consumed by the desktop, TUI, web and iOS clients.
+See `crates/zz-protocol/src/tree_delta.rs`, `crates/zz-protocol/src/control.rs`
+(`ClientView`) and `crates/zz-client/src/core.rs` (`handle_payload`).
+Terminal cells and scrollback travel on the [terminal lane](/protocol/terminal-lanes.md).
 
-# Schema . the snapshot tree
+## Pane kinds
 
-`MuxSnapshot` nests four levels; all types serialize through `serde` and travel via `postcard` on the
-Control lane. Most types derive `Deserialize`; recursive `LayoutNode` uses a wire-compatible custom
-deserializer so hostile nesting is rejected before it can exhaust the receiving thread's stack.
+`PaneKindSnapshot` carries `Picker`, `Terminal`, `Browser`, `Editor`, `Agent`, `View` or
+`Other { kind }`. For a browser, the descriptor contains tab URLs, the active index and the
+profile. For an agent it contains the provider plus optional cwd, session, model, effort and
+account. A restored client uses the descriptor to identify the pane. Agent state and timeline
+updates travel separately. See [agent panes](/concepts/agent-panes.md).
 
-| Type | Fields |
-|------|--------|
-| `MuxSnapshot` | `generation: u64`, `sessions: Vec<SessionSnapshot>`, `focused_window: Option<WindowId>` |
-| `SessionSnapshot` | `id: SessionId`, `name: String`, `active_window: WindowId`, `windows: Vec<WindowSnapshot>`, `viewers: Vec<SessionViewer>` |
-| `SessionViewer` | `name: String`, `window: WindowId`, `is_self: bool` |
-| `WindowSnapshot` | `id: WindowId`, `index: u32`, `name: String`, `automatic_rename: bool`, `active_pane: PaneId`, `zoomed_pane: Option<PaneId>`, `layout: LayoutNode`, `panes: BTreeMap<PaneId, PaneSnapshot>`, `layout_dump: String`, `visible_layout_dump: String`, `status_label: String`, `activity: bool`, `silence: bool`, `pane_border_status: PaneBorderStatus`, `pane_border_lines: PaneBorderLines`, `pane_border_indicators: PaneBorderIndicators`, `pane_order: Vec<PaneId>`, `pane_z_order: Vec<PaneId>`, `floating: Vec<FloatingPaneSnapshot>`, `modal: Option<ModalPaneSnapshot>`, `sx: u16`, `sy: u16`, `pane_base_index: u32` |
-| `FloatingPaneSnapshot` | `pane: PaneId`, `xoff: i32`, `yoff: i32`, `sx: u16`, `sy: u16`, `visible: bool`, `border_lines: PaneBorderLines`, `border_status: PaneBorderStatus` |
-| `ModalPaneSnapshot` | `pane: PaneId`, `capture_keys: bool`, `close_on_click: bool`, `close_on_cancel: bool` |
-| `PaneSnapshot` | `id: PaneId`, `title: String`, `kind: PaneKindSnapshot`, `synchronized_input: bool`, `bell: bool`, `dead: bool`, `dead_status: Option<u32>`, `border_colour: Option<TmuxColour>`, `active_border_colour: Option<TmuxColour>`, `border_status_text: String`, `mode: Option<PaneMode>`, `status: Option<PaneStatus>`, `summary: PaneSummary` |
-| `PaneStatus` | `state: PaneStatusState`, `kind: Option<PaneStatusKind>`, `progress: Option<u8>`, `app: String`, `title: String`, `message: String` |
-| `PaneStatusState` | `Idle` \| `Working` \| `Done` \| `Blocked` \| `Error` |
-| `PaneStatusKind` | `Permission` \| `Question` \| `Auth` |
-| `PaneSummary` | `changed_at: u64`, `unseen: bool`, `command: Option<ShellCommand>`, `name: String`, `cwd: String`, `repo: String`, `branch: String`, `process: Vec<String>` |
-| `ShellCommand` | `Running` \| `Finished(u8)` |
-| `PaneMode` | `Clock { .. }` \| `Switch { .. }` \| `Customize { .. }` \| `Panes { .. }` |
-| `PaneKindSnapshot` | `Picker` \| `Terminal` \| `Browser(BrowserDescriptor)` \| `Editor(EditorDescriptor)` \| `Agent(AgentDescriptor)` \| `View(ViewDescriptor)` |
-| `BrowserDescriptor` | `tabs: Vec<String>`, `active_tab: usize`, `profile: String` |
-| `EditorDescriptor` | `path: Option<String>`, `cwd: String` |
-| `ViewDescriptor` | `origin: Option<PaneId>`, `title: String`, `content: ViewContent` |
-| `ViewContent` | `Diagram { language, source }` \| `Code { language, text }` \| `Markdown { text }` \| `Image { item, index }` \| `Subagent { item }` |
-
-Every field after `activity` on `WindowSnapshot`, and after `active_border_colour` on
-`PaneSnapshot`, carries `#[serde(default)]`. That only helps JSON readers: postcard is positional,
-so an older decoder still fails on a newer frame, and the protocol version gates the mix.
-
-`generation` is the version stamp for the whole tree; `WindowSnapshot.index` is the tmux-style window
-number; `pane_base_index` (appended at v116) is the window's effective `pane-base-index`, so a
-pane's tmux number is its position in `pane_order` plus it, and `TreeOp::WindowFlags` carries it; `automatic_rename` tells presentation surfaces whether the active pane may supply the tab
-label; `zoomed_pane` records a temporarily maximized pane; `synchronized_input` marks panes receiving
-mirrored keystrokes; `bell` is latched until the pane is read after a BEL. A retained terminal exit
-sets `dead`; `dead_status` contains only a normal exit code and is empty for signals and worker
-failures. Respawn clears both without changing the pane id or layout leaf. `border_colour` and
-`active_border_colour` (appended at v71) are the pane's `pane-border-style` /
-`pane-active-border-style` colour overrides; `None` means no tmux override and `TmuxColour::Rgb` values
-above `0xFFFFFF` are rejected on decode. Since Wave C run 3 (2026-08-22) the daemon resolves the
-explicit values pane → window → global during personalized snapshot stamping (formats expanded in the
-pane's context) and publishes the style's fg colour. The raw TUI consumes both fields. The ala client
-ignores them because pane borders and separators belong to its local chrome theme. With the options
-unset both fields stay `None`. `BrowserDescriptor.tabs`
-is the strip in order (never empty in the type's contract; `url()` returns the active tab or
-`about:blank`). `WindowSnapshot.name` is the user's stable, explicit window name;
-`PaneSnapshot.title` is live presentation metadata. Terminal OSC title changes are synchronized by
-the daemon's terminal watcher; automatic Unix Bash/zsh hooks publish the working directory at a
-prompt and the full command immediately before execution, while applications may override either
-with later OSC 0/2 output. Browser document-title changes arrive through tmux-compatible
-`select-pane -T`. Either title change advances `generation` and publishes a tree delta without
-renaming the containing window.
-
-`layout_dump` and `visible_layout_dump` carry tmux 3.8's JSON v2 layout strings (protocol v108;
-before that, the checksummed v1 cell tree). A control client converts them back to v1 with
-`zz_mux::legacy_layout` unless it set the `new-layouts` flag. Protocol v69
-appended the daemon-expanded `status_label` for the TUI's window-status loop. GUI clients ignore
-that label. Protocol v86 appended `activity`; the daemon copies its latched window-activity flag
-there, and selection clears it. Native window strips can render the flag from structured state
-without parsing status text. Protocol v95 then appended the window's pane border chrome after it:
-`pane_border_status`, `pane_border_lines`, `pane_border_indicators`, `pane_order` (the order
-`window_pane_index` counts) and `pane_z_order` (which of two panes owns a border cell they both
-touch).
-
-`silence` is the window's latched `monitor-silence` alert. `border_status_text` is the pane's
-expanded `pane-border-format`, empty while `pane-border-status` is off. `mode` is the server pane
-mode a client draws over the pane: `clock-mode`, `switch-mode`, `options-mode` (customize) or
-`panes-mode` (`display-panes`). `floating`, `modal`, `sx` and `sy` are the window's floating panes, its modal
-float and its own size ([floating panes](/designs/floating-panes.md)). `status` and `summary` are
-described under [pane status, summary and time](#pane-status-summary-and-time).
-
-`Picker` is a durable, runtime-free pane state used by the native `split-window --kind picker` and `new-window --kind picker` flows. It occupies a real
-layout leaf and survives GUI detach/reattach, but the daemon owns no PTY and the GUI owns no CEF
-session for it. `select-pane-kind` with `terminal`, `browser`, `editor`, or `simulator` materializes the
-same `PaneId` and advances the snapshot generation; a terminal can take `-c` and a command.
-
-`Editor(EditorDescriptor)` is the daemon-owned restore metadata for an Editor pane: the open file's
-absolute `path` (`None` for a scratch pane) and the pane's `cwd`. Buffer bytes, cursor position, and
-dirty state stay GUI-local. Both paths are validated on deserialization as absolute, at most
-`MAX_EDITOR_PATH_BYTES` (16 KiB), and free of control characters, so a hostile descriptor cannot
-become mux state.
-
-`PaneKindSnapshot::Agent(AgentDescriptor)` (v118) is an [agent pane](/concepts/agent-panes.md):
-provider, folder, session, model and effort, and since v122 the `account` it runs on (`None` for
-the CLI's own login; [accounts](/concepts/agent-panes.md#accounts)). A client reads a terminal's `summary.process` to offer
-the flip on one running Claude Code or Codex, and `summary.flip_armed` says a flip waits for the
-pane to go idle. The chat itself, prompts and permissions travel on the agent lane, never in the
-mux snapshot.
-
-`PaneKindSnapshot::View(ViewDescriptor)` (v121) is a [view pane](/concepts/agent-panes.md#previews-and-the-view-pane):
-no process, just something a chat pane showed, opened by `view-pane`. Diagrams, code and markdown
-carry their text, at most `MAX_VIEW_TEXT_BYTES` (64 KiB), because the kind rides in every snapshot
-and every `PaneState` delta; a longer block stays in the chat. Images and subagents carry only the
-chat item they come from: every GUI client already holds every agent pane's chat, so it draws
-them from its own copy of `origin`'s chat, and says so when that chat no longer has them. The
-descriptor is validated on deserialization (text and label sizes, no control characters in labels,
-an origin for pointers).
-
-`PaneKindSnapshot::Other { kind }` (v123) is the slot for a pane kind added inside a wire epoch
-([split updates](/designs/split-updates.md)): `kind` names it, at most `MAX_PANE_KIND_BYTES` (64) on
-decode. The daemon sends it for a simulator pane (`kind: "simulator"`), whose descriptor follows in
-`EventPayload::SimulatorPane` ([wire protocol](/protocol/wire-protocol.md)). A client that does not
-draw the kind shows a placeholder with no process and no
-input that names the kind and says a newer zz shows it.
+`Other { kind: "simulator" }` keeps the tree readable by clients in the same wire epoch.
+Supporting clients receive the device in a gated `SimulatorPane` event. The mux's internal
+`PaneKind::Simulator` and the snapshot representation serve different consumers.
+See [wire epochs](/protocol/wire-protocol.md#wire-epochs).
 
 ## Pane status, summary and time
 
-`PaneSnapshot.status` is one attention record per pane, whoever reported it:
+`PaneStatus` has a state (`Idle`, `Working`, `Done`, `Blocked` or `Error`), optional kind
+(permission, question or auth), optional progress, and app, title and message strings.
+`PaneSummary` supplies the sidebar's command status, name, shell, cwd, repo, branch, process
+list, pending flip (`flip_armed`), change time and unseen flag. A shell command is running or
+finished with an 8-bit status.
 
-- a terminal that speaks OSC 7501 gets its headline record ([program status](/terminal/program-status.md));
-- any other terminal pane gets its `@agent_state` option mirrored into a record (`working`,
-  `blocked`, `needs-approval` as Blocked/Permission, `needs-input` as Blocked/Question, `failed` or
-  `error`, `done`, and `idle` or `starting`, which only replace an existing record), so the Claude
-  peer sampler, the OSC 9;4 bridge and user hooks all reach the tree.
+`changed_at` uses daemon Unix seconds. Shell start and finish marks and status transitions can
+advance it. Entering Done, or returning from Working or Blocked to Idle, can mark the pane
+unseen if nobody is viewing its window. A new Working or Blocked state clears that marker.
+`Welcome.clock` and `ServerHello.clock` let clients compute ages relative to the daemon even on
+a machine with a different clock. See `crates/zz-daemon/src/daemon/pane_summary.rs` and
+`crates/zz-client/src/window_summary.rs` (`DaemonClock`).
 
-`app`, `title` and `message` are bounded on decode at `MAX_PANE_STATUS_APP_BYTES` (64),
-`MAX_PANE_STATUS_TITLE_BYTES` (256) and `MAX_PANE_STATUS_MESSAGE_BYTES` (2048) bytes; a longer
-string fails the decode. Producers cut text on a char boundary before it gets there.
-
-`PaneSnapshot.summary: PaneSummary` is what a sidebar row needs beyond the status. Every field
-moves on an event, never on output bytes:
-
-| Field | Meaning |
-|---|---|
-| `changed_at` | Daemon wall clock, Unix seconds, of the pane's last meaningful change; 0 until one happens |
-| `unseen` | A finish nobody has looked at |
-| `command` | The last OSC 133 mark on a Terminal pane: `Running` after `C`, `Finished(status)` after `D`; `None` without shell integration |
-| `name` | The pane-scoped `@name` user option, cut to `MAX_PANE_NAME_BYTES` (256) |
-| `cwd` | Working directory for display: absolute, the daemon user's home folded to `~` (spelled as `HOME` gives it or as it resolves through symlinks), with the daemon platform's separators (`\` on Windows); empty when unknown or longer than `MAX_PANE_CWD_BYTES` (4096) |
-| `repo` | The root of the git repository holding `cwd` (the folder with the `.git` directory or `gitdir:` file, so a linked worktree's own folder), written like `cwd`; empty outside a repository. Clients name a numbered session after it |
-| `branch` | The branch checked out at `cwd`, the ref as written when HEAD names something outside `refs/heads/`, or a 7-character commit id when HEAD is detached; empty outside a repository; cut to `MAX_PANE_BRANCH_BYTES` (256) |
-| `process` | What runs in a Terminal pane, as names a client matches against its program icons: the foreground process first, then its parents up to the pane's shell. Empty for an idle shell and for every other pane kind. At most `MAX_PANE_PROCESS_ENTRIES` (32) entries of `MAX_PANE_PROCESS_BYTES` (1024) bytes |
-| `shell` | The shell a Terminal pane last sat at its prompt in, as its command name without path, leading `-` or `.exe` (`bash`, `fish`, `pwsh`), seen once a known shell has been the foreground process for 250 ms (v120). Clients head an idle pane with it, so a shell that writes no title or a path still reads as itself. Empty until one is seen; at most `MAX_PANE_NAME_BYTES` (256) bytes |
-
-`changed_at` is stamped by a status state or kind change, a shell command start (the `C` mark's
-start time) or finish (the `D` mark's end time), a bell latch going from false to true, and pane
-death. Output, title writes, a status message, title or progress change within the same state and
-kind, cwd, repo, branch, `@name`, browser navigation and pane creation never stamp it, and neither does a
-pane's first record when it is `Idle`.
-
-`unseen` is raised on a status edge into `Done` from anything else, or from `Working` or `Blocked`
-into `Idle` on a terminal pane, unless a focused client attached to the pane's session shows the
-pane's window (`pane_window_seen`; a client that never reported focus counts as focused). The bell
-keeps tmux's rule, the window being current in an attached session, since `#{window_bell_flag}`
-reads it. An edge into `Working` or `Blocked` drops it, so a stale finish does not resurface after
-the next turn. It clears wherever the bell clears: pane selection, attach, pane input, window activation,
-`kill-session -C` and respawn; a client's focus-in also clears it on every pane of the window that
-client shows.
-Because it lives in the daemon, every client on every host sees the same latch. A daemon restart
-clears it and `changed_at`, as it does the bell.
-
-`cwd` comes from the terminal's OSC 7 report, or from the live working directory of the pane's
-foreground process when the shell sends no OSC 7.
-The daemon resolves it and the branch on a location thread of its own, never under the server lock
-and never on the helper pool, so a stat that hangs on a network mount delays only other locations.
-The daemon remembers the last 64 answers by source (the OSC 7 report, or the live path when there
-is none). When a pane moves (its terminal is spawned, the OSC 7 path
-changes, or the live path changes on a pane without OSC 7), a remembered answer fills the summary
-at once, from memory, so it rides the publish of the move itself. An answer read in the last 10
-seconds is taken without a job, and every pane that took one is read again 2 seconds after the
-first such take, once per source for the burst; an older answer is shown and read again at once. A
-shell command finishing always reads again, so a branch switched from a pane shows up there. A read renews
-every remembered answer and every pane summary with the same `cwd`, and sends summary ops only for
-the panes it changes. At most one job per pane is in flight; a
-trigger while one runs drops that job's result, which is neither shown nor remembered, and runs it
-again with fresh inputs. The branch is read from the `.git` directory
-or `gitdir:` file and `HEAD` (4 KiB at most) without running git; bare repositories and `GIT_DIR`
-are not followed, and a reftable repository, whose `HEAD` is the `refs/heads/.invalid` placeholder,
-shows no branch.
-
-`process` starts from the foreground process group of the pane's terminal (`tcgetpgrp`; on
-Windows, where ConPTY has none, the newest leaf process under the shell) and walks parents for at
-most 16 processes. It stops at the pane's spawned child, which it includes only when it is the
-foreground process itself, and at any known shell (`sh`, `bash`, `zsh`, `fish`, `dash`, `ash`, `ksh`,
-`mksh`, `csh`, `tcsh`, `nu`, `nushell`, `xonsh`, `elvish`, `yash`, `pwsh`, `powershell`, `cmd`, by
-process name or executable name, `.exe` and a login `-` ignored), which it leaves out. Each process adds, in this order: the script an
-interpreter runs (`node`, `nodejs`, `bun`, `deno`, `python`, `ruby`, `perl`, `php`, with any version
-suffix: the first of its next 8 arguments that is not a flag and names a regular file under the
-process cwd, none after an inline-code or module flag such as `-c`, `-e`, `-m` or `--eval`), that
-script without its last extension, the invoked path (argv0 looked up in the process `PATH`, or
-against its cwd when it holds a separator, kept only when it is the executable or a symlink to it),
-argv0, the process name and the executable path. Repeats are dropped. `exec -a codex sleep 30`
-gives `codex`, `sleep`, `/bin/sleep`; `python3 claude.py` puts `<cwd>/claude.py` and `<cwd>/claude`
-first.
-
-The runtime check that already reads the foreground pid and its name for
-`#{pane_current_command}` (after output or a frame, at most every 500 ms per pane) compares the
-pair, inside the server lock it already holds, with the pair behind the current list, and does
-nothing more when they match: no reads, no allocation, no publish. A shell name clears `process`
-there and then. A new pair whose process started less than 250 ms ago is skipped, so a shell loop
-whose foreground flips between the shell and short commands costs one start time read per check
-and publishes nothing; one timer callback per pane rechecks it when it turns 250 ms, so a program that
-draws once and goes quiet is not missed. A settled new pair queues one job
-per pane on the location thread (a pair that changes while it runs reruns it once, and a stale
-result is dropped), and the result publishes only when the list changes. The name stands in for
-the start time as the guard against pid reuse, because reading it costs nothing more. On Windows
-the pair never changes, since the foreground is always the shell, so a check queues a job at most
-every 2 s per pane.
-`zz_daemon_client::process_info::program_candidates` builds the list (libproc and
-`KERN_PROCARGS2` on macOS, `/proc/<pid>/{stat,exe,cmdline,cwd,environ}` on Linux, `sysinfo` on
-Windows). macOS hides the environment of its own platform binaries, so their invoked path only
-comes from an argv0 that holds a separator.
-
-`TreeOp::PaneSummary { session, window, pane, summary }` (tag 18) carries a summary change on its
-own, so a stamp that moves sends one small op instead of the pane.
-
-`Welcome.clock` and `ServerHello.clock` carry the daemon's wall clock, Unix seconds, when the
-handshake was sent. `ClientCore::server_clock()` keeps it and a reconnect replaces it.
-`zz_client::window_summary::DaemonClock` turns it into an offset, so ages are computed against
-daemon time and saturate at "now" when either clock steps backwards. The same module holds the
-renderer-free sidebar view model (`summarize_window`, `summarize_session`, `summarize_host`); no
-client draws it yet ([flat sidebar data](/designs/flat-sidebar-data.md)).
-
-## Per-client stamping and presence
-
-A session holds a set of attached clients, so the tree alone cannot say which window a given device
-is looking at. The daemon sends the recipient-specific fields in a `ClientView` overlay: `MuxSnapshot.focused_window` is that client's own focused window, and every
-`SessionSnapshot.viewers` entry gets `is_self` set for the receiving client. Both fields carry
-`#[serde(default)]`.
-
-`focused_window_for(session)` resolves what to render. It keeps the stamped window only while that
-window still exists in the session, and otherwise falls back to `session.active_window`, which covers
-both a detached snapshot and a client focus left stale by a window that closed. Removing a window
-needs no snapshot repair pass.
-
-A `SessionViewer` names one attached device: `name` is the `device_name` from its `ClientHello`
-(`device-<client id>` when the hello carried none), `window` is the window that device is watching,
-and `is_self` distinguishes the recipient from its peers. This is what the sidebar renders as
-presence.
-
-## Layout . the recursive `LayoutNode`
-
-Each window's wire geometry is a binary tree that keeps stable `^split` IDs across resizes. Since
-the cell-authoritative layout landed, this tree is a **derived projection**: the engine's truth is
-an n-ary cell tree in `zz-mux/src/layout.rs`, and `ratio` is computed from cell extents at
-snapshot time (`first / (first + rest + inner borders)`), so the wire shape and decode rules below
-are unchanged:
-
-| Variant | Fields |
-|---------|--------|
-| `LayoutNode::Pane(PaneId)` | a leaf pane |
-| `LayoutNode::Split { id, axis, ratio, first, second }` | `id: SplitId`, `axis: Axis`, `ratio: f32`, `first`/`second: Box<LayoutNode>` |
-
-`Axis` is `Horizontal | Vertical` (default `Vertical`, `repr(u8)`). `ratio` is the first child's share
-of the split's extent as an `f32` (the live [split resize](/protocol/wire-protocol.md) input
-`ResizeSplit` uses fixed-point `ratio_basis_points` over `SPLIT_RATIO_BASIS = 10_000`, applied in the
-mux). `LayoutNode` provides walk helpers: `contains(pane)`, `panes(&mut Vec<PaneId>)`,
-`contains_split(split)`, and `splits(&mut Vec<SplitId>)`.
-
-Decode accepts at most 256 nested layout nodes on one path and 65,535 total nodes in one layout.
-Exceeding either budget returns a normal protocol decode error. Serialization and the postcard enum
-layout are unchanged, so these defensive bounds do not require a protocol-version bump.
-
-# Examples
-
-```rust
-// A window split vertically 60/40 with two terminal panes:
-let layout = LayoutNode::Split {
-    id: SplitId(11),
-    axis: Axis::Vertical,
-    ratio: 0.6,
-    first:  Box::new(LayoutNode::Pane(PaneId(3))),
-    second: Box::new(LayoutNode::Pane(PaneId(4))),
-};
-
-let snapshot = MuxSnapshot {
-    generation: 42,
-    sessions: vec![SessionSnapshot {
-        id: SessionId(0),
-        name: "dev".into(),
-        active_window: WindowId(7),
-        windows: vec![WindowSnapshot {
-            id: WindowId(7), index: 0, name: "edit".into(),
-            automatic_rename: false,
-            active_pane: PaneId(3), zoomed_pane: None,
-            layout,
-            panes: /* BTreeMap<PaneId, PaneSnapshot> */ Default::default(),
-            layout_dump: "layout".into(),
-            visible_layout_dump: "layout".into(),
-            status_label: "0:edit".into(),
-            activity: false,
-            // silence, the pane border fields, pane_order, pane_z_order, floating, modal,
-            // sx, sy and pane_base_index omitted
-        }],
-        // stamped per recipient: this copy went to "laptop"
-        viewers: vec![
-            SessionViewer { name: "laptop".into(),  window: WindowId(7), is_self: true },
-            SessionViewer { name: "desktop".into(), window: WindowId(7), is_self: false },
-        ],
-    }],
-    focused_window: Some(WindowId(7)),
-};
-
-// Delivered on attach:  ProtocolMessage::Attached { session: SessionId(0), snapshot }
-```
-
-A browser pane's kind carries its descriptor:
-`PaneKindSnapshot::Browser(BrowserDescriptor { tabs: vec!["https://example.com".into()], active_tab: 0, profile: "default".into() })`.
-An Editor pane carries the file it reopens:
-`PaneKindSnapshot::Editor(EditorDescriptor { path: Some("/workspace/src/main.rs".into()), cwd: "/workspace".into() })`.
-
-# Related
-
-- Carried by [the wire protocol](/protocol/wire-protocol.md) (`Attached`, `Event`/`Snapshot`, `Resync`).
-- Part of [the zz-protocol crate](/crates/zz-protocol.md); identifiers from [stable IDs](/protocol/ids.md).
-- Built by [the mux state machine](/crates/zz-mux.md), served by [zz-daemon](/crates/zz-daemon.md),
-  reconciled by [the ala app](/crates/zz.md).
-- Layout details: [split-pane layout](/concepts/split-pane-layout.md); durability:
-  [session persistence](/concepts/session-persistence.md).
-- Cell contents stream separately via [packed terminal lanes](/protocol/terminal-lanes.md).
-- Agent panes and the flip: [agent panes](/concepts/agent-panes.md).
+The [program status guide](/terminal/program-status.md) describes inputs to these fields.
+[Flat sidebar data](/designs/flat-sidebar-data.md) describes how the client aggregates them.

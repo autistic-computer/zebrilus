@@ -1,8 +1,8 @@
 <!-- okf:listing:start (managed by okf.py index — edit prose outside this fence) -->
 # Concepts
 
-* [Stable object IDs ($session @window %pane ^split c)](ids.md) - The sigil-prefixed u64 newtype identifiers for sessions, windows, panes, splits, and clients: stable across the daemon lifetime and parsed/formatted with tmux-style prefixes.
-* [Mux snapshots (snapshot.rs)](snapshots.md) - The MuxSnapshot state tree (sessions, windows, recursive split layouts, pane descriptors, pane status and summary records, behavior flags, per-client focus, and viewer presence) that clients reconcile on attach and after a resync, plus the daemon clock that dates pane changes.
-* [PaneFrame terminal lane (pane_frame.rs)](terminal-lanes.md) - The Terminal envelope lane that carries full viewports, span patches, command-output viewports and history chunks as varint headers, changed-metadata fields and rows of style runs with UTF-8 text, decoded by every client straight into PackedCell planes.
-* [zz wire protocol (v125)](wire-protocol.md) - The versioned, little-endian length-prefixed, postcard-encoded control protocol whose ProtocolMessage enum carries the entire client/daemon conversation over local IPC or an SSH tunnel.
+* [Stable object and client IDs](ids.md) - Six typed u64 identifiers distinguish mux objects, client connections and client instances.
+* [Mux snapshots and client views](snapshots.md) - The shared session tree, per-client presentation, pane summaries and delta repair used on attach.
+* [Packed terminal lane](terminal-lanes.md) - Terminal frame kinds, row encoding, limits, per-pane delivery and repair.
+* [zz wire protocol](wire-protocol.md) - Frame layout, connection handshakes, wire epochs, revision floors, and the steps for adding a capability-gated message.
 <!-- okf:listing:end -->

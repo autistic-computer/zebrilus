@@ -1,53 +1,21 @@
 ---
 type: Design Plan
-title: Tailnet hosts . zz uses the Tailscale you already run
-description: Plan, phases 1 to 4 built, for zz machines to find and attach to each other over Tailscale. When the machine already runs Tailscale and is signed in, zz uses it - no sign-in in zz, trust is "a machine of this tailnet's owner" checked with whois, discovery comes from the peer list. A daemon-owned node built on the tailscale crate (tailscale-rs 0.7, unpatched) exists only for machines you explicitly switch to it. Connections are bridged into the daemon's own local socket, so the daemon loop and wire protocol do not change. Covers macOS, Linux, Windows and WSL2 hosts and which thin clients can use it in which phase.
-status: In progress
+title: "Tailnet hosts"
+description: "Discovery, peer admission, native clients and an optional daemon-owned Tailscale node."
+status: "Four phases built 2026-11-07, LocalAPI implementation checked on three platforms 2026-11-23"
+resource: crates/zz-daemon-client/src/tailnet.rs
 tags:
 - remote
 - multi-host
 - tailscale
 - discovery
 - design-plan
-timestamp: 2026-11-07T00:00:00-03:00
+timestamp: 2026-11-24T00:00:00-03:00
 ---
 
 # Overview
 
-> **Status: phases 1 to 4 built 2026-11-07.** Phase 4: with `tailnet = own` the daemon runs zz's
-> own Tailscale node, signed in with `zz tailnet login`, admitting only machines on its allow list
-> and dialing for local clients through `default.tailnet.sock`. Verified on alienware: the own node
-> and a system-Tailscale daemon attached to each other, the allow list refused and then admitted,
-> and the Mac listed the new node.
->
-> **Phase 3 built 2026-11-07.** Phase 3: a phone learns your other machines from the
-> first one it reaches (`tailnet hosts`), and desktop Settings › Hosts shows a QR code with a
-> `zz://host/` link to this machine. Verified with the iOS app in the simulator: started on
-> alienware with nothing saved, it listed and saved macbook on its own.
->
-> **Phase 2 built 2026-11-07.** Phase 2: the app finds your machines and lists
-> them as hosts, Settings › Hosts has a Tailscale group, and the iOS and Android app connects to
-> `tailnet://` through the Tailscale app. Verified with three machines: this Mac found alienware and
-> xps, each Linux box found the other, and the iOS app in the simulator attached to alienware over
-> `tailnet://` and typed into its shell.
->
-> **Phase 1 built 2026-11-07.** The daemon listens through the running Tailscale, admits
-> callers by whois, and `tailnet://` endpoints, `--host tailnet://...` and `zz tailnet status` work.
-> Verified between a macOS and a CachyOS machine on a personal tailnet in both directions: commands,
-> an interactive attach, `tailnet = off` dropping a live attach within one 30 s check, and the
-> own-address refusal. Discovery, phones and zz's own node are not built. Checked against
-> Tailscale 1.104 and the `tailscale` crate 0.7.1 (github.com/tailscale/tailscale-rs at a2a56c4),
-> which zz uses as published, with no patches.
-
-Today a remote host is an `ssh://` line ([fleet attach](/designs/fleet-attach.md)): every machine
-needs sshd, a key, a host line and `zz` on the remote PATH, and nothing finds machines for you. The
-2026-07-31 pairing design solved that with mDNS, QUIC and a short-code PAKE, and was deleted a day
-later for being too much of zz's own network code ([fleet pairing](/designs/fleet-pairing.md)).
-
-This plan uses Tailscale's identity instead. Tailscale gives each machine an address your other
-devices reach through NAT, encrypts the traffic, and says which machine and which Tailscale user is
-on the other end of a connection. Trust becomes "a machine signed in by the same Tailscale user", and
-discovery becomes "your machines that answer on the zz port".
+A daemon can use the machine's running Tailscale service to admit and discover peers, or run a separate node when explicitly configured. SSH hosts continue to use their own transport. The earlier direct pairing protocol is [retired](/designs/fleet-pairing.md).
 
 | `tailnet` | zz does |
 | --- | --- |
@@ -347,7 +315,7 @@ file). An invalid value is a config diagnostic and leaves the default:
 The auth key is never a config key: it comes only from `zz tailnet login --auth-key-file`, is used for
 the first registration, and is not stored.
 
-# Phases
+# Recorded phase checks (2026-11-07)
 
 1. **Accept and dial with the running Tailscale. Built 2026-11-07.** CLI detection, the usability
    rules, the listener with the self-address rule and whois admission, the bridge, dropping bridged
