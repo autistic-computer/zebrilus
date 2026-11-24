@@ -140,9 +140,14 @@ agent with an instruction built from those tokens (`zz_protocol::agent_mention::
 one sentence per distinct token): for `@+codex`, `The user tagged codex: codex does this task, not
 you. Write it a brief that stands on its own, run zz new-pane -d --kind agent codex 'BRIEF' and end
 your turn. Do not do the task yourself. Its reply and any permission asks come back to you as
-messages.` (with `--model MODEL` when the token names one), and for `@macbook:%2`, `@macbook:%2 is
+messages.` (with `--model MODEL` when the token names one), for `@local:%2`, `@local:%2 is
 another chat, not you: run zz agent-send -t %2 'TEXT' and end your turn. Its reply comes back to
-you as a message.` A chat opened by a chat gets a second note with its brief
+you as a message.`, and for a chat on any other host, `@macbook:%2 is another chat, not you, on
+macbook: run zz --host macbook agent-send -t %2 'TEXT'. The command prints how its reply reaches
+you; do what it says.` That host's daemon sees no calling chat, so nothing routes the reply back:
+its stderr line gives the `--wait ''` command that reads it, with `--host` added by the CLI. The
+host name is the one the composing client wrote, so a chat on a remote host that mentions a chat
+on the client's own machine still gets the `local` form and the wrong pane. A chat opened by a chat gets a second note with its brief
 (`child_note`): `%P (NAME) opened this chat. Your final message is sent to it as your reply, so
 finish with the answer. You cannot open other agents or message %P; if you need something, say so
 in your reply.`, and for a Codex child `If a command fails with "Operation not permitted", rerun it
@@ -960,15 +965,27 @@ the next chat starts in, and Resume, for a chat the CLI already has. Each opens 
   (`clients/app/src/app/agent_pane/resume.rs`), each keeping its own `Resume`.
   The pane's own session is left out of both menus.
 - **The menus.** One popover shape for both (`zz_ui::agent::resume::resume_menu`): 300 px wide,
-  6 px in, a 30 px search field ("Search folders" or "Search chats"), then 32 px rows in a list
-  at most eight rows tall that scrolls. Only one is open at a time, and neither drills into
-  another. The model (`Resume`: which menu is open, the search text, the picked row and each
-  menu's rows) is in `zz-client`; the view draws the rows and forwards keys.
+  6 px in, a 30 px search field ("Search folders", on the desktop "Search folders or type a
+  path", or "Search chats"), then 32 px rows in a list at most eight rows tall that scrolls.
+  Only one is open at a time, and neither drills into another. The model (`Resume`: which menu
+  is open, the search text, the picked row and each menu's rows) is in `zz-client`; the view
+  draws the rows and forwards keys.
   - **Folder menu.** The folders the CLI has chats in: the pane's folder first, with a check where
     the age would be, then the others newest first, each with its parent path (home-relative) and
     its last chat's age. There is no chat count, since the driver pages the list. Picking a folder
     sends `AgentSessionOp::New { cwd }` and starts a new chat there in this pane; picking the
     folder the chat is already in just closes the menu.
+  - **A typed path.** On the desktop, a search that starts with `/`, `~` or a drive (`E:\`,
+    `E:/`) browses the host instead: the text up to the last separator is the folder, the rest
+    filters its subfolders by name. The view asks the host for that folder with a pane-less
+    `PathListRequest` (`AgentView::browse_folder`) and feeds the reply to `Resume::browse_root`
+    and `browse_entries`, which keep the top-level folders and report done at the first nested
+    entry, since the walk is breadth first; the view then cancels the walk. With no filter the
+    first row is the typed folder itself, then its subfolders by name, up to 200. Rows carry the
+    host's absolute path, so a pick sends the same `AgentSessionOp::New`. A folder the host
+    cannot list is one "No folder there" row. The walk skips dot folders outside a repo and
+    ignored ones inside, so those are reached by typing them out with a trailing separator.
+    The thin clients do not browse; a path there is an ordinary search.
   - **Resume menu.** "In" and the folder's name, then the eight newest chats in the pane's folder,
     or "No chats here yet"; a search reaches the older ones; then "Other folders" and the eight newest chats elsewhere, each
     with its folder's name and age. Picking a chat sends `AgentSessionOp::Switch` with its session
@@ -993,8 +1010,9 @@ the next chat starts in, and Resume, for a chat the CLI already has. Each opens 
   `claude --help`), so every Claude Code chat whose folder exists is listed.
 - **Keys.** Up from the empty composer opens Resume. With a menu open, typing goes to its search
   field; Up and Down move the picked row past labels and the spinner and keep it in view; Enter
-  picks; Escape clears the search, then closes the menu. The first pickable row is picked when
-  nothing else is. Closing puts focus back in the composer; a press outside closes the menu too.
+  picks; Escape clears the search, then closes the menu. In the desktop's folder menu Tab puts
+  the picked folder's path and a separator in the search, which lists its subfolders
+  (`Resume::descend`). The first pickable row is picked when nothing else is. Closing puts focus back in the composer; a press outside closes the menu too.
   The menus are penna `Popover`s the view opens and closes itself (`Popover::open` and
   `on_toggle`). The thin client's popovers take Up, Down and Enter the same way, but Up from
   the composer does not open Resume there; while a menu is open the pane's focus target is

@@ -310,8 +310,12 @@ cycle limit, and whether a child may create children is [open](#open).
 
 ```
 The user tagged codex: codex does this task, not you. Write it a brief that stands on its own, run zz new-pane -d --kind agent codex 'BRIEF' and end your turn. Do not do the task yourself. Its reply and any permission asks come back to you as messages.
-@macbook:%2 is another chat, not you: run zz agent-send -t %2 'TEXT' and end your turn. Its reply comes back to you as a message.
+@local:%2 is another chat, not you: run zz agent-send -t %2 'TEXT' and end your turn. Its reply comes back to you as a message.
+@macbook:%2 is another chat, not you, on macbook: run zz --host macbook agent-send -t %2 'TEXT'. The command prints how its reply reaches you; do what it says.
 ```
+
+  The second form is for any host but `local` (2026-11-24): pane ids are per host, and a host's
+  daemon cannot route a reply back to a chat on another machine.
 
 # Host chat
 

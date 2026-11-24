@@ -1256,8 +1256,30 @@ fn with_host_hint(host: Option<&str>, message: String) -> String {
             "{message}\nzz --host {host}: name the session with -t NAME (zz --host {host} \
              list-sessions, or make one with zz --host {host} new-session -d -s NAME)"
         ),
-        _ => message,
+        Some(host) => with_host_commands(host, &message),
+        None => message,
     }
+}
+
+fn with_host_commands(host: &str, text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(index) = rest.find("zz ") {
+        out.push_str(&rest[..index]);
+        let starts_word = out.chars().next_back().is_none_or(|before| {
+            !(before.is_alphanumeric() || matches!(before, '-' | '_' | '/' | '.'))
+        });
+        out.push_str("zz ");
+        rest = &rest[index + 3..];
+        let verb = rest.split(char::is_whitespace).next().unwrap_or_default();
+        if starts_word && catalog_command_spec(canonical_command(verb)).is_some() {
+            out.push_str("--host ");
+            out.push_str(host);
+            out.push(' ');
+        }
+    }
+    out.push_str(rest);
+    out
 }
 
 fn run_host_command_chain(
@@ -1312,6 +1334,7 @@ fn run_host_command_chain(
         None
     };
     prepare_command_client(&mut client);
+    COMMAND_HOST.set(Some(host.to_owned()));
     match client.exec_chain(ExecChain::new(command_chain), emit_chain_outcome) {
         Ok(ExecChainEnd::Ran { exit_code }) => ExitCode::from(exit_code),
         Ok(ExecChainEnd::Rejected(error)) => {
@@ -2095,10 +2118,17 @@ fn print_command_output(output: &RawText) {
     CommandOutputWriter::default().print(output, false);
 }
 
+thread_local! {
+    static COMMAND_HOST: RefCell<Option<String>> = const { RefCell::new(None) };
+}
+
 fn print_command_error(output: &str) {
     if output.is_empty() {
         return;
     }
+    let hosted = COMMAND_HOST
+        .with_borrow(|host| host.as_deref().map(|host| with_host_commands(host, output)));
+    let output = hosted.as_deref().unwrap_or(output);
     let mut stderr = io::stderr().lock();
     let _ = stderr.write_all(output.as_bytes());
     if !output.ends_with('\n') {
@@ -2792,10 +2822,15 @@ fn tui_failure_message(host: Option<&str>, error: &zz_tui::Error) -> String {
 fn untargeted_host_input(host: &str, command_chain: &[CommandInvocation]) -> Option<String> {
     use zz_protocol::CommandValueKind;
 
-    let (flag, kind) = command_chain
+    let (verb, (flag, kind)) = command_chain
         .iter()
         .take_while(|invocation| !starts_its_own_target(invocation))
-        .find_map(untargeted_kind)?;
+        .find_map(|invocation| {
+            Some((
+                canonical_command(&invocation.name),
+                untargeted_kind(invocation)?,
+            ))
+        })?;
     let (noun, id, list, make) = match kind {
         CommandValueKind::Window => (
             "window",
@@ -2811,9 +2846,14 @@ fn untargeted_host_input(host: &str, command_chain: &[CommandInvocation]) -> Opt
             "new-session -d -P -F '#{pane_id}'",
         ),
     };
+    let no_pane = if verb == "run-pane" {
+        format!("; a command that needs no pane runs with zz --host {host} run-shell 'COMMAND'")
+    } else {
+        String::new()
+    };
     Some(format!(
         "zz --host {host}: name the {noun} with {flag} {id} (zz --host {host} {list}, or make one \
-         with zz --host {host} {make})"
+         with zz --host {host} {make}){no_pane}"
     ))
 }
 
@@ -4784,6 +4824,37 @@ mod tests {
     }
 
     #[test]
+    fn hints_from_a_host_name_it_in_their_commands() {
+        for (relayed, shown) in [
+            (
+                "agent-send: read %5's reply with: zz agent-send -t %5 --wait ''",
+                "agent-send: read %5's reply with: zz --host macbook agent-send -t %5 --wait ''",
+            ),
+            (
+                "%5 has no running turn; read its last reply with: zz capture-pane -p -t %5",
+                "%5 has no running turn; read its last reply with: zz --host macbook capture-pane -p -t %5",
+            ),
+            (
+                "zz --host macbook: name the pane with -t %N (zz --host macbook list-panes -a)",
+                "zz --host macbook: name the pane with -t %N (zz --host macbook list-panes -a)",
+            ),
+            (
+                "fizz new-pane, zz/config, zz nonsense",
+                "fizz new-pane, zz/config, zz nonsense",
+            ),
+        ] {
+            assert_eq!(super::with_host_commands("macbook", relayed), shown);
+        }
+        let missing = DaemonError::Server(ServerError::InvalidCommand(
+            "%5 is an agent chat; send with: zz agent-send -t %5 TEXT".to_owned(),
+        ));
+        assert_eq!(
+            super::host_command_error_message("macbook", &missing),
+            "%5 is an agent chat; send with: zz --host macbook agent-send -t %5 TEXT"
+        );
+    }
+
+    #[test]
     fn verbs_that_act_on_a_pane_window_or_session_need_a_target_over_a_host() {
         let chain = |words: &[&str]| {
             super::split_command_chain(
@@ -4796,6 +4867,10 @@ mod tests {
             "zz --host xps: name the pane with -t %N (zz --host xps list-panes -a, {make_pane}"
         );
         let pane = pane.as_str();
+        let run_pane = format!(
+            "{pane}; a command that needs no pane runs with zz --host xps run-shell 'COMMAND'"
+        );
+        let run_pane = run_pane.as_str();
         let window = format!(
             "zz --host xps: name the window with -t @N (zz --host xps list-windows -a, {make_window}"
         );
@@ -4814,16 +4889,16 @@ mod tests {
             (&["send-keys", "ls", "Enter"][..], pane),
             (&["send", "-l", "x"][..], pane),
             (&["send-text", "hi"][..], pane),
-            (&["run-pane", "--", "make"][..], pane),
-            (&["run-pane", "--timeout=5", "--", "make"][..], pane),
+            (&["run-pane", "--", "make"][..], run_pane),
+            (&["run-pane", "--timeout=5", "--", "make"][..], run_pane),
             (
                 &["run-pane", "--timeout=60", "docker", "run", "-t", "x"][..],
-                pane,
+                run_pane,
             ),
             (&["send-text", "--timeout=5", "hi"][..], pane),
             (&["agent-send", "--on-block=deny", "hi"][..], pane),
             (&["agent-respond", "--option=allow"][..], pane),
-            (&["run-pane", "--bogus=1", "--", "make"][..], pane),
+            (&["run-pane", "--bogus=1", "--", "make"][..], run_pane),
             (&["pasteb", "-b", "x"][..], pane),
             (&["agent-send", "--wait", "hi"][..], pane),
             (&["list-panes", ";", "send-keys", "x"][..], pane),

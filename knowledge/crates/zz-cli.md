@@ -65,10 +65,17 @@ hint below. Text lines get a `NAME: ` prefix, JSON lines under
 rows do), and the exit is 1 when any host failed. Bare `zz --host NAME` runs `new-session -A`
 there.
 
+A host's daemon does not know the name the caller reached it by, so the commands in its hints
+(`read %5's reply with: zz agent-send -t %5 --wait ''`) would run on the caller's machine as
+written. `with_host_commands` puts `--host NAME` after every `zz` that a catalogued verb follows,
+in the stderr a host command relays (`print_command_error`) and in its error message
+(`with_host_hint`); stdout is left alone, since it carries pane and chat text.
+
 Over `--host`, `untargeted_host_input` exits 2 for any command without `-t` whose spec mutates and
 whose `-t` names a pane, window or session (input verbs, `kill-*`, `respawn-*`, `split-window`,
 `pipe-pane`, `html`, `set-option -p`/`-w` and the rest), since nothing there is the caller's; the
-message asks for `-t %N`, `-t @N` or `-t NAME` by that kind. `join-pane`, `move-pane`, `break-pane`,
+message asks for `-t %N`, `-t @N` or `-t NAME` by that kind, and for `run-pane` it also names
+`zz --host NAME run-shell 'COMMAND'`, which needs no pane. `join-pane`, `move-pane`, `break-pane`,
 `move-window` and `swap-window` also need `-s`, because their source defaults to the current pane or
 window. `new-window`, `attach`, `run-shell`, `if-shell`, `source-file` and `-g` forms stay allowed:
 their `-t` is a destination or only a format context. A chain stops being checked at `new-session`

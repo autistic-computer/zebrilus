@@ -3,6 +3,7 @@ use std::{fmt, ops::Range};
 use crate::{AgentProvider, PaneId};
 
 const REPLY_TAIL: &str = "reply comes back to you as a message; end your turn now";
+const LOCAL_HOST: &str = "local";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Mention {
@@ -122,11 +123,18 @@ impl Mention {
                     "The user tagged {name}: {name} does this task, not you. Write it a brief that stands on its own, run zz new-pane -d --kind agent {name}{model} 'BRIEF' and end your turn. Do not do the task yourself. Its reply and any permission asks come back to you as messages."
                 )
             }
+            Self::Chat { host, pane } if host == LOCAL_HOST => local_chat_note(host, *pane),
             Self::Chat { host, pane } => format!(
-                "@{host}:{pane} is another chat, not you: run zz agent-send -t {pane} 'TEXT' and end your turn. Its reply comes back to you as a message."
+                "@{host}:{pane} is another chat, not you, on {host}: run zz --host {host} agent-send -t {pane} 'TEXT'. The command prints how its reply reaches you; do what it says."
             ),
         }
     }
+}
+
+fn local_chat_note(host: &str, pane: PaneId) -> String {
+    format!(
+        "@{host}:{pane} is another chat, not you: run zz agent-send -t {pane} 'TEXT' and end your turn. Its reply comes back to you as a message."
+    )
 }
 
 #[must_use]
@@ -185,9 +193,13 @@ fn note_line(line: &str) -> bool {
         return Mention::Agent { provider, model }.instruction() == line;
     }
     if let Some((token, _)) = line.split_once(" is another chat, not you") {
-        return Mention::parse(token)
-            .filter(|mention| matches!(mention, Mention::Chat { .. }))
-            .is_some_and(|mention| mention.instruction() == line);
+        return match Mention::parse(token) {
+            Some(Mention::Chat { host, pane }) => {
+                line == local_chat_note(&host, pane)
+                    || line == Mention::Chat { host, pane }.instruction()
+            }
+            _ => false,
+        };
     }
     let Some((opener, _)) = line.split_once(" opened this chat.") else {
         return false;
@@ -889,7 +901,10 @@ mod tests {
         );
         let codex = "The user tagged codex: codex does this task, not you. Write it a brief that stands on its own, run zz new-pane -d --kind agent codex 'BRIEF' and end your turn. Do not do the task yourself. Its reply and any permission asks come back to you as messages.";
         let claude = "The user tagged claude: claude does this task, not you. Write it a brief that stands on its own, run zz new-pane -d --kind agent claude --model opus 'BRIEF' and end your turn. Do not do the task yourself. Its reply and any permission asks come back to you as messages.";
-        let chat = "@macbook:%2 is another chat, not you: run zz agent-send -t %2 'TEXT' and end your turn. Its reply comes back to you as a message.";
+        let chat = "@macbook:%2 is another chat, not you, on macbook: run zz --host macbook agent-send -t %2 'TEXT'. The command prints how its reply reaches you; do what it says.";
+        let here = "@local:%2 is another chat, not you: run zz agent-send -t %2 'TEXT' and end your turn. Its reply comes back to you as a message.";
+        assert_eq!(mention_note("ask @local:%2").as_deref(), Some(here));
+        assert!(is_hidden_note(&here.replace("local", "macbook")));
         assert_eq!(mention_note("@+codex fix it").as_deref(), Some(codex));
         let both = mention_note("@+claude/opus and @+codex, ask @macbook:%2 and @+codex again")
             .expect("note");

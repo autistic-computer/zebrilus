@@ -52343,11 +52343,14 @@ fn parse_run_pane_args(args: &[RawText]) -> Result<ParsedRunPane, ServerError> {
         }
         break;
     }
-    parsed.command = args[index..]
-        .iter()
-        .map(ToString::to_string)
-        .collect::<Vec<_>>()
-        .join(" ");
+    parsed.command = match &args[index..] {
+        [line] => line.to_string(),
+        words => words
+            .iter()
+            .map(|word| run_pane_word(word.as_ref()))
+            .collect::<Vec<_>>()
+            .join(" "),
+    };
     if parsed.command.trim().is_empty() {
         return Err(ServerError::CommandParse(
             "usage: run-pane [-t target-pane] [--timeout SECS] [--] COMMAND...".to_owned(),
@@ -52363,6 +52366,18 @@ fn parse_run_pane_args(args: &[RawText]) -> Result<ParsedRunPane, ServerError> {
         ));
     }
     Ok(parsed)
+}
+
+fn run_pane_word(word: &str) -> String {
+    let plain = !word.is_empty()
+        && word
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || "_./,:=+@%-".contains(character));
+    if plain {
+        word.to_owned()
+    } else {
+        zz_daemon_client::shell_quote(word)
+    }
 }
 
 fn parse_pane_timeout(verb: &str, value: &str) -> Result<Duration, ServerError> {
@@ -53349,7 +53364,10 @@ when unknown; terminal panes report it from OSC 133 marks.
 yours there: pass `-t %N` from `list-panes -a` or your own
 `new-window -d -P -F '#{pane_id}'` (`new-session -d -P -F '#{pane_id}'` on a host
 with no session); a verb that acts on a pane, window or session exits 2 without
-`-t`, and a move or swap without `-s`. Paths and pane environments are that
+`-t`, and a move or swap without `-s`. `zz --host NAME run-shell 'COMMAND'` runs a
+command line there with no pane, prints its output and exits with its status.
+Hints and errors that come back from a host name their commands with
+`--host NAME` already: run them as printed. Paths and pane environments are that
 host's; `events` and `agent-send --progress` stream from it. Logins use zz’s own
 key after the first, and `--host all` never prompts. A call that changes state
 and stalls 15 s exits 1 and may have run there: check before retrying. When a
@@ -53403,7 +53421,7 @@ Open a new chat as a float. `split-window` and `new-window` take the same `--kin
 
 Run from a chat, the new chat is yours: `#{agent_parent}` names your pane, its reply to the brief comes back to you as a message once its turn ends, and each permission it asks for during that turn comes to you with the `agent-respond` lines that answer it. Do not wait or poll. The chat you open gets a note with its brief, kept out of its transcript, saying which chat opened it and that its final message is its reply. It cannot open chats of its own (it is told to do the work itself or say what it needs), and closing your pane closes it and every pane it opened. If the user closes it and opens it again, `zz agent-send -t %N` still reaches it by the id you were given; while it stays closed, the send fails with `%N was closed; open a new chat with: zz new-pane -d --kind agent codex 'BRIEF'`. A message reads `[zz] %N (codex) finished:` or `stopped (REASON):`, then the reply and `If this answers the user, answer the user now and send nothing to %N. Only if something is missing: zz agent-send -t %N 'TEXT'`; `failed: MESSAGE` and `Tell the user, or try again with: zz agent-send -t %N 'TEXT'`; or `was closed before it replied. Tell the user; do not open it again.`; an ask reads `[zz] %N (codex) asks: KIND TITLE` and lists the `zz agent-respond` commands that answer it, one `--option ID  # LABEL` line per choice of a question and `--answer 'TEXT'` for one that wants typed text.
 
-A prompt that names an agent with `@+claude`, `@+codex`, `@+agy`, `@+grok`, `@+cursor` or `@+codex/MODEL`, or a running chat with `@HOST:%N`, comes with a note, kept out of the transcript, that tells you to hand the task over with the exact command (`zz new-pane -d --kind agent codex 'BRIEF'`, or `zz agent-send -t %N 'TEXT'` for a chat) and end your turn.
+A prompt that names an agent with `@+claude`, `@+codex`, `@+agy`, `@+grok`, `@+cursor` or `@+codex/MODEL`, or a running chat with `@HOST:%N`, comes with a note, kept out of the transcript, that tells you to hand the task over with the exact command (`zz new-pane -d --kind agent codex 'BRIEF'`, or `zz agent-send -t %N 'TEXT'` for a chat) and end your turn. For a chat on another machine the command is `zz --host HOST agent-send -t %N 'TEXT'`, and its reply does not come back on its own: the command prints `agent-send: read %N's reply with: zz --host HOST agent-send -t %N --wait ''`, which waits for the turn and prints the reply.
 
 A chat answers the same reads as a terminal. `#{pane_current_command}` is `claude`, `codex`, `agy`, `grok` or `cursor-agent`. `#{agent_state}` is `starting`, `idle`, `working`, `needs-approval`, `needs-input` or `failed`, and `#{agent_pending_permission}` is the pending request ID or empty, in `list-panes -F`, `display-message -p` and `inspect`. `capture-pane -p -t %N` prints the chat's last turn as text: `> ` and the prompt, one line per tool call (its kind and title), then the reply; `-S -` prints the whole chat, and an empty chat prints nothing. While a turn runs, stderr says `capture-pane: %N's turn is still running`. `wait-pane` on a chat fails with `%N is an agent chat; wait for its turn with: zz agent-send -t %N --wait ''`, and `show-last-output` with `%N is an agent chat; read it with: zz capture-pane -p -t %N`. Typing into a chat fails and names the verb to use: `send-keys`, `send-text`, `paste-buffer` and `run-pane` fail with `%N is an agent chat; send with: zz agent-send -t %N TEXT`, and `pipe-pane` with `%N is an agent chat; read it with: zz capture-pane -p -t %N`.
 
@@ -53469,8 +53487,13 @@ Open a picker with `zz split-window --kind picker -v -P -F '#{pane_id}'`.
 ### `zz run-pane [-t %N] [--timeout SECS] [--] COMMAND...`
 
 Run a command in a terminal pane's POSIX shell without shell integration.
-Join COMMAND words with single spaces, preserving supplied quoting; pass one
-command line. Type it, verify the echo, then press Enter. Print the output between
+One COMMAND word is a shell command line, run as written: use it for pipes, `&&`
+and variables the pane's shell should expand. Several words are a program and its
+arguments, each quoted so the pane's shell gets them as you wrote them. With no
+pane to run in, `zz run-shell 'COMMAND'` runs a command line in a shell of the
+daemon's, prints its output and exits with its status; with `--host NAME` that is
+the way to run a command on another machine without making a pane there.
+Type it, verify the echo, then press Enter. Print the output between
 unique markers and return the child's exit code. Capture includes scrollback,
 capped to the last 10,000 logical lines; when the start scrolled past the pane's
 `history-limit`, stderr says `run-pane: output truncated to its last N lines`, so
@@ -78866,7 +78889,7 @@ set-option -g @alias-mixed-next yes
                 &mut ExecutionContext::default(),
                 &CommandInvocation::new(
                     "run-pane",
-                    ["-t", &target, "--", "sh", "-c", "'echo hi; exit 7'"],
+                    ["-t", &target, "--", "sh", "-c", "echo hi; exit 7"],
                 ),
             )
             .expect_err("child exits seven");
@@ -80309,12 +80332,25 @@ set-option -g @alias-mixed-next yes
             ));
         }
         let parsed = parse_run_pane_args(
-            &["-t%3", "--timeout=4", "sh", "-c", "'echo hi; exit 7'"].map(RawText::from),
+            &[
+                "-t%3",
+                "--timeout=4",
+                "printf",
+                "%s|",
+                "a b",
+                "it's",
+                "",
+                "c",
+            ]
+            .map(RawText::from),
         )
         .expect("command words");
         assert_eq!(parsed.target.as_deref(), Some("%3"));
         assert_eq!(parsed.timeout, Duration::from_secs(4));
-        assert_eq!(parsed.command, "sh -c 'echo hi; exit 7'");
+        assert_eq!(parsed.command, "printf '%s|' 'a b' 'it'\\''s' '' c");
+        let line = parse_run_pane_args(&["--", "sh -c 'echo hi; exit 7' | wc"].map(RawText::from))
+            .expect("command line");
+        assert_eq!(line.command, "sh -c 'echo hi; exit 7' | wc");
         let shared = Arc::new(Shared::new(1));
         for (verb, args) in [("wait-pane", vec!["--regex", "["]), ("run-pane", vec![])] {
             let error = shared
