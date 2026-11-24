@@ -35,7 +35,9 @@ if [ "$BACKEND" = zz ]; then
   command -v zz >/dev/null || { echo "zz CLI missing" >&2; exit 2; }
   curl -sf "http://127.0.0.1:$CDP_PORT/json/version" >/dev/null || { echo "no CDP endpoint on $CDP_PORT (enable browser-remote-debugging-port and open a browser pane)" >&2; exit 2; }
   PANE=$(zz list-panes -a -F '#{pane_id} #{pane_kind} #{browser_url}' | awk -v s="$SITE" '$2=="browser" && index($3,s)==1 {print $1; exit}')
-  if [ -z "$PANE" ]; then PANE=$(zz new-browser -d -n bench "$SITE/" >/dev/null && sleep 2 && zz list-panes -a -F '#{pane_id} #{pane_kind} #{browser_url}' | awk -v s="$SITE" '$2=="browser" && index($3,s)==1 {print $1; exit}'); fi
+  if [ -z "$PANE" ]; then
+    PANE=$(zz new-window -d -n bench -P -F '#{pane_id}' --kind browser "$SITE/")
+  fi
   [ -n "$PANE" ] || { echo "could not create a bench browser pane" >&2; exit 2; }
   zz select-window -t "$(zz display-message -p -t "$PANE" '#{session_name}:#{window_index}')" >/dev/null 2>&1
   for _ in 1 2 3 4 5 6 7 8 9 10; do TARGET=$(curl -s "http://127.0.0.1:$CDP_PORT/json/list" | jq -r --arg s "$SITE" '[.[] | select(.type=="page" and (.url|startswith($s)))][0].id // empty'); [ -n "$TARGET" ] && break; sleep 0.5; done

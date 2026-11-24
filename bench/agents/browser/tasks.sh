@@ -27,7 +27,7 @@ chmod +x "$RUN/bin/agent-browser"
 unset TMUX
 if [ "$BACKEND" = zz ]; then
   TARGET=$(curl -s "http://127.0.0.1:$CDP_PORT/json/list" | jq -r --arg s "$SITE" '[.[] | select(.type=="page" and (.url|startswith($s)))][0].id // empty')
-  [ -n "$TARGET" ] || { echo "no zz browser pane on $SITE (run matrix.sh zz once, or zz new-browser -n bench $SITE/)" >&2; exit 2; }
+  [ -n "$TARGET" ] || { echo "no zz browser pane on $SITE (run matrix.sh zz once, or zz new-window -n bench --kind browser $SITE/)" >&2; exit 2; }
   BEFORE=$(curl -s "http://127.0.0.1:$CDP_PORT/json/list" | jq -r '.[] | select(.type=="page") | .id' | sort)
   "${ABV[@]}" --cdp "$CDP_PORT" --session "$SESSION" tab "$TARGET" >/dev/null 2>&1
 fi
