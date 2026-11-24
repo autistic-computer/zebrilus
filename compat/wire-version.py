@@ -1,28 +1,25 @@
 #!/usr/bin/env python3
 
+import difflib
 import re
 import subprocess
 import sys
 from pathlib import Path
 
 WIRE_DIR = "crates/zz-protocol/src"
-NOT_WIRE = {"catalog.rs", "lib.rs"}
+NOT_WIRE = {f"{WIRE_DIR}/catalog.rs", f"{WIRE_DIR}/lib.rs"}
+MENTION_TEXT = f"{WIRE_DIR}/agent_mention.rs"
+FILE_HEX = f"{WIRE_DIR}/file_hex.rs"
+WIRE_CODE = re.compile(
+    r"\b(?:serde(?:_\w+)?|(?i:(?:de)?serializ\w*)|postcard|ProtocolMessage|"
+    r"EventPayload|framing|pane_frame|terminal_codec|\w*varint\w*|(?:to|from)_(?:le|be)_bytes)\b"
+)
 VERSION = re.compile(r"pub const PROTOCOL_VERSION: u16 = (\d+);")
 REVISIONS = re.compile(r"pub const (?:MIN_DAEMON_|MIN_CLIENT_)?REVISION: u32 = \d+;")
 
 
 def git(root, *args):
-    out = subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True)
-    return out.stdout
-
-
-def wire_files(root):
-    here = sorted(
-        f"{WIRE_DIR}/{p.name}"
-        for p in (root / WIRE_DIR).glob("*.rs")
-        if p.name not in NOT_WIRE
-    )
-    return here
+    return subprocess.check_output(["git", "-C", str(root), *args], text=True)
 
 
 def version_in(text):
@@ -30,9 +27,9 @@ def version_in(text):
     return int(found.group(1)) if found else None
 
 
-def meaningful(diff):
+def meaningful(before, after):
     lines = []
-    for line in diff.splitlines():
+    for line in difflib.unified_diff(before.splitlines(), after.splitlines(), n=0):
         if line[:1] not in ("+", "-") or line[:3] in ("+++", "---"):
             continue
         body = line[1:].strip()
@@ -58,37 +55,41 @@ def main():
         return 1
 
     if here > released:
-        print(f"wire-version: {here} is unreleased ({tag} shipped {released}); appends are free")
+        print(f"wire-version: {here} is unreleased ({tag} shipped {released})")
         return 0
     if here < released:
         print(f"wire-version: the tree says {here} but {tag} shipped {released}")
         return 1
 
-    watched = wire_files(root)
+    tagged = set(git(root, "ls-tree", "-r", "--name-only", tag, "--", WIRE_DIR).splitlines())
+    present = {p.relative_to(root).as_posix() for p in (root / WIRE_DIR).rglob("*.rs")}
+    watched = sorted(p for p in (tagged | present) - NOT_WIRE if p.endswith(".rs"))
     changed = []
     dirty = []
     for path in watched:
-        lines = meaningful(git(root, "diff", tag, "--", path))
+        before = git(root, "show", f"{tag}:{path}") if path in tagged else ""
+        after = (root / path).read_text(encoding="utf-8") if path in present else ""
+        if before == after:
+            continue
+        text_only = path == MENTION_TEXT or (path == FILE_HEX and path not in tagged)
+        if text_only and not (WIRE_CODE.search(before) or WIRE_CODE.search(after)):
+            continue
+        lines = meaningful(before, after)
         if lines:
             dirty.append(path)
             changed.extend(lines)
     if not changed:
-        print(f"wire-version: {here} matches {tag} and the wire is unchanged "
+        print(f"wire-version: {here} matches {tag}; no wire changes flagged "
               f"({len(watched)} sources watched)")
         return 0
 
     print(f"wire-version: {', '.join(dirty)} changed since {tag}, which shipped "
           f"PROTOCOL_VERSION {here},")
-    print(f"  but the tree still says {here}. A released version cannot take appends: two builds")
-    print(f"  would both claim {here} and disagree about the bytes.")
-    print(f"  Set PROTOCOL_VERSION to {here + 1}, move this cycle's appends into a v{here + 1}")
-    print(f"  entry in knowledge/protocol/wire-protocol.md's version history, and update the two")
-    print(f"  assertions that pin the number (crates/zz-protocol/src/message.rs and")
-    print(f"  crates/zz-protocol/tests/hunt_claims.rs).")
-    print(f"  If the change is provably shape-neutral - a #[serde(skip)] field, an impl block, or a")
-    print(f"  #[cfg(test)] module - it does not need the bump. This guard reads the diff, not the")
-    print(f"  encoding, so prove it with a round-trip test asserting the serialized bytes equal those")
-    print(f"  of a value without the change, the way CommandInvocation::stdin_spent does, and say so.")
+    print(f"  and the tree still says {here}. Review these source changes for wire compatibility.")
+    print("  Incompatible payload or packing changes require a new PROTOCOL_VERSION.")
+    print("  Capability-gated additions to ProtocolMessage or EventPayload can keep the epoch.")
+    print("  Check sender and receiver gates, or prove unchanged encoding for a shape-neutral edit.")
+    print("  See knowledge/protocol/wire-protocol.md for the procedure.")
     print(f"  {len(changed)} changed line(s), first few:")
     for line in changed[:6]:
         print(f"    {line}")
