@@ -1,6 +1,6 @@
 use std::{
     io::{self, ErrorKind},
-    path::Path,
+    path::{Path, PathBuf},
     sync::{Arc, Weak},
 };
 
@@ -29,6 +29,21 @@ pub(crate) mod settings;
 mod watch;
 
 pub use zz_config::*;
+
+pub(crate) fn config_candidates() -> Vec<PathBuf> {
+    if cfg!(test) {
+        return Vec::new();
+    }
+    zz_config::config_candidates()
+}
+
+pub(crate) fn config_path_for_write() -> io::Result<PathBuf> {
+    config_write_path(&config_candidates())
+}
+
+pub(crate) fn import_target_path() -> io::Result<PathBuf> {
+    config_path_for_write()
+}
 
 pub(crate) const WINDOW_FRAME_BORDER_SIZE: Pixels = px(1.0);
 #[cfg(target_os = "linux")]

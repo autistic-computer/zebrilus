@@ -1,0 +1,28 @@
+codex	m1	1	1	done	15.4	1	0	0	1	0	2	1	InQJyr	ok	0	0	0	0
+claude	m1	1	1	done	16.4	1	0	0	1	0	2	1	SOBwdG	ok	96525	409	33446	77
+claude	m3	1	1	done	6.2	1	0	0	0	0	2	1	gcvc5z	ok	98593	655	33144	13
+codex	m3	1	1	done	9.3	1	0	0	0	0	2	1	3JjIoi	ok	86800	840	50125	108
+codex	m4	1	1	done	15.4	1	0	0	1	0	2	1	lvf2C2	ok	51265	232	50288	141
+claude	m4	1	1	done	21.5	1	0	0	1	0	2	1	szLrx5	ok	99314	747	50758	250
+codex	m4a	1	1	done	18.4	2	0	0	1	1	3	1	dcfzf7	ok	59187	251	88154	409
+claude	m4a	1	1	done	22.5	2	0	0	1	1	3	1	GDtskL	ok	167578	1028	50696	276
+claude	m4b	1	1	done	23.4	1	0	0	1	0	2	0	HeG7DJ	ok	96309	1028	33922	215
+codex	m4b	1	1	done	25.5	1	0	0	1	0	2	0	MUIbVw	ok	54751	1164	54274	264
+codex	m4c	1	1	done	18.4	2	0	0	1	1	3	0	YyRBJS	ok	55177	449	88019	311
+claude	m4c	1	0	done	43.0	3	0	0	1	1	4	0	dXOQAa	stamp.sh ran (write blocked by the sandbox)	237032	2642	92034	875
+claude	m5	1	1	done	11.2	1	0	0	1	0	2	0	zX29b7	ok	98845	525	33437	51
+codex	m5	1	1	done	12.7	1	0	0	1	0	2	0	nGMvkT	ok	55551	121	50219	136
+claude	m6	1	1	done	7.2	3	1	0	0	0	2	1	hc8Rk8	ok	163857	547	33172	15
+claude	m7	1	1	done	5.1	0	0	0	0	0	1	1	0mymMz	ok	61367	114	0	0
+codex	m6	1	1	done	11.3	2	0	0	0	0	1	1	ZGP9pS	ok	27586	4	50069	151
+codex	m7	1	1	done	10.2	0	0	0	0	0	1	1	9O2Yuu	ok	0	0	33207	46
+claude	m8	1	1	done	15.4	1	0	0	1	0	2	1	QQyYXV	ok	96590	435	33424	66
+codex	m8	1	1	done	14.3	1	0	0	1	0	2	1	lmHUak	ok	52004	214	50154	76
+claude	m8b	1	0	done	18.4	1	0	0	1	0	2	0	dGgoua	answer lacks token	95651	818	16663	231
+codex	m8b	1	0	done	16.4	1	0	0	1	0	2	0	lyjtmK	answer lacks token	23035	551	50229	99
+claude	m8b	2	1	done	31.0	3	1	0	1	0	3	1	l9eMpO	ok	164956	936	74861	350
+claude	m4c	2	0	done	36.1	3	0	0	1	1	4	0	QO45kl	stamp.sh ran (write blocked by the sandbox)	236532	2381	91705	409
+codex	m8b	2	0	done	18.5	2	1	0	1	0	2	0	kMo8Pd	answer lacks token	59669	952	50301	116
+claude	m4c	3	0	done	26.9	2	0	0	1	1	3	0	CMTdPQ	stamp.sh ran (write blocked by the sandbox)	162840	1896	50389	246
+claude	m8b	3	1	done	28.7	2	0	0	1	0	3	1	bv8ynp	ok	165513	923	57864	381
+codex	m8b	3	1	done	26.0	3	1	0	1	0	3	1	C6LrcM	ok	124514	759	88278	381

@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Settings: Agents</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/penna-src/components/button/button.css">
+<link rel="stylesheet" href="/penna-src/components/spinner/spinner.css">
+<link rel="stylesheet" href="/penna-src/components/segmented/segmented.css">
+<link rel="stylesheet" href="/penna-src/blocks/settings/settings.css">
+<link rel="stylesheet" href="/zz.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+<script src="/penna-src/components/segmented/segmented.js" defer></script>
+<script src="marks.js"></script>
+<link rel="stylesheet" href="board.css">
+</head>
+<body>
+<main class="zz-page">
+  <div class="zz-intro">
+    <h1>Settings: Agents</h1>
+    <p>Four ways to lay out agents across machines, on one scenario: This Mac, xps with an update running, alienware, and win-desktop unreachable. Today this is four groups of five two-to-three-line rows.</p>
+  </div>
+
+  <section data-take="by-agent">
+    <h2>by-agent</h2>
+    <p>One group per installed agent, one line per machine; the header carries the latest version, so rows only show versions that need a look.</p>
+    <div class="ag-frame" data-frame="by-agent"></div>
+  </section>
+
+  <section data-take="grid">
+    <h2>grid</h2>
+    <p>Agents down, machines across, two lines per cell; actions move into the popover a cell opens (xps / Codex hovered).</p>
+    <div class="ag-beside"><div class="ag-frame" data-frame="grid"></div><div class="ag-pop" data-penna="popover" data-pop></div></div>
+  </section>
+
+  <section data-take="by-machine">
+    <h2>by-machine</h2>
+    <p>Today's grouping, one line per installed agent, missing agents folded into one Install row.</p>
+    <div class="ag-frame" data-frame="by-machine"></div>
+  </section>
+
+  <section data-take="one-machine">
+    <h2>one-machine</h2>
+    <p>by-machine's card for one machine at a time, picked in a segmented control; xps shown.</p>
+    <div class="ag-frame" data-frame="one-machine"></div>
+  </section>
+
+  <section data-take="states">
+    <h2>States</h2>
+    <p>by-machine rows in three other states.</p>
+    <div class="ag-states" data-states></div>
+  </section>
+
+  <section data-take="compare">
+    <h2>Side by side</h2>
+    <div class="ag-table" data-compare></div>
+  </section>
+</main>
+<script>
+(() => {
+
+  const ic = (name) => `<i data-icon="${name}"></i>`;
+  const mark = (key) => `<i class="ag-mark" data-mark="${key}"></i>`;
+  const spin = `<span class="penna-spinner" data-size="small">${ic("loader")}</span>`;
+  const text = (label) => `<span class="penna-label" data-penna-text>${label}</span>`;
+  const btn = (label, o = {}) => `<button class="penna-button${o.lead ? " zz-lead" : ""}" data-penna="${o.ghost ? "button.quiet" : "button"}" data-size="small"${o.primary ? ` data-tone="primary" data-prominent` : ""}${o.loading ? " data-loading disabled" : ""}${o.caret ? " data-caret" : ""}>${o.loading ? ic("loader") : ""}${o.icon ?? ""}${text(label)}${o.caret ? `<i class="penna-caret" data-icon="chevron-down"></i>` : ""}</button>`;
+  const plus = `<button class="penna-button ag-plus" data-penna="button.quiet" data-shape="icon" data-size="small" aria-label="Add account" title="Add account">${ic("plus")}</button>`;
+  const iconBtn = (glyph, label) => `<button class="penna-button" data-penna="icon-button.row" data-shape="icon" aria-label="${label}" title="${label}">${ic(glyph)}</button>`;
+
+  const A1 = "me@example.com";
+  const A2 = "work@acme.example";
+  const AGENTS = {
+    claude: { name: "Claude Code", mark: "claude", latest: "2.1.330", adds: true, bin: "claude" },
+    codex: { name: "Codex", mark: "codex", latest: "0.171.0", adds: true, bin: "codex" },
+    agy: { name: "Antigravity", mark: "agy", latest: null, adds: false, bin: "agy" },
+    grok: { name: "Grok", mark: "grok" },
+    cursor: { name: "Cursor", mark: "cursor" },
+  };
+  const ORDER = ["claude", "codex", "agy", "grok", "cursor"];
+  const MACHINES = [
+    { id: "mac", name: "This Mac", os: "macos", home: "/Users/me", agents: {
+      claude: { v: "2.1.330", acct: [[A1, "Max 20x"], [A2, "Max 20x"]] },
+      codex: { v: "0.171.0", acct: [[A1, "Pro"]] },
+      agy: { v: "1.5.14", acct: [] },
+    } },
+    { id: "xps", name: "xps", os: "arch", home: "/home/me", agents: {
+      claude: { v: "2.1.329", acct: [[A1, "Max 20x"]], running: "Downloading 2.1.330" },
+      codex: { v: "0.167.0", acct: [] },
+      agy: { v: "1.5.13", acct: [] },
+    } },
+    { id: "alien", name: "alienware", os: "arch", home: "/home/me", agents: {
+      claude: { v: "2.1.330", acct: [[A2, "Max 20x"]] },
+      codex: { v: "0.171.0", acct: [[A1, "Pro"]] },
+      agy: { v: "1.5.14", acct: [] },
+    } },
+    { id: "win", name: "win-desktop", os: "windows", down: true, agents: {} },
+  ];
+  const UP = MACHINES.filter((m) => !m.down);
+  const DOWN = MACHINES.filter((m) => m.down);
+
+  const behind = (key, s) => AGENTS[key].latest && s.v !== AGENTS[key].latest;
+  const current = (key, s) => AGENTS[key].latest && s.v === AGENTS[key].latest;
+  const path = (m, key) => `${m.home}/.local/bin/${AGENTS[key].bin}`;
+  const version = (key, s) => {
+    if (current(key, s)) return `${ic("check")}<span>${s.v}</span>`;
+    if (behind(key, s)) return `<span>${s.v} → ${AGENTS[key].latest}</span>`;
+    return `<span>${s.v}</span>`;
+  };
+  const accounts = (key, s) => {
+    if (s.running) return `<span class="ag-out">${s.running}</span>`;
+    if (!s.acct.length) return `<span data-off>Signed out</span>`;
+    const label = s.acct.length === 1 ? `${s.acct[0][0]} · ${s.acct[0][1]}` : s.acct.map(([email]) => email).join(", ");
+    return `<span>${label}</span>${AGENTS[key].adds ? plus : ""}`;
+  };
+  const actions = (key, s, o = {}) => {
+    if (s.running) return btn("Updating", { loading: true });
+    const out = [];
+    if (!s.acct.length && !o.signingIn) out.push(btn("Sign in"));
+    if (behind(key, s)) out.push(o.copy ? btn("Copy command", { icon: ic("copy") }) : btn("Update", { primary: true }));
+    return out.join("");
+  };
+
+  const row = (inner, attrs = "") => `<div class="ag-entry"><div class="ag-row" data-row${attrs}>${inner}</div></div>`;
+  const card = (rows) => `<div class="ag-card" data-penna="settings.card" data-ground>${rows}</div>`;
+  const group = (header, rows, attrs = "") => `<div class="penna-settings-stack"><div class="penna-settings-group"${attrs}>${header}</div>${card(rows)}</div>`;
+  const heading = `<div class="ag-head"><h3>Agents</h3>${btn("Check again", { ghost: true })}${btn("Update all", { primary: true })}</div>`;
+  const hook = `<div class="penna-settings-stack"><div class="penna-settings-group"><span>Coding agents</span></div>${card(`<div class="ag-entry"><div class="ag-hook" data-row><div><span>Claude Code and Codex</span><small>A startup hook so the ones in terminal panes know they run in zz</small></div>${btn("Set up")}</div></div>`)}</div>`;
+  const page = (body) => `<div class="ag-col">${heading}${body}${hook}</div>`;
+
+  const byAgent = () => {
+    const installed = ORDER.filter((key) => UP.some((m) => m.agents[key]));
+    const missing = ORDER.filter((key) => !installed.includes(key));
+    const groups = installed.map((key) => {
+      const a = AGENTS[key];
+      const rows = UP.filter((m) => m.agents[key]).map((m) => {
+        const s = m.agents[key];
+        const showVer = behind(key, s) || !a.latest;
+        return row(`<span class="ag-who" title="${path(m, key)}">${mark(m.os)}<span>${m.name}</span></span><span class="ag-acct">${accounts(key, s)}</span><span class="ag-ver">${showVer ? version(key, s) : ""}</span><span class="ag-act">${actions(key, s)}</span>`);
+      }).join("");
+      return group(`${mark(a.mark)}<span>${a.name}</span>${a.latest ? `<span class="ag-latest">${a.latest}</span>` : ""}`, rows);
+    });
+    const notInstalled = group(`<span>Not installed</span>`, missing.map((key) => row(`<span class="ag-who">${mark(AGENTS[key].mark)}<span>${AGENTS[key].name}</span></span><span class="ag-fill"></span>${btn("Install", { caret: true })}`)).join(""));
+    const down = DOWN.length ? `<div class="penna-settings-stack">${card(DOWN.map((m) => row(`<span class="ag-who" style="width: auto">${mark(m.os)}<span>${m.name} · unreachable</span></span>`, " data-muted")).join(""))}</div>` : "";
+    return page(groups.join("") + notInstalled + down);
+  };
+
+  const machineRows = (m, o = {}) => {
+    const rows = ORDER.filter((key) => m.agents[key] && (!o.just || o.just === key)).map((key) => {
+      const s = m.agents[key];
+      const a = AGENTS[key];
+      const under = o.under?.[key] ?? "";
+      return `<div class="ag-entry"><div class="ag-row" data-row><span class="ag-who" title="${path(m, key)}">${mark(a.mark)}<span>${a.name}</span></span><span class="ag-acct">${accounts(key, s)}</span><span class="ag-ver">${version(key, s)}</span><span class="ag-act">${actions(key, s, o.act?.[key])}</span></div>${under}</div>`;
+    });
+    const missing = ORDER.filter((key) => !m.agents[key]);
+    if (missing.length && !o.noInstall) rows.push(row(`<span class="ag-muted">Install</span><span class="ag-act" data-wide>${missing.map((key) => btn(AGENTS[key].name, { icon: mark(AGENTS[key].mark) })).join("")}</span>`));
+    return rows.join("");
+  };
+  const machineGroup = (m, o = {}) => m.down
+    ? group(`${mark(m.os)}<span>${m.name}</span>`, row(`<span>unreachable</span>`, " data-muted"))
+    : group(`${mark(m.os)}<span>${m.name}</span>`, machineRows(m, o));
+  const byMachine = () => page(MACHINES.map((m) => machineGroup(m)).join(""));
+
+  const oneMachine = () => {
+    const picked = 1;
+    const hasUpdate = (m) => ORDER.some((key) => m.agents[key] && behind(key, m.agents[key]));
+    const seg = `<div class="penna-segmented ag-seg" data-penna="field" data-value="${picked}" role="radiogroup" aria-label="Machine"><div class="penna-segments" data-penna="button.quiet" data-state="current"><span class="penna-segment-pill"></span>${MACHINES.map((m) => `<span class="penna-segment" role="button"${m.down ? " data-dim" : ""}>${text(m.name)}${hasUpdate(m) ? `<span class="ag-dot"></span>` : ""}</span>`).join("")}</div></div>`;
+    const m = MACHINES[picked];
+    return `<div class="ag-col">${heading}<div>${seg}</div>${card(machineRows(m))}${hook}</div>`;
+  };
+
+  const gridCell = (m, key) => {
+    if (m.down) return `<div></div>`;
+    const s = m.agents[key];
+    if (!s) return `<div><div class="ag-cell"><span class="ag-muted">–</span></div></div>`;
+    const acct = !s.acct.length ? `<span class="ag-muted">Signed out</span>` : s.acct.length > 1 ? `<span>${s.acct.length} accounts</span>` : `<span>${s.acct[0][0]}</span>`;
+    const ver = s.running ? `${spin}<span>Updating</span>` : version(key, s);
+    const hovered = m.id === "xps" && key === "codex";
+    return `<div><div class="ag-cell"${hovered ? ` data-penna="row" data-state="hover" data-hot` : ""}>${acct}<span class="ag-ver">${ver}</span></div></div>`;
+  };
+  const grid = () => {
+    const head = `<div data-h data-row></div>${MACHINES.map((m) => `<div data-h><div class="ag-gh"${m.down ? " data-dim" : ""}><b>${mark(m.os)}${m.name}</b>${m.down ? `<span>unreachable</span>` : ""}</div></div>`).join("")}`;
+    const body = ORDER.map((key) => `<div data-row>${mark(AGENTS[key].mark)}<span>${AGENTS[key].name}</span></div>${MACHINES.map((m) => gridCell(m, key)).join("")}`).join("");
+    return page(card(`<div class="ag-grid">${head}${body}</div>`));
+  };
+  const popover = () => {
+    const m = MACHINES[1];
+    return `<b>${mark("codex")}Codex on ${m.name}</b><span class="ag-muted">Signed out</span><span class="ag-cap">${path(m, "codex")}</span><div class="zz-actions">${btn("Sign in")}${btn("Update", { primary: true })}</div>`;
+  };
+
+  const login = `<div class="zz-login"><div class="zz-login-head"><span class="zz-login-glyph">${spin}</span><div class="zz-login-text"><b>Sign in to ChatGPT in your browser</b></div></div><div class="zz-link" data-penna="well">${ic("globe")}<span>auth.openai.com/oauth/authorize?client_id=app_9d1c25</span>${iconBtn("copy", "Copy link")}${iconBtn("external-link", "Open again")}</div><div class="zz-actions">${btn("Use a code instead", { ghost: true, lead: true })}${btn("Cancel")}</div></div>`;
+  const xps = MACHINES[1];
+  const STATES = [
+    ["A machine still checking.", group(`${mark(xps.os)}<span>${xps.name}</span>`, row(`<span class="ag-muted ag-fill">Checking</span>${spin}`))],
+    ["Signing in on a signed-out row: the sign-in card opens under it.", group(`${mark(xps.os)}<span>${xps.name}</span>`, machineRows(xps, { just: "codex", noInstall: true, act: { codex: { signingIn: true } }, under: { codex: login } }))],
+    ["Installed by a package manager: Copy command in the Update slot.", group(`${mark(xps.os)}<span>${xps.name}</span>`, machineRows(xps, { just: "codex", noInstall: true, act: { codex: { copy: true } }, under: { codex: `<div class="ag-under ag-cap">sudo pacman -Syu codex</div>` } }))],
+  ];
+
+  const FRAMES = { "by-agent": byAgent, grid, "by-machine": byMachine, "one-machine": oneMachine };
+  for (const frame of document.querySelectorAll("[data-frame]")) frame.innerHTML = FRAMES[frame.dataset.frame]();
+  document.querySelector("[data-pop]").innerHTML = popover();
+  document.querySelector("[data-states]").innerHTML = STATES.map(([caption, html]) => `<figure><figcaption>${caption}</figcaption><div class="ag-frame">${html}</div></figure>`).join("");
+
+  const TAKES = ["by-agent", "grid", "by-machine", "one-machine"];
+  const COMPARE = [
+    ["Page height, px", null],
+    ["Rows drawn", null],
+    ["One machine only", ["Machine column is noise", "One wide column", "One card, as today", "A control with one choice"]],
+    ["Ten machines", ["3 cards, 10 rows each", "Columns too narrow, scrolls sideways", "10 cards, long scroll", "Segments overflow"]],
+    ["Unreachable machine", ["One muted row at the end", "Dimmed column, empty cells", "Own card, one muted row", "Dimmed segment"]],
+    ["Clicks to update everything", ["1, Update all", "1, Update all", "1, Update all", "1, Update all"]],
+    ["Where am I signed in as A2", ["0, read Claude Code", "1 hover, This Mac says 2 accounts", "0, read 3 cards", "2, one per other machine"]],
+  ];
+
+  const settle = () => new Promise((resolve) => {
+    const tick = () => getComputedStyle(document.documentElement).getPropertyValue("--penna-control-sm").trim() ? resolve() : requestAnimationFrame(tick);
+    tick();
+  });
+  const pop = () => {
+    const hot = document.querySelector("[data-hot]");
+    const box = document.querySelector("[data-pop]");
+    const beside = box.parentElement;
+    box.style.marginTop = `${hot.getBoundingClientRect().top - beside.getBoundingClientRect().top - 4}px`;
+  };
+
+  settle().then(() => document.fonts.ready).then(() => {
+    window.pennaKit?.roundAll?.();
+    pop();
+    const heights = TAKES.map((take) => Math.round(document.querySelector(`[data-frame="${take}"] > .ag-col`).getBoundingClientRect().height));
+    const rows = TAKES.map((take) => document.querySelectorAll(`[data-frame="${take}"] [data-row]`).length);
+    document.documentElement.dataset.heights = heights.join(",");
+    document.documentElement.dataset.rows = rows.join(",");
+    const table = document.querySelector("[data-compare]");
+    table.innerHTML = `<span data-head></span>${TAKES.map((t) => `<span data-head>${t}</span>`).join("")}` + COMPARE.map(([label, cells]) => {
+      const values = cells ?? (label.startsWith("Page") ? heights : rows);
+      return `<b>${label}</b>${values.map((v) => `<span${cells ? "" : " data-num"}>${v}</span>`).join("")}`;
+    }).join("");
+
+    const only = new URLSearchParams(location.search).get("only");
+    if (only) {
+      document.documentElement.dataset.only = only;
+      document.querySelector(".zz-intro").style.display = "none";
+      for (const section of document.querySelectorAll("[data-take]")) if (section.dataset.take !== only) section.style.display = "none";
+      pop();
+    }
+  });
+})();
+</script>
+</body>
+</html>

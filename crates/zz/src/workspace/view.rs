@@ -208,6 +208,23 @@ fn pane_key_context(pane: PaneId) -> ala::KeyContext {
     context
 }
 
+#[cfg(feature = "agent-pane")]
+fn parkable_agents(mux: &MuxClient) -> BTreeSet<(HostId, PaneId)> {
+    mux.fleet_hosts()
+        .filter(|(_, _, state, _)| matches!(state, crate::mux::hosts::HostState::Connected))
+        .filter_map(|(host, _, _, snapshot)| Some((host, snapshot?)))
+        .flat_map(|(host, snapshot)| {
+            snapshot
+                .sessions
+                .iter()
+                .flat_map(|session| &session.windows)
+                .flat_map(|window| &window.panes)
+                .filter(|(_, pane)| matches!(pane.kind, PaneKindSnapshot::Agent(_)))
+                .map(move |(id, _)| (host, *id))
+        })
+        .collect()
+}
+
 const fn empty_workspace_available(
     snapshot_generation: u64,
     session_count: usize,
@@ -794,6 +811,10 @@ pub struct AppView {
     browsers: BTreeMap<PaneId, Entity<BrowserView>>,
     inline_browser: Entity<crate::browser::inline::InlineBrowser>,
     agents: BTreeMap<PaneId, Entity<AgentView>>,
+    #[cfg(feature = "agent-pane")]
+    agents_host: HostId,
+    #[cfg(feature = "agent-pane")]
+    parked_agents: BTreeMap<(HostId, PaneId), Entity<AgentView>>,
     flips: zz_client::agent_flip::AgentFlips,
     editors: BTreeMap<PaneId, Entity<EditorView>>,
     #[cfg(feature = "agent-pane")]
@@ -1235,6 +1256,10 @@ impl AppView {
             browsers: BTreeMap::new(),
             inline_browser,
             agents: BTreeMap::new(),
+            #[cfg(feature = "agent-pane")]
+            agents_host: HostId::LOCAL,
+            #[cfg(feature = "agent-pane")]
+            parked_agents: BTreeMap::new(),
             flips: zz_client::agent_flip::AgentFlips::default(),
             editors: BTreeMap::new(),
             #[cfg(feature = "agent-pane")]
@@ -2126,6 +2151,8 @@ impl AppView {
             .find(|session| Some(session.id) == attached)
             .map(|session| snapshot.focused_window_for(session));
 
+        #[cfg(feature = "agent-pane")]
+        self.follow_agent_host(cx);
         let whole = &snapshot;
         for session in snapshot
             .sessions
@@ -2508,19 +2535,7 @@ impl AppView {
             .retain(|pane, _| wanted_simulators.contains(pane));
         self.drain_agent_events(cx);
         #[cfg(feature = "agent-pane")]
-        for (pane, view) in self
-            .agents
-            .iter()
-            .filter(|(pane, _)| !wanted_agents.contains(pane))
-        {
-            self.mux.update(cx, |mux, _| mux.unwatch_agent(*pane));
-            if existing.contains(pane) {
-                let (text, images) = view.read(cx).draft(cx);
-                self.agent_controller.update(cx, |controller, _| {
-                    controller.keep_draft(*pane, &text, images);
-                });
-            }
-        }
+        self.park_agents(&wanted_agents, &existing, cx);
         self.agents.retain(|pane, _| wanted_agents.contains(pane));
         self.agent_controller.update(cx, |controller, cx| {
             controller.retain_panes(&wanted_agents, &existing, cx);
@@ -2881,7 +2896,19 @@ impl AppView {
         cx: &mut Context<Self>,
     ) {
         #[cfg(feature = "agent-pane")]
-        self.mux.update(cx, |mux, _| mux.watch_agent(pane));
+        {
+            if !self.agents.contains_key(&pane)
+                && let Some(view) = self.parked_agents.remove(&(self.agents_host, pane))
+            {
+                let host = self.agents_host;
+                self.agent_controller
+                    .update(cx, |controller, _| controller.unpark_pane(host, pane));
+                self.agents.insert(pane, view);
+            }
+            let from_seq = self.agent_controller.read(cx).last_applied(pane);
+            self.mux
+                .update(cx, |mux, _| mux.watch_agent(pane, from_seq));
+        }
         if self.agents.contains_key(&pane) {
             return;
         }
@@ -2904,6 +2931,76 @@ impl AppView {
         )
         .detach();
         self.agents.insert(pane, view);
+    }
+
+    #[cfg(feature = "agent-pane")]
+    fn follow_agent_host(&mut self, cx: &mut Context<Self>) {
+        let host = self.mux.read(cx).attached_host();
+        if host == self.agents_host {
+            return;
+        }
+        let from = std::mem::replace(&mut self.agents_host, host);
+        let parkable = parkable_agents(self.mux.read(cx));
+        for (pane, view) in std::mem::take(&mut self.agents) {
+            self.park_agent(from, pane, view, &parkable, cx);
+        }
+        self.agent_controller.update(cx, |controller, cx| {
+            controller.retain_panes(&BTreeSet::new(), &BTreeSet::new(), cx);
+        });
+    }
+
+    #[cfg(feature = "agent-pane")]
+    fn park_agents(
+        &mut self,
+        wanted: &BTreeSet<PaneId>,
+        existing: &BTreeSet<PaneId>,
+        cx: &mut Context<Self>,
+    ) {
+        let leaving = self
+            .agents
+            .keys()
+            .filter(|pane| !wanted.contains(pane))
+            .copied()
+            .collect::<Vec<_>>();
+        if leaving.is_empty() && self.parked_agents.is_empty() {
+            return;
+        }
+        let parkable = parkable_agents(self.mux.read(cx));
+        let host = self.agents_host;
+        for pane in leaving {
+            let Some(view) = self.agents.remove(&pane) else {
+                continue;
+            };
+            if existing.contains(&pane) && !parkable.contains(&(host, pane)) {
+                let (text, images) = view.read(cx).draft(cx);
+                self.agent_controller.update(cx, |controller, _| {
+                    controller.keep_draft(pane, &text, images);
+                });
+            }
+            self.park_agent(host, pane, view, &parkable, cx);
+        }
+        self.parked_agents.retain(|key, _| parkable.contains(key));
+        self.agent_controller
+            .update(cx, |controller, _| controller.retain_parked(&parkable));
+    }
+
+    #[cfg(feature = "agent-pane")]
+    fn park_agent(
+        &mut self,
+        host: HostId,
+        pane: PaneId,
+        view: Entity<AgentView>,
+        parkable: &BTreeSet<(HostId, PaneId)>,
+        cx: &mut Context<Self>,
+    ) {
+        self.mux.update(cx, |mux, _| mux.unwatch_agent(pane));
+        if !parkable.contains(&(host, pane)) {
+            return;
+        }
+        view.update(cx, |view, cx| view.set_visible(false, cx));
+        self.agent_controller
+            .update(cx, |controller, _| controller.park_pane(host, pane));
+        self.parked_agents.insert((host, pane), view);
     }
 
     #[cfg(feature = "agent-pane")]
@@ -3295,6 +3392,10 @@ impl AppView {
         let landing = pip.release(velocity);
         if landing.stash.is_some() {
             self.pip_stage.stash(pane);
+            let mux = self.mux.read(cx);
+            if let Some(parent) = mux.agent_parent(mux.attached_host(), pane) {
+                mux.execute(pane_select_command(parent));
+            }
         }
         self.pane_motion
             .fling(pane, velocity, landing.stash.is_none());
@@ -4402,7 +4503,7 @@ impl AppView {
         let floats = window_snapshot
             .floating
             .iter()
-            .filter(|float| float.visible)
+            .filter(|float| float.visible && !self.pip_stage.hidden(float.pane))
             .collect::<Vec<_>>();
         let cards = floats
             .iter()
@@ -5010,7 +5111,10 @@ impl Render for AppView {
             .and_then(|drag| self.pane_drop_preview_element(drag, cx));
         self.settle_pip_landing(cx);
         if let Some(active_window) = active_window {
-            self.pip_stage.observe(active_window);
+            let mux = self.mux.read(cx);
+            let host = mux.attached_host();
+            self.pip_stage
+                .observe(active_window, |pane| mux.agent_parent(host, pane).is_some());
             self.pane_motion.begin(
                 active_window.id,
                 window.viewport_size(),

@@ -515,6 +515,10 @@ pub(crate) enum StaleDaemonInfo {
 impl StaleDaemonInfo {
     const fn from_error(error: &DaemonError) -> Option<Self> {
         match *error {
+            DaemonError::IncompatibleDaemon {
+                daemon: Some(daemon),
+                client,
+            } if daemon > client => None,
             DaemonError::IncompatibleDaemon { daemon, .. } => Some(Self::Protocol { daemon }),
             DaemonError::DaemonTooOld { daemon, minimum } => {
                 Some(Self::Revision { daemon, minimum })
@@ -580,14 +584,25 @@ fn local_daemon_answers(socket_path: &Path) -> bool {
     LocalTransport::connect(socket_path).is_ok()
 }
 
-fn local_connect_error_text(error: &DaemonError) -> String {
-    match error {
-        DaemonError::Server(ServerError::ClientTooOld { client, minimum }) => format!(
+fn client_too_old_text(state: &HostState) -> Option<String> {
+    match *state {
+        HostState::ClientTooOld { client, minimum } => Some(format!(
             "This zz is too old for the running daemon. It is revision {client}, and the daemon \
              needs revision {minimum} or newer. Update zz."
-        ),
-        error => error.to_string(),
+        )),
+        HostState::Incompatible {
+            local,
+            remote: Some(remote),
+        } if remote > local => Some(format!(
+            "This zz is too old for the running daemon. It speaks protocol v{local}, and the \
+             daemon speaks v{remote}. Update zz."
+        )),
+        _ => None,
     }
+}
+
+fn local_connect_error_text(error: &DaemonError) -> String {
+    client_too_old_text(&connect_error_state(error)).unwrap_or_else(|| error.to_string())
 }
 
 #[cfg(test)]
@@ -1634,6 +1649,9 @@ impl MuxClient {
         connection.reconnect_attach = None;
         let result_route = Arc::clone(&connection.route);
         cx.notify();
+        if cfg!(test) && !matches!(endpoint, Endpoint::Local(_)) {
+            return;
+        }
 
         let color_scheme = self.color_scheme;
         let prompts = self.ssh_prompts(host, &endpoint, cx);
@@ -1930,12 +1948,15 @@ impl MuxClient {
         connection.reconnect_generation = reconnect_generation;
         connection.ssh_auth_declined = declined;
         connection.asked_to_sign_in = asked_to_sign_in;
-        let next_attempt = reconnect_attempt.filter(|_| !declined).and_then(|attempt| {
-            (self.attached_host == host
-                || !asked_to_sign_in
-                || attempt < MAX_SIGN_IN_RECONNECT_ATTEMPTS)
-                .then(|| attempt.saturating_add(1))
-        });
+        let too_old = client_too_old_text(&state);
+        let next_attempt = reconnect_attempt
+            .filter(|_| !declined && too_old.is_none())
+            .and_then(|attempt| {
+                (self.attached_host == host
+                    || !asked_to_sign_in
+                    || attempt < MAX_SIGN_IN_RECONNECT_ATTEMPTS)
+                    .then(|| attempt.saturating_add(1))
+            });
         if declined {
             connection.state = HostState::Unreachable {
                 reason: AUTH_DECLINED_REASON.to_owned(),
@@ -1947,6 +1968,11 @@ impl MuxClient {
         }
         let offer = connection.state.install_offer();
         self.connections.insert(host, connection);
+        if let Some(text) = too_old
+            && self.attached_host == host
+        {
+            self.error = Some(Arc::from(text));
+        }
         if let Some(attempt) = next_attempt {
             self.arm_reconnect(host, attempt, cx);
         }
@@ -2629,10 +2655,7 @@ impl MuxClient {
 
     #[must_use]
     pub(crate) fn attached_client_too_old(&self) -> bool {
-        matches!(
-            self.attached_connection().state,
-            HostState::ClientTooOld { .. }
-        )
+        client_too_old_text(&self.attached_connection().state).is_some()
     }
 
     pub(crate) fn dismiss_stale_daemon(&mut self, cx: &mut Context<Self>) {
@@ -3885,6 +3908,14 @@ impl MuxClient {
         self.core.simulator(pane).cloned()
     }
 
+    #[must_use]
+    pub fn agent_parent(&self, host: HostId, pane: PaneId) -> Option<PaneId> {
+        self.connections
+            .get(&host)?
+            .background_core
+            .agent_parent(pane)
+    }
+
     pub(crate) fn take_terminal_commands(&mut self, pane: PaneId) -> Vec<TerminalUiCommand> {
         self.terminal_commands.remove(&pane).unwrap_or_default()
     }
@@ -4075,12 +4106,12 @@ impl MuxClient {
     }
 
     #[cfg(feature = "agent-pane")]
-    pub(crate) fn watch_agent(&mut self, pane: PaneId) {
+    pub(crate) fn watch_agent(&mut self, pane: PaneId, from_seq: u64) {
         self.watched_agents.insert(pane);
         if !self.agent_cursors.contains_key(&pane)
-            && self.send_agent_request(pane, AgentRequest::Replay { from_seq: 0 })
+            && self.send_agent_request(pane, AgentRequest::Replay { from_seq })
         {
-            self.agent_cursors.insert(pane, 0);
+            self.agent_cursors.insert(pane, from_seq);
             self.agent_replays_pending.insert(pane);
         }
     }
@@ -4496,6 +4527,7 @@ impl MuxClient {
                     | EventPayload::ClientView(_)
                     | EventPayload::KeyTablesChanged { .. }
                     | EventPayload::KeyTablesPatched { .. }
+                    | EventPayload::AgentParents { .. }
             )
             && let Some(connection) = self.connections.get_mut(&host)
         {
@@ -4510,7 +4542,8 @@ impl MuxClient {
                     | EventPayload::TreeDelta(_)
                     | EventPayload::ClientView(_)
                     | EventPayload::KeyTablesChanged { .. }
-                    | EventPayload::KeyTablesPatched { .. }) => {
+                    | EventPayload::KeyTablesPatched { .. }
+                    | EventPayload::AgentParents { .. }) => {
                         if let Some(connection) = self.connections.get_mut(&host) {
                             connection
                                 .background_core
@@ -6018,6 +6051,22 @@ mod tests {
             assert!(
                 reason.contains(expected),
                 "{reason:?} should say {expected:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn only_an_older_or_unknown_daemon_epoch_is_offered_a_restart() {
+        let incompatible = |daemon| DaemonError::IncompatibleDaemon {
+            daemon,
+            client: 110,
+        };
+        assert_eq!(StaleDaemonInfo::from_error(&incompatible(Some(111))), None);
+        for daemon in [Some(109), Some(110), None] {
+            assert_eq!(
+                StaleDaemonInfo::from_error(&incompatible(daemon)),
+                Some(StaleDaemonInfo::Protocol { daemon }),
+                "{daemon:?}"
             );
         }
     }
@@ -7611,6 +7660,73 @@ mod tests {
     }
 
     #[ala::test]
+    fn an_attached_remote_that_outgrew_this_zz_stops_reconnecting(cx: &mut TestAppContext) {
+        let newer = PROTOCOL_VERSION + 1;
+        for (error, state, text) in [
+            (
+                DaemonError::IncompatibleDaemon {
+                    daemon: Some(newer),
+                    client: PROTOCOL_VERSION,
+                },
+                HostState::Incompatible {
+                    local: PROTOCOL_VERSION,
+                    remote: Some(newer),
+                },
+                format!(
+                    "This zz is too old for the running daemon. It speaks protocol \
+                     v{PROTOCOL_VERSION}, and the daemon speaks v{newer}. Update zz."
+                ),
+            ),
+            (
+                DaemonError::Server(ServerError::ClientTooOld {
+                    client: 40,
+                    minimum: 41,
+                }),
+                HostState::ClientTooOld {
+                    client: 40,
+                    minimum: 41,
+                },
+                "This zz is too old for the running daemon. It is revision 40, and the daemon \
+                 needs revision 41 or newer. Update zz."
+                    .to_owned(),
+            ),
+        ] {
+            cx.update(|cx| {
+                crate::config::set_fleet_hosts_for_test(
+                    vec![test_host("remote", "unix:///tmp/zz-outgrown-remote.sock")],
+                    cx,
+                );
+                let mux = cx.new(|cx| {
+                    MuxClient::new(
+                        Err(DaemonError::Thread("fixture".to_owned())),
+                        zz_daemon_client::default_socket_path(),
+                        cx,
+                    )
+                });
+                let remote = mux.read(cx).registry.get_by_name("remote").unwrap().0;
+                mux.update(cx, |mux, cx| {
+                    install_fake_connection(mux, HostId::LOCAL);
+                    install_fake_connection(mux, remote);
+                    mux.attached_host = remote;
+                    seed_attachment(mux, SessionId(9), MuxSnapshot::default());
+                    mux.handle_host_disconnected(remote, cx);
+
+                    let connection = mux.connections.get_mut(&remote).unwrap();
+                    assert_eq!(connection.state, HostState::Reconnecting { attempt: 1 });
+                    connection.bump_reconnect_generation();
+                    connection.state = HostState::Connecting;
+                    connection.reconnect_attempt_in_flight = Some(1);
+                    mux.handle_connect_result(remote, Err(error), cx);
+
+                    assert_eq!(mux.connections[&remote].state, state);
+                    assert_eq!(mux.error.as_deref(), Some(text.as_str()));
+                    assert!(mux.attached_client_too_old());
+                });
+            });
+        }
+    }
+
+    #[ala::test]
     fn abrupt_local_disconnect_preserves_snapshot_and_reconnects_unless_shutting_down(
         cx: &mut TestAppContext,
     ) {
@@ -8584,8 +8700,8 @@ mod tests {
                 mux.apply_agent_updates(pane, 1, vec![agent_blob(1)]);
                 assert!(applied_agent_seqs(mux, pane).is_empty());
 
-                mux.watch_agent(pane);
-                mux.watch_agent(pane);
+                mux.watch_agent(pane, 0);
+                mux.watch_agent(pane, 0);
                 assert_eq!(
                     sink.borrow().as_slice(),
                     [(pane, AgentRequest::Replay { from_seq: 0 })],
@@ -8597,7 +8713,7 @@ mod tests {
                 mux.apply_agent_updates(pane, 3, vec![agent_blob(3)]);
                 assert!(applied_agent_seqs(mux, pane).is_empty());
 
-                mux.watch_agent(pane);
+                mux.watch_agent(pane, 0);
                 assert_eq!(
                     sink.borrow().last(),
                     Some(&(pane, AgentRequest::Replay { from_seq: 0 })),

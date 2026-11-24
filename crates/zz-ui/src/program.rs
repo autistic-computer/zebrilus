@@ -232,15 +232,24 @@ impl Face {
     }
 
     pub fn tile_with_glyph(self, glyph: Pixels, cx: &App) -> ala::Div {
-        let tile = div()
+        self.paint_glyph(self.shape(), glyph, cx)
+    }
+
+    pub fn blank(self, cx: &App) -> ala::Div {
+        self.shape()
+            .bg(self.background())
+            .shadow(self.lit().shadows(cx))
+    }
+
+    fn shape(&self) -> ala::Div {
+        div()
             .flex()
             .flex_none()
             .items_center()
             .justify_center()
             .size(self.size)
             .rounded(self.radius)
-            .corner_smoothing(self.smoothing);
-        self.paint_glyph(tile, glyph, cx)
+            .corner_smoothing(self.smoothing)
     }
 }
 

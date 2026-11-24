@@ -659,7 +659,7 @@ impl BrowserView {
                         });
                     }
                 }
-                InputEvent::PasteImages(_) => {}
+                InputEvent::PasteImages(_) | InputEvent::PastePaths(_) => {}
             },
         );
         let find_subscription = cx.subscribe_in(
@@ -669,7 +669,7 @@ impl BrowserView {
                 InputEvent::Focus => view.select_pane(cx),
                 InputEvent::Change => view.update_find(cx),
                 InputEvent::PressEnter { shift } => view.step_find(!*shift, cx),
-                InputEvent::Blur | InputEvent::PasteImages(_) => {}
+                InputEvent::Blur | InputEvent::PasteImages(_) | InputEvent::PastePaths(_) => {}
             },
         );
         let controller_subscription = cx.subscribe_in(

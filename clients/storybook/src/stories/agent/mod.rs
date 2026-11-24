@@ -147,8 +147,14 @@ const STORY: Story = Story {
         Section {
             id: "child-transcript",
             name: "Child card from a transcript",
-            summary: "A host chat folded the way the apps fold it: the call that opened codex stays, its card follows it, and the ask, the host's allow and the finished report that came back as messages are absorbed into the card. A report for a pane this chat never opened stays a message. A second agent-send to the same pane starts a new card, which is asking; the first card keeps its own reply. Agent mentions in the prompts read @codex and @codex/MODEL.",
+            summary: "A host chat folded the way the apps fold it: the call that opened codex stays, its card follows it, and the ask, the host's allow and the finished report that came back as messages are absorbed into the card. A report for a pane this chat never opened is a peer's row, not a card. A second agent-send to the same pane starts a new card, which is asking; the first card keeps its own reply. Agent mentions in the prompts read @codex and @codex/MODEL.",
             build: child::child_transcript,
+        },
+        Section {
+            id: "peer-rows",
+            name: "Messages to another chat",
+            summary: "A chat this chat did not open is a peer and gets no card. The agent-send call stays a tool row and names the peer with a chip: its tile with a status dot, working until the reply arrives, and its chat title, or its pane id once it is gone. The reply comes back as one row: Reply from, the chip, the time since the send and the reply's first line; clicking the row opens the whole reply under it. A peer's ask, stop, failure or close reads the same way. Clicking a chip focuses that chat.",
+            build: child::peer_rows,
         },
         Section {
             id: "background",

@@ -120,7 +120,7 @@ impl Thread {
         self
     }
 
-    fn opened(mut self, open: ChatOpen) -> Self {
+    pub(super) fn opened(mut self, open: ChatOpen) -> Self {
         self.pane.open = open;
         self
     }

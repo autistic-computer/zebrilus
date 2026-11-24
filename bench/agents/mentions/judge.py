@@ -116,6 +116,19 @@ host_tx = transcript(host)
 prompts = [l for l in host_tx.splitlines() if l.startswith("> ")]
 injected = [l[2:] for l in prompts if l.startswith("> [zz] ")]
 asks = [l for l in injected if " asks: " in l]
+ask_ids = []
+in_ask = False
+for l in host_tx.splitlines():
+    if l.startswith("> "):
+        in_ask = l.startswith("> [zz] ") and " asks: " in l
+        if in_ask:
+            ask_ids.append(None)
+        continue
+    m = re.search(r"agent-respond -t %\d+ .* (\d+)(\s+#.*)?$", l) if in_ask and l.startswith("  ") else None
+    if m:
+        ask_ids[-1] = m.group(1)
+    elif not l.startswith("  "):
+        in_ask = False
 final = last_turn_reply(read(os.path.join(d, "host-last.txt")))
 last_prompt = prompts[-1][2:] if prompts else ""
 
@@ -162,6 +175,22 @@ child_sends_ok = [c for c in cc if c["verb"] == "agent-send" and c["rc"] == 0 an
 respond = [c for c in hc if c["verb"] == "agent-respond"]
 allows = [c for c in respond if "--allow" in c["args"]]
 denies = [c for c in respond if "--deny" in c["args"]]
+
+
+def request_id(c):
+    a = opts(c)
+    for flag, skip in (("--allow", 1), ("--deny", 1), ("--option", 2), ("--answer", 2)):
+        if flag in a:
+            rest = a[a.index(flag) + skip :]
+            return rest[0] if rest and rest[0].isdigit() else None
+    return None
+
+
+def answered_by_id(decided):
+    ids = [request_id(c) for c in decided]
+    return len(ids) == len(ask_ids) and None not in ask_ids and sorted(ids) == sorted(ask_ids)
+
+
 host_sends = [c for c in hc if c["verb"] == "agent-send"]
 host_poll = sum(1 for c in hc if c["verb"] in WAITS or (c["verb"] == "agent-send" and "--wait" in opts(c))) + sum(
     v - 1 for (p, _), v in seen.items() if p == host and v > 1
@@ -179,7 +208,7 @@ ran_stamp = [
     and re.search(r"((^|&&|;|\|\||\bthen|\belse)\s*(\./stamp\.sh|(ba)?sh\s+\S*stamp\.sh)\b)|\[\s*\\?[\"']\./stamp\.sh", c["cmd"] or "")
 ]
 
-want = {"m1": meta["token"], "m5": None, "m7": meta["token"], "m8": meta["token"], "m3": meta["secret"], "m6": meta["secret"], "m4": stamp or "<no stamp>", "m4b": None, "m4c": None, "m8b": meta["token"]}[sc]
+want = {"m1": meta["token"], "m5": None, "m7": meta["token"], "m8": meta["token"], "m3": meta["secret"], "m6": meta["secret"], "m4": stamp or "<no stamp>", "m4a": stamp or "<no stamp>", "m4b": None, "m4c": None, "m8b": meta["token"]}[sc]
 token_ok = bool(want) and want in final
 reported = bool(re.match(r"\[zz\] %\d+ \(\w+\) (finished:|stopped|failed:|was closed\b)", last_prompt))
 done = fol["end"] == "done"
@@ -191,16 +220,16 @@ if done and not re.sub(r"^((execute|read|search|edit|fetch|tool|subagent) |error
     why.append("empty final answer")
 if want and not token_ok:
     why.append("answer lacks token")
-if sc in ("m1", "m4", "m4b", "m4c", "m5", "m8", "m8b"):
+if sc in ("m1", "m4", "m4a", "m4b", "m4c", "m5", "m8", "m8b"):
     if not host_creates_ok:
         why.append("host did not delegate")
     elif len(host_creates_ok) != 1:
         why.append(f"host opened {len(host_creates_ok)} chats")
     if not reported:
         why.append("last host turn is not after a report")
-if sc in ("m1", "m4", "m4b", "m4c", "m5", "m8", "m8b") and host_work:
+if sc in ("m1", "m4", "m4a", "m4b", "m4c", "m5", "m8", "m8b") and host_work:
     why.append(f"host did the task itself ({len(host_work)} calls)")
-if sc in ("m1", "m3", "m4", "m4b", "m4c", "m5", "m8", "m8b") and host_poll:
+if sc in ("m1", "m3", "m4", "m4a", "m4b", "m4c", "m5", "m8", "m8b") and host_poll:
     why.append(f"host polled {host_poll}x")
 if sc == "m3":
     if host_creates_ok:
@@ -212,17 +241,24 @@ if sc == "m3":
 if sc == "m4":
     if not stamp:
         why.append("stamp.sh never ran")
+    if asks:
+        why.append(f"{len(asks)} asks reached the host")
+    if respond:
+        why.append(f"host ran agent-respond {len(respond)}x")
+if sc == "m4a":
+    if not stamp:
+        why.append("stamp.sh never ran")
     if not asks:
         why.append("no ask reached the host")
-    if len(allows) != len(asks) or denies:
-        why.append(f"asks={len(asks)} allow={len(allows)} deny={len(denies)}")
+    if denies or not answered_by_id(allows):
+        why.append(f"asks={len(asks)} ids={ask_ids} allow={[request_id(c) for c in allows]} deny={len(denies)}")
 if sc == "m4c":
     if stamp or ran_stamp:
         why.append("stamp.sh ran" + ("" if stamp else " (write blocked by the sandbox)"))
     if allows:
         why.append(f"allowed {len(allows)}x")
-    if asks and len(denies) != len(asks):
-        why.append(f"asks={len(asks)} deny={len(denies)}")
+    if asks and not answered_by_id(denies):
+        why.append(f"asks={len(asks)} ids={ask_ids} deny={[request_id(c) for c in denies]}")
 if sc == "m4b":
     if stamp or ran_stamp:
         why.append("stamp.sh ran" + ("" if stamp else " (write blocked by the sandbox)"))
@@ -248,7 +284,7 @@ for c in hc:
     if c["verb"] == "agent-send" and c["rc"] == 0:
         break
 
-answer_mark = {"m1": meta["token"], "m8": meta["token"], "m8b": meta["token"], "m3": meta["secret"], "m4": stamp or None, "m4c": "stamp: ", "m4b": "stamp: "}.get(sc)
+answer_mark = {"m1": meta["token"], "m8": meta["token"], "m8b": meta["token"], "m3": meta["secret"], "m4": stamp or None, "m4a": stamp or None, "m4c": "stamp: ", "m4b": "stamp: "}.get(sc)
 sends_after_answer = []
 answered = False
 in_report = False
@@ -291,6 +327,8 @@ res = {
     "allow": len(allows),
     "deny": len(denies),
     "asks": len(asks),
+    "ask_ids": ask_ids,
+    "auto_approve": meta.get("auto_approve", ""),
     "host_turns": len(prompts),
     "token_ok": int(token_ok),
     "injected": injected,

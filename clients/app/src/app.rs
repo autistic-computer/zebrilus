@@ -3071,7 +3071,7 @@ impl AppShell {
         }
         let content = self.render_layout(&layout, &active_window, &mut panes, cx);
         self.tick_pip(&active_window, window, cx);
-        self.pip.stage.observe(&active_window);
+        self.pip.stage.observe(&active_window, |_| false);
         let float_layer = self.float_layer(&active_window, &floats, &mut panes, window, cx);
         let float_canvas = Rc::clone(&self.float_canvas_bounds);
         let content = div()

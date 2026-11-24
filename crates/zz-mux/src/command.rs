@@ -895,6 +895,7 @@ pub struct ExecutionContext {
     pub no_hooks: bool,
     pub format_variables: BTreeMap<String, String>,
     spawn_pane_options: Vec<(String, String)>,
+    agent_parent: Option<PaneId>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1030,6 +1031,7 @@ impl fmt::Debug for ExecutionContext {
             .field("no_hooks", &self.no_hooks)
             .field("format_variables", &self.format_variables)
             .field("spawn_pane_options", &self.spawn_pane_options)
+            .field("agent_parent", &self.agent_parent)
             .finish()
     }
 }
@@ -1066,6 +1068,7 @@ impl Default for ExecutionContext {
             no_hooks: false,
             format_variables: BTreeMap::new(),
             spawn_pane_options: Vec::new(),
+            agent_parent: None,
         }
     }
 }
@@ -1239,6 +1242,15 @@ impl ExecutionContext {
 
     pub fn set_replay_client(&mut self, client: Option<ClientId>) {
         self.replay_client = client;
+    }
+
+    #[must_use]
+    pub const fn agent_parent(&self) -> Option<PaneId> {
+        self.agent_parent
+    }
+
+    pub const fn set_agent_parent(&mut self, parent: Option<PaneId>) {
+        self.agent_parent = parent;
     }
 
     #[must_use]
@@ -5422,6 +5434,11 @@ impl MuxEngine {
     #[must_use]
     pub fn agent_parent(&self, child: PaneId) -> Option<PaneId> {
         self.agent_parents.get(&child).copied()
+    }
+
+    #[must_use]
+    pub const fn agent_parents(&self) -> &BTreeMap<PaneId, PaneId> {
+        &self.agent_parents
     }
 
     #[must_use]

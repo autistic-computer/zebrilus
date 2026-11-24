@@ -1,14 +1,20 @@
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use semver::Version;
 use serde::Deserialize;
+use ureq::tls::{TlsConfig, TlsProvider};
 
+pub(crate) mod download;
+mod error;
+#[cfg(feature = "update")]
 mod install;
 
+pub use error::UpdateError;
+#[cfg(feature = "update")]
 pub use install::{
-    ApplyOutcome, Assets, Facts, InstallPlan, ManualUpdate, Progress, Staged, Target, UpdateError,
-    apply, assets_for, clear_staged, detect, homebrew_cask, manual_of, plan, plan_for, prepare,
-    staged, staged_for, tarball_prefix, target_of,
+    ApplyOutcome, Assets, Facts, InstallPlan, ManualUpdate, Staged, Target, apply, assets_for,
+    clear_staged, detect, homebrew_cask, manual_of, plan, plan_for, prepare, staged, staged_for,
+    tarball_prefix, target_of,
 };
 
 const RELEASES_API: &str =
@@ -38,6 +44,14 @@ impl Channel {
             Self::Beta => "beta",
         }
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Progress {
+    Downloading { received: u64, total: Option<u64> },
+    Running { detail: String },
+    Verifying,
+    Staging,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -108,6 +122,7 @@ pub fn checks_enabled() -> bool {
 
 pub fn fetch_latest(channel: Channel) -> Result<Option<Release>, String> {
     let agent: ureq::Agent = ureq::Agent::config_builder()
+        .tls_config(tls())
         .timeout_global(Some(REQUEST_TIMEOUT))
         .build()
         .into();
@@ -122,6 +137,13 @@ pub fn fetch_latest(channel: Channel) -> Result<Option<Release>, String> {
         .read_to_string()
         .map_err(|error| error.to_string())?;
     parse_releases(&body, channel)
+}
+
+pub(crate) fn tls() -> TlsConfig {
+    TlsConfig::builder()
+        .provider(TlsProvider::Rustls)
+        .unversioned_rustls_crypto_provider(Arc::new(rustls::crypto::aws_lc_rs::default_provider()))
+        .build()
 }
 
 #[derive(Deserialize)]

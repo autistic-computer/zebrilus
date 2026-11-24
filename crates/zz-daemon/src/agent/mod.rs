@@ -33,6 +33,8 @@ pub(crate) mod host;
 pub(crate) mod journal;
 #[cfg(unix)]
 pub(crate) mod login;
+#[cfg(unix)]
+pub(crate) mod logins;
 pub(crate) mod paths;
 pub(crate) mod runtime;
 pub(crate) mod session_files;

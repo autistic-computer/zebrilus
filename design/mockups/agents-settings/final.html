@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Settings: Agents, final</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/penna-src/components/button/button.css">
+<link rel="stylesheet" href="/penna-src/components/spinner/spinner.css">
+<link rel="stylesheet" href="/penna-src/components/segmented/segmented.css">
+<link rel="stylesheet" href="/penna-src/blocks/settings/settings.css">
+<link rel="stylesheet" href="/zz.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+<script src="/penna-src/components/segmented/segmented.js" defer></script>
+<script src="marks.js"></script>
+<link rel="stylesheet" href="board.css">
+<style>
+  .ag-seg .penna-segment[data-dim] > .penna-label { opacity: 0.5; }
+  .ag-states .ag-frame { width: 792px; }
+  .ag-warn { color: var(--penna-warning); }
+
+  .fx-wrap.penna-segmented { height: auto; max-width: 100%; }
+  .fx-wrap > .penna-segments { flex-wrap: wrap; row-gap: var(--penna-space-2); }
+
+  .fx-anchor { position: relative; display: inline-flex; }
+  .fx-menu[data-penna="popover"] { position: absolute; top: calc(100% + 4px); left: 0; z-index: 10; display: flex; flex-direction: column; min-width: 260px; }
+  .fx-menu [data-penna="menu-item"] { gap: var(--penna-space-8); }
+  .fx-menu [data-penna="menu-item"] > .fx-check { display: inline-flex; flex: none; width: 12px; --penna-icon-size: 12px; }
+  .fx-menu [data-penna="menu-item"] > .fx-fill { flex: 1; }
+  .fx-menu [data-penna="menu-item"] > .ag-muted { font-size: var(--penna-text-small-size); }
+  .fx-menu [data-penna="menu-item"][data-dim] > span:not(.ag-muted) { opacity: 0.5; }
+  .fx-trigger .ag-dot { margin-left: 0; }
+
+  .fx-tables { display: grid; gap: 32px; }
+  .fx-table { display: grid; grid-template-columns: 250px 210px 440px; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); }
+  .fx-table[data-behavior] { grid-template-columns: 250px 650px; }
+  .fx-table > * { padding: 7px 16px 7px 0; box-shadow: inset 0 1px var(--penna-divider); }
+  .fx-table > b { font-weight: 600; }
+  .fx-table > [data-v] { font-variant-numeric: tabular-nums; }
+  .fx-table > [data-n] { font-family: var(--penna-mono); font-size: var(--penna-text-caption-size); line-height: var(--penna-text-small-line); color: var(--penna-fg-muted); }
+  .fx-table > [data-head] { font-family: inherit; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--penna-fg-muted); box-shadow: none; }
+  .fx-tables h3 { margin: 0 0 6px; font-size: 13px; font-weight: 600; }
+</style>
+</head>
+<body>
+<main class="zz-page">
+  <div class="zz-intro">
+    <h1>Settings: Agents, final</h1>
+    <p>The one-machine take: a machine picker under the heading, one card of single-line agent rows for the picked machine. Same scenario as the four takes.</p>
+  </div>
+
+  <section data-take="page">
+    <h2>Page</h2>
+    <p>xps picked: Claude Code updating, Codex behind and signed out, Grok and Cursor not installed.</p>
+    <div class="ag-frame" data-frame="page"></div>
+  </section>
+
+  <section data-take="this-mac">
+    <h2>This Mac</h2>
+    <p>What the page opens on: the local machine, everything current.</p>
+    <div class="ag-frame" data-frame="this-mac"></div>
+  </section>
+
+  <section data-take="states">
+    <h2>States</h2>
+    <div class="ag-states" data-states></div>
+  </section>
+
+  <section data-take="numbers">
+    <h2>Numbers</h2>
+    <p>Values are read from the board's own CSS when it loads; names are what zz-ui and penna already call them, or new where marked.</p>
+    <div class="fx-tables" data-numbers></div>
+  </section>
+</main>
+<script>
+(() => {
+  const ic = (name) => `<i data-icon="${name}"></i>`;
+  const mark = (key) => `<i class="ag-mark" data-mark="${key}"></i>`;
+  const spin = `<span class="penna-spinner" data-size="small">${ic("loader")}</span>`;
+  const text = (label) => `<span class="penna-label" data-penna-text>${label}</span>`;
+  const btn = (label, o = {}) => `<button class="penna-button${o.lead ? " zz-lead" : ""}" data-penna="${o.ghost ? "button.quiet" : "button"}" data-size="small"${o.primary ? ` data-tone="primary" data-prominent` : ""}${o.loading ? " data-loading disabled" : ""}>${o.loading ? ic("loader") : ""}${o.icon ?? ""}${text(label)}</button>`;
+  const plus = `<button class="penna-button ag-plus" data-penna="button.quiet" data-shape="icon" data-size="small" aria-label="Add account" title="Add account">${ic("plus")}</button>`;
+  const iconBtn = (glyph, label) => `<button class="penna-button" data-penna="icon-button.row" data-shape="icon" aria-label="${label}" title="${label}">${ic(glyph)}</button>`;
+
+  const A1 = "me@example.com";
+  const A2 = "work@acme.example";
+  const AGENTS = {
+    claude: { name: "Claude Code", mark: "claude", latest: "2.1.330", adds: true, bin: "claude" },
+    codex: { name: "Codex", mark: "codex", latest: "0.171.0", adds: true, bin: "codex" },
+    agy: { name: "Antigravity", mark: "agy", latest: null, adds: false, bin: "agy" },
+    grok: { name: "Grok", mark: "grok" },
+    cursor: { name: "Cursor", mark: "cursor" },
+  };
+  const ORDER = ["claude", "codex", "agy", "grok", "cursor"];
+  const MAC = { id: "mac", name: "This Mac", os: "macos", home: "/Users/me", agents: {
+    claude: { v: "2.1.330", acct: [[A1, "Max 20x"], [A2, "Max 20x"]] },
+    codex: { v: "0.171.0", acct: [[A1, "Pro"]] },
+    agy: { v: "1.5.14", acct: [] },
+  } };
+  const XPS = { id: "xps", name: "xps", os: "arch", home: "/home/me", agents: {
+    claude: { v: "2.1.329", acct: [[A1, "Max 20x"]], running: "Downloading 2.1.330" },
+    codex: { v: "0.167.0", acct: [] },
+    agy: { v: "1.5.13", acct: [] },
+  } };
+  const ALIEN = { id: "alien", name: "alienware", os: "arch", home: "/home/me", agents: {
+    claude: { v: "2.1.330", acct: [[A2, "Max 20x"]] },
+    codex: { v: "0.171.0", acct: [[A1, "Pro"]] },
+    agy: { v: "1.5.14", acct: [] },
+  } };
+  const WIN_DOWN = { id: "win", name: "win-desktop", os: "windows", down: "unreachable", agents: {} };
+  const WIN_UP = { id: "win", name: "win-desktop", os: "windows", home: "C:\\Users\\me", noAuth: true, agents: {
+    claude: { v: "2.1.330", acct: [] },
+    codex: { v: "0.171.0", acct: [] },
+  } };
+  const MACHINES = [MAC, XPS, ALIEN, WIN_DOWN];
+
+  const behind = (key, s) => AGENTS[key].latest && s.v !== AGENTS[key].latest;
+  const current = (key, s) => AGENTS[key].latest && s.v === AGENTS[key].latest;
+  const path = (m, key) => m.os === "windows" ? `${m.home}\\.local\\bin\\${AGENTS[key].bin}.exe` : `${m.home}/.local/bin/${AGENTS[key].bin}`;
+  const hasUpdate = (m) => !m.down && ORDER.some((key) => m.agents[key] && behind(key, m.agents[key]));
+  const selfUpdate = (m) => !m.down && ORDER.some((key) => m.agents[key] && behind(key, m.agents[key]) && !m.agents[key].manual && !m.agents[key].running);
+  const version = (key, s) => {
+    if (current(key, s)) return `${ic("check")}<span>${s.v}</span>`;
+    if (behind(key, s)) return `<span>${s.v} → ${AGENTS[key].latest}</span>`;
+    return `<span>${s.v}</span>`;
+  };
+  const accounts = (m, key, s) => {
+    if (s.running) return `<span class="ag-out">${s.running}</span>`;
+    if (m.noAuth) return "";
+    if (!s.acct.length) return `<span data-off>Signed out</span>`;
+    const label = s.acct.length === 1 ? `${s.acct[0][0]} · ${s.acct[0][1]}` : s.acct.map(([email]) => email).join(", ");
+    return `<span>${label}</span>${AGENTS[key].adds ? plus : ""}`;
+  };
+  const actions = (m, key, s, o = {}) => {
+    if (s.running) return btn("Updating", { loading: true });
+    const out = [];
+    if (!m.noAuth && !s.acct.length && !o.signingIn) out.push(btn("Sign in"));
+    if (behind(key, s)) out.push(o.copy ? btn("Copy command", { icon: ic("copy") }) : btn("Update", { primary: true }));
+    return out.join("");
+  };
+
+  const row = (inner, attrs = "") => `<div class="ag-entry"><div class="ag-row" data-row${attrs}>${inner}</div></div>`;
+  const card = (rows) => `<div class="ag-card" data-penna="settings.card" data-ground>${rows}</div>`;
+  const installRow = (m, o = {}) => {
+    const missing = ORDER.filter((key) => !m.agents[key]);
+    if (!missing.length) return "";
+    const buttons = missing.map((key) => o.installing?.key === key ? btn("Installing", { loading: true }) : btn(AGENTS[key].name, { icon: mark(AGENTS[key].mark) })).join("");
+    const out = o.installing ? `<span class="ag-acct"><span class="ag-out">${o.installing.out}</span></span>` : "";
+    return row(`<span class="ag-who"><span class="ag-muted">Install</span></span>${out}<span class="ag-act" data-wide>${buttons}</span>`, " data-install");
+  };
+  const machineRows = (m, o = {}) => {
+    if (m.down) return row(`<span>${m.down}</span>`, " data-muted");
+    if (o.checking) return row(`<span class="ag-muted ag-fill">Checking</span>${spin}`);
+    const rows = ORDER.filter((key) => m.agents[key] && (!o.just || o.just === key)).map((key) => {
+      const s = m.agents[key];
+      const a = AGENTS[key];
+      const under = o.under?.[key] ?? "";
+      return `<div class="ag-entry"><div class="ag-row" data-row data-agent="${key}"><span class="ag-who" title="${path(m, key)}">${mark(a.mark)}<span>${a.name}</span></span><span class="ag-acct">${accounts(m, key, s)}</span><span class="ag-ver">${version(key, s)}</span><span class="ag-act">${actions(m, key, s, o.act?.[key])}</span></div>${under}</div>`;
+    });
+    if (!o.noInstall) rows.push(installRow(m, o));
+    return rows.join("");
+  };
+
+  const segmented = (machines, picked, o = {}) => `<div class="penna-segmented ag-seg${o.wrap ? " fx-wrap" : ""}" data-penna="field" data-value="${picked}" role="radiogroup" aria-label="Machine"><div class="penna-segments" data-penna="button.quiet" data-state="current"><span class="penna-segment-pill"></span>${machines.map((m) => `<span class="penna-segment" role="button"${m.down ? " data-dim" : ""}>${text(m.name)}${hasUpdate(m) ? `<span class="ag-dot"></span>` : ""}</span>`).join("")}</div></div>`;
+  const dropdown = (machines, picked) => {
+    const m = machines[picked];
+    const items = machines.map((x, i) => `<div data-penna="menu-item"${x.down ? " data-dim" : ""}><span class="fx-check">${i === picked ? ic("check") : ""}</span><span>${x.name}</span>${hasUpdate(x) ? `<span class="ag-dot"></span>` : ""}<span class="fx-fill"></span>${x.down ? `<span class="ag-muted">${x.down}</span>` : ""}</div>`).join("");
+    return `<span class="fx-anchor"><button class="penna-button fx-trigger" data-penna="button" data-caret>${text(m.name)}${hasUpdate(m) ? `<span class="ag-dot"></span>` : ""}<i class="penna-caret" data-icon="chevron-down"></i></button><div class="penna-menu fx-menu" data-penna="popover">${items}</div></span>`;
+  };
+  const heading = (machines) => `<div class="ag-head"><h3>Agents</h3>${btn("Check again", { ghost: true })}${machines.some(selfUpdate) ? btn("Update all", { primary: true }) : ""}</div>`;
+  const hook = `<div class="penna-settings-stack" data-hook><div class="penna-settings-group"><span>Coding agents</span></div>${card(`<div class="ag-entry"><div class="ag-hook" data-row><div><span>Claude Code and Codex</span><small>A startup hook so the ones in terminal panes know they run in zz</small></div>${btn("Set up")}</div></div>`)}</div>`;
+  const page = (machines, picked, o = {}) => {
+    const picker = machines.length < 2 ? "" : `<div data-picker>${o.dropdown ? dropdown(machines, picked) : segmented(machines, picked, o)}</div>`;
+    const body = o.noCard ? "" : card(machineRows(machines[picked], o));
+    return `<div class="ag-col">${heading(machines)}${picker}${body}${o.noHook ? "" : hook}</div>`;
+  };
+
+  const login = `<div class="zz-login"><div class="zz-login-head"><span class="zz-login-glyph">${spin}</span><div class="zz-login-text"><b>Sign in to ChatGPT in your browser</b></div></div><div class="zz-link" data-penna="well">${ic("globe")}<span>auth.openai.com/oauth/authorize?client_id=app_9d1c25</span>${iconBtn("copy", "Copy link")}${iconBtn("external-link", "Open again")}</div><div class="zz-actions">${btn("Use a code instead", { ghost: true, lead: true })}${btn("Cancel")}</div></div>`;
+  const XPS_COPY = { ...XPS, agents: { ...XPS.agents, codex: { ...XPS.agents.codex, manual: true } } };
+  const XPS_QUIET = { ...XPS, agents: { ...XPS.agents, claude: { v: "2.1.330", acct: [[A1, "Max 20x"]] } } };
+  const XPS_FAILED = { ...XPS, agents: { claude: { v: "2.1.330", acct: [[A1, "Max 20x"]] }, codex: XPS.agents.codex, agy: XPS.agents.agy } };
+  const ALL_CURRENT = [MAC, { ...XPS, agents: { claude: { v: "2.1.330", acct: [[A1, "Max 20x"]] }, codex: { v: "0.171.0", acct: [] }, agy: { v: "1.5.14", acct: [] } } }, ALIEN, WIN_DOWN];
+  const host = (name, os, agents) => ({ id: name, name, os, home: "/home/me", agents });
+  const TEN = [
+    MAC, XPS, ALIEN, WIN_DOWN,
+    host("mac-mini-office", "macos", { claude: { v: "2.1.330", acct: [[A2, "Max 20x"]] } }),
+    host("thinkpad-x1", "arch", { claude: { v: "2.1.330", acct: [[A1, "Max 20x"]] } }),
+    host("build-arm64", "arch", { codex: { v: "0.169.2", acct: [[A1, "Pro"]] } }),
+    host("homelab-nas", "arch", { claude: { v: "2.1.330", acct: [] } }),
+    host("hetzner-fsn1", "arch", { claude: { v: "2.1.330", acct: [[A1, "Max 20x"]] }, codex: { v: "0.171.0", acct: [[A1, "Pro"]] } }),
+    host("pi-kitchen", "arch", { codex: { v: "0.171.0", acct: [] } }),
+  ];
+
+  const STATES = [
+    ["1. Unreachable machine picked: its segment stays dimmed, the card is one muted row with the state word.", page(MACHINES, 3, { noHook: true })],
+    ["2. Checking: one row with a small spinner.", card(machineRows(XPS, { checking: true }))],
+    ["3. A reachable Windows machine: no accounts text, no Sign in; Install lists the three it lacks.", card(machineRows(WIN_UP))],
+    ["4. Signing in: the sign-in card opens under the row at full card width; Sign in hides, Update stays.", card(machineRows(XPS_QUIET, { just: "codex", noInstall: true, act: { codex: { signingIn: true } }, under: { codex: login } }))],
+    ["5. Installed by a package manager: Copy command in the Update slot, the command under the accounts text.", card(machineRows(XPS_COPY, { just: "codex", noInstall: true, act: { codex: { copy: true } }, under: { codex: `<div class="ag-under ag-cap">sudo pacman -Syu openai-codex</div>` } }))],
+    ["6. Installing: Grok's button turns into a loading Installing, the last output line sits in the accounts column.", card(installRow(XPS, { installing: { key: "grok", out: "Downloading grok 1.0.93 (14.2 of 38.0 MB)" } }))],
+    ["7. Update failed: the message under the row in warning tone, Update back.", card(machineRows(XPS_FAILED, { just: "codex", noInstall: true, under: { codex: `<div class="ag-under ag-cap ag-warn">npm error EACCES: permission denied, rename '/usr/lib/node_modules/@openai/codex'</div>` } }))],
+    ["8. One machine only: no picker, the heading row then the card.", page([MAC], 0, { noHook: true })],
+    ["9a. Ten machines, if the segmented track wrapped: it grows into a two-row capsule. The real control does not wrap.", page(TEN, 1, { wrap: true, noHook: true, noCard: true })],
+    ["9b. Ten machines in a dropdown button instead: the picked machine and its dot, the menu lists them all.", page(TEN, 1, { dropdown: true, noHook: true, noInstall: true })],
+    ["10. Nothing behind anywhere: Check again only, no dot in the picker.", page(ALL_CURRENT, 0, { noHook: true })],
+  ];
+
+  document.querySelector('[data-frame="page"]').innerHTML = page(MACHINES, 1);
+  document.querySelector('[data-frame="this-mac"]').innerHTML = page(MACHINES, 0);
+  document.querySelector("[data-states]").innerHTML = STATES.map(([caption, html]) => `<figure><figcaption>${caption}</figcaption><div class="ag-frame">${html}</div></figure>`).join("");
+
+  const root = () => document.querySelector('[data-frame="page"]');
+  const q = (sel) => root().querySelector(sel) ?? document.querySelector(`[data-frame="this-mac"] ${sel}`) ?? document.querySelector(sel);
+  const cs = (el, prop) => getComputedStyle(el).getPropertyValue(prop).trim().replace(/px/g, "");
+  const n = (value) => `${Math.round(parseFloat(value) * 10) / 10}`;
+  const h = (sel) => n(q(sel).getBoundingClientRect().height);
+  const w = (sel) => n(q(sel).getBoundingClientRect().width);
+  const type = (el) => `${n(cs(el, "font-size"))}/${n(cs(el, "line-height"))}${cs(el, "font-weight") >= 600 ? " semibold" : ""}${cs(el, "font-family").includes("Menlo") ? " mono" : ""}`;
+
+  const SIZES = [
+    ["Content width", () => `${w(".ag-col")}`, "SETTINGS_CONTENT_MAX_WIDTH via settings_scroll_column; page inset Space::INSET_PANE (16), the frame's 24 is board chrome"],
+    ["Heading, picker, card, hook group: gaps", () => cs(q(".ag-col"), "row-gap"), "Space::GAP_GROUP, the scroll column's own gap"],
+    ["Heading row height", () => h(".ag-head"), "h_flex: settings_page_title(SettingsSection::Agents) + buttons, gap px(10.)"],
+    ["Heading title", () => type(q(".ag-head > h3")), "TextStyle::Title (settings_page_heading)"],
+    ["Picker height", () => h(".penna-segmented"), "SegmentedControl, Size::Medium (Density::Regular control_px)"],
+    ["Picker track padding", () => cs(q(".penna-segmented"), "padding-top"), "Space::S2, track paints Kind::Field"],
+    ["Segment padding x, gap", () => `${cs(q(".penna-segment"), "padding-left")}, 0`, "size.field_inset() + Space::S2"],
+    ["Segment label", () => type(q(".penna-segments")), "size.control_text() = TextStyle::Body"],
+    ["Picked segment pill", () => "inner height " + h(".penna-segment"), "SurfaceRole::QUIET_BUTTON, PaintState::Current"],
+    ["Behind dot", () => `${w(".ag-dot")} × ${h(".ag-dot")}, gap ${cs(q(".ag-seg .penna-segment"), "column-gap")}`, "new: segment child; theme.accent, gap Space::S6"],
+    ["Dimmed segment", () => `label opacity ${cs(document.querySelector('.ag-seg [data-dim] > .penna-label'), "opacity")}, selectable`, "new: per-segment dim, reuse segmented DIM (0.5); hover and pick stay"],
+    ["Card", () => "settings.card", "settings_card_ground(cx); SettingsStack card look"],
+    ["Row height", () => h(".ag-row[data-agent]"), "min, = Space::INSET_CARD × 2 + Size::Small control (24)"],
+    ["Row padding x", () => cs(q(".ag-row"), "padding-left"), "Space::INSET_CARD"],
+    ["Row rule", () => `1px, inset ${cs(q(".ag-row"), "padding-left")} left`, "the SettingEntry rule (pl Space::INSET_CARD), divider"],
+    ["Column gap", () => cs(q(".ag-row"), "column-gap"), "px(10.), as providers.rs today"],
+    ["Agent column", () => `${w(".ag-who")}`, "fixed; mark + name, gap Space::S8"],
+    ["Agent mark", () => `${w(".ag-who > .ag-mark")}`, "agent_provider_icon, Size::Medium.icon_px()"],
+    ["Agent name", () => type(q(".ag-who > span")), "TextStyle::Body, foreground; tooltip = path"],
+    ["Accounts column", () => "flex 1, min 0", "Label TextStyle::Small .truncate(); plus after it, gap Space::GAP_TIGHT"],
+    ["Accounts text", () => type(document.querySelector('[data-frame="this-mac"] .ag-acct > span:not([data-off])')), "TextStyle::Small, foreground"],
+    ["Signed out", () => type(q(".ag-acct > [data-off]")) + " muted", "TextStyle::Small, muted_on(card ground); today warning"],
+    ["Version column", () => `${w(".ag-ver")}`, "fixed; version_text, gap px(5.)"],
+    ["Version text", () => type(q(".ag-ver > span")) + " muted", "TextStyle::Caption .mono().muted()"],
+    ["Check icon", () => `${n(cs(q(".ag-ver"), "--penna-icon-size"))}, success`, "IconName::Check .small(), theme.success"],
+    ["Buttons column", () => `min ${cs(q(".ag-act"), "min-width")}, gap ${cs(q(".ag-act"), "column-gap")}`, "right-aligned h_flex, px(10.)"],
+    ["Button, every one here", () => `${h(".ag-act .penna-button")} high, pad ${cs(q(".ag-act .penna-button"), "padding-left")}, ${type(q(".ag-act .penna-button"))}`, "Button .small(); icon 12, icon gap Space::S4"],
+    ["Update, Update all", () => "primary", "Button .primary() (Tone::Primary, Solid)"],
+    ["Sign in, Install buttons", () => "default", "Button::new (Neutral, Soft), role button"],
+    ["Copy command", () => "default + copy icon", "Button .icon(IconName::Copy), ProviderAction::Copy"],
+    ["Updating, Installing", () => "loading, disabled", "Button .loading(true).disabled(true), ProviderAction::Busy"],
+    ["Check again", () => "ghost", "Button .ghost() (button.quiet)"],
+    ["Add account", () => `${w(".ag-plus")} × ${h(".ag-plus")}, icon 12, muted`, "Button::compact_icon(id, IconName::Plus).tooltip(\"Add account\"), COMPACT_ICON_BUTTON_SIZE; icon-button paints as button.quiet"],
+    ["Install row", () => `label ${type(q("[data-install] .ag-muted"))} muted`, "Install in the agent column; buttons right-aligned, gap px(10.), mark as button icon"],
+    ["Note under a row", () => `${type(document.querySelector(".ag-under"))}, left ${cs(document.querySelector(".ag-under"), "padding-left")}, up ${n(-parseFloat(cs(document.querySelector(".ag-under"), "margin-top")))}, bottom ${cs(document.querySelector(".ag-under"), "padding-bottom")}`, "task_line + NoteTone::Muted / Warning; left = INSET_CARD + 150 + 10"],
+    ["Install output", () => type(q(".ag-out")) + " muted", "task_line in the accounts column"],
+    ["Sign-in card insets", () => `0 ${cs(document.querySelector(".zz-login"), "padding-right")} ${cs(document.querySelector(".zz-login"), "padding-bottom")}, gap ${cs(document.querySelector(".zz-login"), "row-gap")}`, "login_card_keyed via ProvidersAuth::login, full card width"],
+    ["Hook group", () => `header to card ${cs(q("[data-hook]"), "row-gap")}, entry pad ${cs(q(".ag-hook"), "padding-top")}`, "SettingsStack::titled(\"Coding agents\") + SettingEntry, as today, moved last"],
+    ["Checking, unreachable rows", () => "Body muted", "Spinner::new().small(); HostState::label()"],
+  ];
+  const BEHAVIOR = [
+    ["Opens on", "The local machine (HostId::LOCAL), titled This Mac or This computer."],
+    ["Picker", "Hidden with one machine; machines in fleet_hosts order."],
+    ["Dot", "Accent dot after a machine's name when one of its agents is behind."],
+    ["Unreachable", "Segment dimmed but selectable; its card is one muted row with HostState::label()."],
+    ["Update all", "Shows only when a reachable machine has an agent behind that zz can update itself (not Copy command, not running); updates every such agent on every machine."],
+    ["Check again", "Rechecks all machines: request_providers(true). Moves from the bottom into the heading row."],
+    ["Path", "The agent name's tooltip, home_relative(path)."],
+    ["Accounts text", "One account \"email · Plan\"; several are emails joined with \", \"; no organization; one line, ellipsis."],
+    ["Signed out", "Muted, not warning."],
+    ["Primary", "Update (and Update all) is the only primary button; Sign in and Install are never primary."],
+    ["Add account", "The plus button, tooltip \"Add account\", only for Claude Code and Codex (provider.accounts()), only when signed in."],
+    ["Sign in", "Hides while its sign-in card is open; Update stays."],
+    ["Windows hosts", "No accounts text and no Sign in when the host does not sign in (host_signs_in false)."],
+    ["Notes", "Copy command's command, a failure message: one mono caption line under the row; a running task's last line sits in the accounts column."],
+    ["Hook group", "Stays last on the page whatever machine is picked."],
+  ];
+  const fill = () => {
+    const sizes = SIZES.map(([label, value, name]) => {
+      let v;
+      try { v = value(); } catch { v = "?"; }
+      return `<b>${label}</b><span data-v>${v}</span><span data-n>${name}</span>`;
+    }).join("");
+    document.querySelector("[data-numbers]").innerHTML = `<div><h3>Sizes</h3><div class="fx-table"><span data-head>What</span><span data-head>Value, px</span><span data-head>zz-ui / penna</span>${sizes}</div></div><div><h3>Behavior</h3><div class="fx-table" data-behavior><span data-head>What</span><span data-head>Rule</span>${BEHAVIOR.map(([a, b]) => `<b>${a}</b><span>${b}</span>`).join("")}</div></div>`;
+  };
+
+  const settle = () => new Promise((resolve) => {
+    const tick = () => getComputedStyle(document.documentElement).getPropertyValue("--penna-control-sm").trim() ? resolve() : requestAnimationFrame(tick);
+    tick();
+  });
+  settle().then(() => document.fonts.ready).then(() => {
+    window.pennaKit?.roundAll?.();
+    window.pennaSegmented?.wire();
+    fill();
+    for (const menu of document.querySelectorAll(".fx-menu")) {
+      const frame = menu.closest(".ag-frame");
+      frame.style.minHeight = `${menu.getBoundingClientRect().bottom - frame.getBoundingClientRect().top + 16}px`;
+    }
+    const only = new URLSearchParams(location.search).get("only");
+    if (only) {
+      document.documentElement.dataset.only = only;
+      document.querySelector(".zz-intro").style.display = "none";
+      for (const section of document.querySelectorAll("[data-take]")) if (section.dataset.take !== only) section.style.display = "none";
+    }
+  });
+})();
+</script>
+</body>
+</html>

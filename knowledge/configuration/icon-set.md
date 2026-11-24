@@ -9,7 +9,7 @@ timestamp: 2026-11-14T00:00:00Z
 
 # Overview
 
-zz's icon set has 102 glyphs: every `IconName` in penna's `IconName::ALL`. zz's brand marks are not
+zz's icon set has 108 glyphs: every `IconName` in penna's `IconName::ALL`. zz's brand marks are not
 in the kit: the zz logo, the agent marks (`claude`, `openai`) and the Chrome mark (`brand-chrome`)
 keep their own artwork as files in `crates/zz-ui/assets/icons`, which `zz_ui::Assets` serves before
 falling back to penna's assets. The logo is the path `zz_ui::ZZ_LOGO` (`icons/zz.svg`); the other
@@ -121,7 +121,7 @@ a missing scale means a sharp vertex.
   `layers` is a session; `layers-plus` and `window-plus` are New session and New window on the host
   and session headers of both sidebars, the flat list and the session tree: the session's layers
   with a plus at their lower right, and a stack of tiles (how the flat sidebar draws a window, so not
-  a pane frame) with the plus on the front tile; `server-plus` is Add host; `picture-in-picture` is Float (Solar's PiP, the card
+  a pane frame) with the plus on the front tile; `monitor-plus` is Add host (a display on a stand with a plus in the screen); `picture-in-picture` is Float (Solar's PiP, the card
   in the frame's corner); `loader` is Solar's open ring, which the app spins; `hard-drive` is a host.
 - Each icon may carry a `note` that explains a choice; the review page shows it on the card next to
   its Solar source.

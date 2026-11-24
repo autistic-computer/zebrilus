@@ -1,8 +1,8 @@
 ---
 type: Design Plan
 title: Agent mentions . the composer's @ hands work to another agent
-description: "In an agent chat the composer's @ picker lists agents next to chats and files. Picking one puts a mention in the prompt; the agent you are talking to (the host) writes a brief and opens the other agent as a chat in a PiP with one tmux-shaped command. The child's permission asks and its final reply come back into the host chat as queued prompts that end with the command to run next. Closing the host closes its children. Built: daemon, @ menu agent rows, child card."
-status: Built (2026-11-17; daemon side, @ menu agent rows and child card; unverified items listed under Status)
+description: "In an agent chat the composer's @ picker lists agents next to chats and files. Picking one puts a mention in the prompt; the agent you are talking to (the host) writes a brief and opens the other agent as a chat with one tmux-shaped command. The child approves its own tool calls unless auto-approve is off; its questions and its final reply come back into the host chat as queued prompts that end with the command to run next. Closing the host closes its children. Built: daemon, @ menu agent rows, child card, peer rows."
+status: Built (2026-11-23; daemon side, @ menu agent rows, child card, quiet children kept in their card, peer rows; unverified items listed under Status)
 resource: crates/zz-ui/src/target.rs
 tags:
 - agent
@@ -10,23 +10,30 @@ tags:
 - mentions
 - delegation
 - design-plan
-timestamp: 2026-11-17T00:00:00-03:00
+timestamp: 2026-11-23T00:00:00-03:00
 ---
 
 # Summary
 
 In an [agent chat](/concepts/agent-panes.md) the composer's `@` picker lists agents next to chats
 and files. Picking one puts a mention in the prompt. The agent you are talking to (the host) writes
-a brief and opens the other agent as a chat in a [PiP](/designs/pip-panes.md). The child's
-permission asks and its final reply come back into the host chat.
+a brief and opens the other agent as a chat, which stays as a card in the host chat until it is
+clicked, when it shows as a [PiP](/designs/pip-panes.md). The child approves its own tool calls
+unless `agent-auto-approve` is `off`; its questions and its final reply come back into the host
+chat.
 
-Status 2026-11-17: built. The daemon side (steps 1 to 4, 6 and 7 of the
-[build order](#build-order)) and, in the UI lane, the `@` menu's agent rows and the child card
-(step 5; see [UI choices](#ui-choices)), checked by two [stress test](#stress-test-2026-11-17)
-batches. Not verified: typing `@` in the app for the Agents group and its Tab level; a real
-permission ask on the card (`1 allowed`); phones; very long tool output; the first `zz` call of a
-real Codex chat outside the rig (the zz rule only applies once Codex starts with it). The rulings below
-are the owner's. Everything under
+Status 2026-11-23: built. The daemon side (steps 1 to 4, 6 and 7 of the
+[build order](#build-order)) and, in the UI lane, the `@` menu's agent rows, the child card and the
+peer rows (step 5; see [UI choices](#ui-choices)), checked by the
+[stress test](#stress-test-2026-11-17) batches and the
+[2026-11-23 batch](#stress-test-2026-11-23). Seen on screen on 2026-11-23 in a dev build: a child
+stays hidden until it is selected, shows as a floating pane when selected and hides again when you
+leave it; the sidebar's stack tiles take their own panes' colours; the peer sent and reply rows;
+clicking the chip focuses the peer. Not verified: expanding a reply row by clicking it; a child's
+sounds and banners staying silent; typing `@` in the app for the Agents group and its Tab level; a
+real permission ask on the card (`1 allowed`); phones; very long tool output; the first `zz` call
+of a real Codex chat outside the rig (the zz rule only applies once Codex starts with it). The
+rulings below are the owner's. Everything under
 [Proposed commands](#proposed-commands) and after is proposed unless it says ruled, and
 [Open](#open) lists what is not decided.
 
@@ -38,12 +45,31 @@ are the owner's. Everything under
    prompt.
 4. The host agent is told about the child's events, and the host answers the child's permission
    prompts. The owner chose this knowing a host can then approve a child's command with no prompt
-   shown to the user.
+   shown to the user. (Replaced on 2026-11-23 by ruling 1 there: a child approves its own tool
+   calls, and only its questions reach the host.)
 5. Closing the host closes its children.
 6. The commands stay tmux-shaped, and short enough for an agent that was never taught them.
 7. The October removals were not for defects. The agent pane kind was deleted on 2026-10-23
    (`e0608066e`) and came back on 2026-11-01 (`e9dfa5cfa`); agent-to-agent notify and
    `--kind agent` went with it and were not reattached. Those commands are open to rethinking.
+
+# Rulings (fabrico, 2026-11-23)
+
+Made after a real session where a child asked its host for permission 12 times in 4 minutes, each
+ask a turn of its own in the host. They replace ruling 4 above (the host decides a child's
+permission asks) and the earlier choice that a child starts stashed at the window edge.
+
+1. A child chat always starts full auto: it runs on the `all` auto-approve tier and answers its
+   own tool calls. Only its questions reach the host. The global `agent-auto-approve off` still
+   wins, and then its permission asks reach the host as before.
+2. A child's alerts are noise: no sound and no banner for a child. Its sidebar badge stays.
+3. No forced floating pane. A child stays as its card in the host chat and opens only when the
+   card is clicked.
+4. zz child chats and a vendor's own subagent rows should end up feeling the same; this is the
+   first step.
+5. A message to a chat this chat did not open is drawn as plain rows: a sent row with a chat chip
+   and a reply row, with no fold and no child card (board:
+   `design/mockups/peer-message/takes.html`, take 3).
 
 # What exists today
 
@@ -73,7 +99,9 @@ Checked against the tree on 2026-11-17 (main at `2380a891f`).
 - Context text (`crates/zz-daemon/src/daemon.rs`): every agent gets `WORKSPACE_CONTEXT`
   (1,548 bytes), a chat also gets `AGENT_PANE_CONTEXT` (1,368 bytes). It teaches
   `list-panes -s -F '#{pane_id} #{window_name} #{pane_current_command}'`, `run-pane`,
-  `capture-pane -p -J -S -`, `-P -F '#{pane_id}'` and `-d`.
+  `capture-pane -p -J -S -`, `-P -F '#{pane_id}'` and `-d`. Since 2026-11-23 `WORKSPACE_CONTEXT`
+  also carries one paragraph naming `zz new-pane -d --kind agent claude|codex|agy|grok|cursor
+  [--model M] [--effort E] 'BRIEF'` (`caa8f740d`), for chats and for the session-start hook alike.
 
 ## Approval
 
@@ -82,6 +110,9 @@ Checked against the tree on 2026-11-17 (main at `2380a891f`).
 `tail`, `grep`, `rg`, `wc`, `jq`, `cut` and `tr` as pipe filters, for any verb. The Claude Code and
 Codex drivers apply it at auto-approve `reads` (the default) and `all`, not at `off`. `tmux ...`
 reaches the daemon through the wrapper on `PATH` but is not approved.
+
+Since 2026-11-23 a chat with a parent runs on `all` unless the global tier is `off`
+(`child_auto_approve`, `crates/zz-daemon/src/daemon.rs`); see [Answer](#answer).
 
 ## Making a chat
 
@@ -154,7 +185,7 @@ top for shells.
 | Create | `new-pane\|split-window\|new-window [-d] [-P -F fmt] [-c dir] [-t target] --kind agent claude\|codex [--model M] [--effort E] [--account A] [--resume ID] [BRIEF]` | built: made directly, brief queued, parent recorded; a chat with a parent cannot create one |
 | Read | `capture-pane -p -t %N` | built: the last turn as text, `-S -` the whole chat |
 | Talk | `agent-send -t %N TEXT` | built: a chat caller gets the reply and the asks as messages with no flag; `--wait ''` joins the running turn |
-| Answer | `agent-respond -t %N --allow\|--deny\|--option ID` | none |
+| Answer | `agent-respond -t %N --allow\|--deny\|--option ID REQUEST_ID` | built: every line of an ask ends with its request id; a child asks only its questions unless auto-approve is `off` |
 | Close | `kill-pane -t %N` | built: closing a parent closes its children |
 | Type | `send-keys`, `send-text`, `paste-buffer`, `pipe-pane`, `run-pane` | built: an error that names `agent-send` (`pipe-pane`: `capture-pane -p`) |
 
@@ -206,9 +237,18 @@ terminals and its `--submit` flag, since `send-keys` and `send-text` type into t
 
 ## Answer
 
-`agent-respond`, unchanged. Ruling 4 relies on the approval rule above: the host's
-`zz agent-respond ...` runs without a prompt at `reads` and `all`. At auto-approve `off` the host's
-own command needs the user's approval.
+`agent-respond`, with the request id. Since the 2026-11-23 rulings a chat with a parent runs on the
+`all` tier unless the global `agent-auto-approve` is `off` (`child_auto_approve`: `agent_pane_spec`
+reads it whenever the child's runtime opens, and `Shared::set_agent_parent` sets it on a runtime
+already open, since a new or reopened child opens before its parent is recorded). So by default a
+child answers its own tool permissions and only its questions reach the host. At `off` its
+permission asks reach the host too, and the host's own `zz agent-respond ...` then needs the
+user's approval, since the approval rule above applies only at `reads` and `all`. A host keeps the
+tier it opened with when the global one changes later.
+
+Every `zz agent-respond` line of an ask ends with the ask's request id, so an answer that comes
+after the request was answered (in the child's own pane, say) fails with `%N has no pending request
+(already answered, or none was asked)` instead of answering a newer request of the same chat.
 
 ## Close
 
@@ -226,14 +266,16 @@ that names the verb to use, and not "pane has exited":
 
 # Messages into the host
 
-A reply or an ask arrives in the calling chat as a queued prompt: it runs now if the chat is idle,
-else behind what it is doing. Each one ends with the command to run next, so the host needs no ids
-and no memory of the syntax.
+A reply or an ask arrives in the calling chat as a queued prompt (an ask is a question unless
+auto-approve is `off`, see [Answer](#answer)): it runs now if the chat is idle,
+else behind what it is doing. Each one ends with the command to run next, so the host needs no
+memory of the syntax. An ask's lines end with the id of the request they answer, so a late answer
+fails with `has no pending request` rather than answering a newer request of the same chat.
 
 ```
 [zz] %4 (codex) asks: Bash cargo test -p zz-daemon
-zz agent-respond -t %4 --allow
-zz agent-respond -t %4 --deny
+zz agent-respond -t %4 --allow 12
+zz agent-respond -t %4 --deny 12
 ```
 
 ```
@@ -264,7 +306,7 @@ Tell the user, or try again with: zz agent-send -t %4 'TEXT'
 The trailing lines came from the second stress test batch; `AgentReport::parse` strips them, so a
 client reads only the reply text.
 
-An ask with options lists one `zz agent-respond -t %4 --option ID  # LABEL` line per option
+An ask with options lists one `zz agent-respond -t %4 --option ID REQUEST_ID  # LABEL` line per option
 instead of allow and deny (the label is a shell comment, so the whole line runs as written).
 
 The injected prompt carries the pane it came from, so clients draw it as a child row and not as a
@@ -306,10 +348,12 @@ cycle limit, and whether a child may create children is [open](#open).
 - **Teaching.** The agent has to be told what the two tokens mean. Where it goes is open: a few
   lines in the standing context, or a short note added only to a prompt that has a mention. Built
   as the note; after the [stress test](#stress-test-2026-11-17) it is an instruction built from
-  the tokens in the prompt, one sentence per token:
+  the tokens in the prompt, one sentence per token. Since 2026-11-23 only a prompt the user wrote
+  gets it (see step 4), and the standing context also names `new-pane` in one paragraph (see
+  [What an agent knows](#what-an-agent-knows)), so an untaught agent can hand work over too:
 
 ```
-The user tagged codex: codex does this task, not you. Write it a brief that stands on its own, run zz new-pane -d --kind agent codex 'BRIEF' and end your turn. Do not do the task yourself. Its reply and any permission asks come back to you as messages.
+The user tagged codex: codex does this task, not you. Write it a brief that stands on its own, run zz new-pane -d --kind agent codex 'BRIEF' and end your turn. Do not do the task yourself. Its reply and any questions come back to you as messages.
 @local:%2 is another chat, not you: run zz agent-send -t %2 'TEXT' and end your turn. Its reply comes back to you as a message.
 @macbook:%2 is another chat, not you, on macbook: run zz --host macbook agent-send -t %2 'TEXT'. The command prints how its reply reaches you; do what it says.
 ```
@@ -320,8 +364,12 @@ The user tagged codex: codex does this task, not you. Write it a brief that stan
 # Host chat
 
 One row per child in the host transcript: agent, state (working, asking, done, failed, closed),
-elapsed time, and what the host allowed or denied. Clicking it focuses the PiP. The reply shows as
-a quoted block. The UI gets boarded in `design/mockups` before any app code.
+elapsed time, and what the host allowed or denied. Clicking it brings the child into view as a
+PiP. The reply shows as a quoted block. The UI gets boarded in `design/mockups` before any app
+code.
+
+A chat this chat messages but did not open (a peer) gets no card: plain rows, a sent row and a
+reply row (ruling 5 of 2026-11-23, see [UI choices](#ui-choices)).
 
 # How the host card reads the transcript
 
@@ -339,8 +387,12 @@ client parses with:
 - The injected prompts: a user message that `AgentReport::parse` reads as finished, stopped,
   failed or closed, or that `AgentAsk::parse` reads as an ask with its answers.
 - The host's own answers: an execute item whose command `AgentRespond::parse` reads as
-  `zz agent-respond -t %N --allow|--deny|--option ID|--answer TEXT`, with or without the
-  leading `zz` and inside a shell wrapper.
+  `zz agent-respond -t %N --allow|--deny|--option ID|--answer TEXT [REQUEST_ID]`, with or
+  without the leading `zz` and inside a shell wrapper.
+
+A pane is a child only when this chat's own timeline holds the `opened %N` line for it, which
+also keeps a closed child's card in history. Every other pane the chat sends to or hears from is a
+peer (`zz_client::peer`), drawn as rows, not a card.
 
 For both drivers the command text is the tool call's `rawInput.command` (in a chat item,
 `ItemBody.target` unless the driver set its own target), and the output, stdout and stderr
@@ -419,7 +471,11 @@ Each step lands alone.
      pane's inbox, is not counted against the 4 queued prompts, keeps the byte cap (over it, it is
      logged and dropped), and is never handed back to a composer when a queue is reclaimed.
      Deliveries to one caller leave one queue in order, drained by one thread at a time
-     (`Shared::deliver_to_chat`); an ask whose request is answered before its turn is dropped.
+     (`Shared::deliver_to_chat`). An ask whose request is answered before its turn is dropped:
+     `deliver_one` checks before it injects, and the injected prompt carries the request and a
+     weak handle to the asking chat's state (`RelayedAsk`), so the host checks again when the ask
+     reaches the front of its queue (`PanePump::dispatch_next`) and skips it if the request is no
+     longer pending. Reports are never dropped.
    - A caller flipped to a terminal gets the message through the existing terminal delivery
      (`deliver_to_terminal_pane`), as `--notify` does. A caller that is gone or is neither a chat
      nor a terminal is logged and dropped.
@@ -430,7 +486,9 @@ Each step lands alone.
      closed.`. An ask whose tool call has no kind leaves the kind out: `asks: <title>`.
    - Asks ride the waiter as an `asks` sink beside `AgentBlockPolicy::Wait` (the waiter keeps
      waiting), called once per request id. They come only from turns that report to a caller;
-     a turn the user types into the child does not ask the host.
+     a turn the user types into the child does not ask the host. Since 2026-11-23 a child on the
+     `all` tier (the default, see [Answer](#answer)) raises no permission request, so its asks
+     are questions only.
    - A plain `agent-send` from a chat caller to a terminal running an agent stays silent, as for
      terminal callers. The default `--on-block fail` for chat callers applies to every `--wait`
      they run, a terminal target included.
@@ -443,9 +501,14 @@ Each step lands alone.
    built; the picker rows are built in the UI lane.
 
    Choices made while building the note:
-   - The note goes with any prompt that holds an agent token or a chat token, from any client or
-     `agent-send`, as a separate block or item, never inside the user's text. Claude Code gets it
-     wrapped in `<system-reminder>`, Codex as a second `input` text item, ACP agents as a second
+   - The note goes with a prompt the user wrote that holds an agent token or a chat token, as a
+     separate block or item, never inside the user's text. Since 2026-11-23 (`cda6b9adb`) the
+     host builds it when the turn starts, from the prompt's source: a prompt from the composer,
+     or from a command run by a client that is not a chat, gets it; a chat's `agent-send` or
+     brief (`PromptSource::Chat`) gets only the child note a brief carries, and the reports and
+     asks zz injects get none. Before that every prompt with a token got it, so a tag quoted in
+     another chat's message or in a child's reply drew a note the user never wrote. Claude Code
+     gets it wrapped in `<system-reminder>`, Codex as a second `input` text item, ACP agents as a second
      prompt block; replay drops that exact block, so the user's bubble shows only what they typed.
    - Detection is by token shape alone (`zz_protocol::agent_mention::mentions`, the same grammar
      the composer writes): `@+claude` and `@+codex` with an optional `/MODEL` (`\` escapes), and
@@ -507,7 +570,8 @@ Each step lands alone.
      --wait ''`; `show-last-output` (and `send-last-output`): `%N is an agent chat; read it
      with: zz capture-pane -p -t %N`.
    - `agent-respond` with nothing pending: `%N has no pending request (already answered, or none
-     was asked)`.
+     was asked)`. Since 2026-11-23 a request id that is no longer pending gives the same error (it
+     said `unknown permission request`).
    - The grandchild error ends `. Do the work yourself, or say in your reply what you need`.
    - A send to a chat that already holds 4 waiting prompts fails at once, exit 1: `%N has 4
      prompts waiting; wait for its turn with: zz agent-send -t %N --wait ''`. Prompts queued for
@@ -667,6 +731,42 @@ Changed after it:
   1, with `%N has had 8 messages from you since the user last wrote; answer the user now`, and
   nothing is sent. Sends from terminals are not counted.
 
+# Stress test, 2026-11-23
+
+28 runs against `f7a85787c` (the 2026-11-23 rulings, request ids, dropped stale asks, notes only
+for prompts the user wrote, the `new-pane` paragraph): every scenario once per host, then two more
+runs of each failing cell; results in `bench/agents/mentions/results/2026-11-23.md`. m4 now
+checks the default (the child approves itself: stamp.sh ran, no ask reached the host, no
+`agent-respond`); the new m4a and m4c run with `agent-auto-approve off` and check that each answer
+names its ask's request id.
+
+| scenario | claude host | codex host |
+| --- | --- | --- |
+| m1 spawn | 1/1 | 1/1 |
+| m3 open chat | 1/1 | 1/1 |
+| m4 child approves itself | 1/1 | 1/1 |
+| m4a allow under off | 1/1 | 1/1 |
+| m4b no run | 1/1 | 1/1 |
+| m4c deny under off | 0/3 | 1/1 |
+| m5 child dies | 1/1 | 1/1 |
+| m6 untaught | 1/1 | 1/1 |
+| m7 restraint | 1/1 | 1/1 |
+| m8 child restraint | 1/1 | 1/1 |
+| m8b child pushed | 2/3 | 1/3 |
+
+- m4 passes with 2 host turns and no ask, where an m4 pass took 3 before. With a Claude host the
+  Codex child reran `./stamp.sh` escalated after its sandbox blocked the write, and the escalation
+  was approved for it; that cell passed 1 of 6 runs in the earlier batches.
+- Under `off` every answer named its request: `zz agent-respond -t %2 --allow 1`, `--deny 1`.
+- The two failures are the ones the second batch left as they are: a Codex child runs a command
+  once in its read-only sandbox before any ask exists (m4c), and a host tells the user that the
+  child refused instead of following up (m8b).
+- The mention note for an agent token ended `Its reply and any permission asks come back to you
+  as messages.`, which is no longer true by default. No run tripped on it; it now ends `Its reply
+  and any questions come back to you as messages.`, and a note with the old sentence is still
+  hidden on replay. The rerun of the scenarios whose host gets that note is in the same results
+  file.
+
 # UI choices
 
 Recorded for the UI lane, which built them in `crates/zz-ui` and `crates/zz`:
@@ -676,16 +776,31 @@ Recorded for the UI lane, which built them in `crates/zz-ui` and `crates/zz`:
   Tab opens the provider's models from `agent-catalog`, its first client; a typed `codex/` or
   `+codex/` opens the models level. Agent picks are not kept as recents. In a transcript
   `@+codex` shows as `@codex`, tinted and not clickable.
-- **Child card.** Built from the host's own transcript with no wire change. An exchange starts at
-  a tool call whose output carries the opened or sent line and absorbs the asks, reports and the
-  host's `agent-respond` calls for that pane; a second send to the same pane gets its own card; a
-  report for a pane with no exchange before it stays a user message. A decision counts only when
-  its call succeeded; a failed call followed by the same call succeeding is hidden with it; the
+- **Child card.** Built from the host's own transcript with no wire change. A pane is a child only
+  when the timeline holds its `opened %N` line. An exchange starts at a tool call whose output
+  carries the opened or sent line for a child and absorbs the asks, reports and the host's
+  `agent-respond` calls for that pane; a second send to the same child gets its own card. A
+  decision counts only when its call succeeded; a failed call followed by the same call succeeding is hidden with it; the
   header counts every decision (allowed in green). The latest card reads the pending request and
   closed state from the child's own chat. The peek shows the tool steps of the child's last turn;
   the reply is drawn as markdown; a closed card shows no time; a denial shows as `denied by NAME`.
-- **PiP.** An agent chat opened without focus starts stashed, and the card collapses to its header
-  while the child is in view.
+- **Peer rows** (2026-11-23, board `design/mockups/peer-message/takes.html`, take 3). An
+  `agent-send` to a pane this chat did not open stays a tool row with its own title and names the
+  peer with a chip: the peer's tile at 16 with its status dot, working until the reply arrives,
+  and the chat's title, or `%N` once the pane is gone; the chip takes the place of `%N` in the
+  title, or follows it, and clicking it focuses the peer through the pane link path. The finished
+  report is one row: a reply arrow, "Reply from", the chip, the time since the send and the
+  reply's first line; clicking the row opens the whole reply under it with a rule. Stopped,
+  failed and closed reports and relayed asks use the same row. Before, such a send folded into a
+  child card whose click ran `select-child-chat` and failed with `%12 is not a chat %6 opened`
+  (`f7a85787c`; `zz_client::peer`, `crates/zz-ui/src/agent/chat.rs`).
+- **PiP.** On the desktop a child is not drawn as a float until it is the active pane, which the
+  card's click makes it; stashing or throwing it hides it again with no strip
+  ([PiP panes](/designs/pip-panes.md#piles-and-stashing)). The card collapses to its header while
+  the child is in view.
+- **Quiet.** A child plays no sound and posts no banner when it finishes, fails or asks; the
+  desktop learns it is a child from `AgentParents` and drops its edges in
+  `zz_client::attention::announced`. Its sidebar badge stays.
 
 # Reopening a child
 
@@ -722,9 +837,9 @@ as the command's error toast. The desktop reads the printed pane from the comman
 
 Settled along the way: `send-keys` on a chat only points to `agent-send` (step 1); a child cannot
 create children (step 3); replies and asks do not count against the caller's queue of 4 (step 3);
-the teaching travels as a note with the prompt that has the mention, not in the standing context
-(step 4); a question that wants typed text is answered with `agent-respond --answer`; `tmux ...`
-commands are not approved like `zz ...` ones, since no host in the stress test needed them.
+the teaching travels as a note with the prompt the user wrote that has the mention (step 4), and
+the standing context carries only the one `new-pane` paragraph; a question that wants typed text
+is answered with `agent-respond --answer`; `tmux ...` commands are not approved like `zz ...` ones, since no host in the stress test needed them.
 - For each message with no sender (`AgentSteer`, `AgentStopTask`, `AgentSetMode`,
   `AgentAuthenticate`): give it a verb or remove it.
 

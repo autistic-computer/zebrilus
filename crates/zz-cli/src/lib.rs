@@ -19,6 +19,7 @@ mod fleet;
 mod fork_chat;
 mod list_hosts;
 mod tailnet;
+mod update;
 
 #[cfg(test)]
 use std::borrow::Cow;
@@ -32,7 +33,7 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
-use zz_daemon::Daemon;
+use zz_daemon::{Daemon, Stopped};
 use zz_daemon_client::{
     CommandClient, CommandOutcome, DaemonError, Endpoint, ExecChain, ExecChainEnd, ExecClassifier,
     InteractiveClient, classify_local_connect_error, terminate_incompatible_daemon,
@@ -96,8 +97,13 @@ pub struct StartupOptions {
 const DAEMON_BOOTSTRAP_SERVER_ID_ARGUMENT: &str = "--bootstrap-server-id";
 const DAEMON_BOOTSTRAP_READY_FD_ARGUMENT: &str = "--bootstrap-ready-fd";
 const DAEMON_BOOTSTRAP_CLIENT_CWD_ARGUMENT: &str = "--bootstrap-client-cwd";
+#[cfg(unix)]
+const DAEMON_START_LOCK_FD_ARGUMENT: &str = "--start-lock-fd";
+#[cfg(windows)]
+const DAEMON_RETRY_BIND_ARGUMENT: &str = "--retry-bind";
 const DAEMON_READY_DEADLINE: Duration = Duration::from_secs(6);
 static DAEMON_SPAWN_SEQUENCE: AtomicU64 = AtomicU64::new(1);
+static HANDED_OVER_FROM: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 
 pub enum Startup {
     Application(PathBuf),
@@ -204,10 +210,24 @@ struct TmuxLabelCreationError {
 
 #[must_use]
 pub fn run_startup(socket_path: &Path, options: StartupOptions) -> Startup {
+    #[cfg(unix)]
+    let handover_failure = if options.origin == CommandLineOrigin::Launcher {
+        hand_over_to_owned_copy()
+    } else {
+        None
+    };
     diagnostics::init(bare_command_line_opens_application(
         options.origin,
         launched_by_launch_services(),
     ));
+    #[cfg(unix)]
+    if let Some((binary, error)) = handover_failure {
+        log::warn!(
+            target: "zz::diagnostics::process",
+            "could not hand over to the owned copy path={} error={error}",
+            binary.display(),
+        );
+    }
     let arguments =
         match application_arguments(diagnostics::application_args(), socket_path.to_path_buf()) {
             Ok(arguments) => arguments,
@@ -298,6 +318,45 @@ pub fn run_startup(socket_path: &Path, options: StartupOptions) -> Startup {
         }
         Startup::Application(socket_path)
     }
+}
+
+#[cfg(unix)]
+fn hand_over_to_owned_copy() -> Option<(PathBuf, io::Error)> {
+    use std::os::unix::process::CommandExt as _;
+    use zz_config::owned::{self, BuildInfo, Launch};
+
+    let launch = Launch::from_env(
+        std::env::args_os().any(|argument| argument == DAEMON_BOOTSTRAP_SERVER_ID_ARGUMENT),
+    );
+    if let Some(packaged) = std::env::var_os(owned::HANDOVER_ENV) {
+        #[allow(
+            unsafe_code,
+            reason = "startup runs on one thread and nothing has read the environment yet"
+        )]
+        unsafe {
+            std::env::remove_var(owned::HANDOVER_ENV);
+        }
+        let _ = HANDED_OVER_FROM.set(packaged.to_string_lossy().into_owned());
+    }
+    let this = BuildInfo::current();
+    let copy = owned::installed()?;
+    if !owned::hands_over(&this, &copy.info, launch) {
+        return None;
+    }
+    let mut arguments = std::env::args_os();
+    let mut command = Command::new(&copy.binary);
+    if let Some(program) = arguments.next() {
+        command.arg0(program);
+    }
+    let error = command
+        .args(arguments)
+        .env(owned::HANDOVER_ENV, this.version.to_string())
+        .exec();
+    Some((copy.binary, error))
+}
+
+pub(crate) fn handed_over_from() -> Option<&'static str> {
+    HANDED_OVER_FROM.get().map(String::as_str)
 }
 
 fn application_working_directory(
@@ -781,7 +840,7 @@ fn run_command_mode(
         && host != ALL_HOSTS
         && matches!(
             canonical_command(&command),
-            "fleet" | "list-hosts" | "tools" | "protocol-version" | "--version"
+            "fleet" | "list-hosts" | "tools" | "protocol-version" | "build-info" | "--version"
         )
     {
         return Some(run_host_cli(host, arguments));
@@ -810,6 +869,19 @@ fn run_command_mode(
             return Some(agent_login::run(socket_path, rest));
         }
         return Some(agent_hooks::run(&invocation.args));
+    }
+    if command == "update" {
+        if host == Some(ALL_HOSTS) {
+            eprintln!("zz: zz update -a updates this machine and every host");
+            return Some(exit_code_for(CliFailure::Usage));
+        }
+        let arguments = invocation
+            .args
+            .iter()
+            .map(ToString::to_string)
+            .chain(host.map(str::to_owned))
+            .collect::<Vec<_>>();
+        return Some(update::run(&arguments, socket_path));
     }
     if host == Some(ALL_HOSTS) {
         return Some(run_on_every_host(arguments, &command_chain));
@@ -885,6 +957,14 @@ fn run_command_mode(
             },
         );
     }
+    if command == "build-info" {
+        if !invocation.args.is_empty() {
+            eprintln!("zz: usage: zz build-info");
+            return Some(exit_code_for(CliFailure::Usage));
+        }
+        println!("{}", zz_config::owned::BuildInfo::current());
+        return Some(ExitCode::SUCCESS);
+    }
 
     if host.is_some() && matches!(command.as_str(), "daemon" | "proxy") {
         eprintln!("zz: --host is not supported for `{command}`");
@@ -892,11 +972,29 @@ fn run_command_mode(
     }
 
     if command == "daemon" {
-        let bootstrap = match parse_daemon_bootstrap_arguments(&invocation.args) {
-            Ok(bootstrap) => bootstrap,
-            Err(error) => {
-                eprintln!("zz daemon: {}", error.message());
-                return Some(exit_code_for(CliFailure::Usage));
+        #[cfg(unix)]
+        let handoff = match invocation.args.as_slice() {
+            [flag, fd] if flag == DAEMON_START_LOCK_FD_ARGUMENT => fd.parse::<i32>().ok(),
+            _ => None,
+        };
+        #[cfg(windows)]
+        let handoff = matches!(
+            invocation.args.as_slice(),
+            [flag] if flag == DAEMON_RETRY_BIND_ARGUMENT
+        );
+        #[cfg(unix)]
+        let handed_off = handoff.is_some();
+        #[cfg(windows)]
+        let handed_off = handoff;
+        let bootstrap = if handed_off {
+            DaemonBootstrapArguments::default()
+        } else {
+            match parse_daemon_bootstrap_arguments(&invocation.args) {
+                Ok(bootstrap) => bootstrap,
+                Err(error) => {
+                    eprintln!("zz daemon: {}", error.message());
+                    return Some(exit_code_for(CliFailure::Usage));
+                }
             }
         };
         #[cfg(not(windows))]
@@ -913,8 +1011,19 @@ fn run_command_mode(
         if let Some(fd) = bootstrap.ready_fd {
             daemon = daemon.with_bootstrap_ready_fd(fd);
         }
-        return Some(match daemon.run_foreground() {
-            Ok(()) | Err(DaemonError::AlreadyRunning(_)) => ExitCode::SUCCESS,
+        #[cfg(unix)]
+        if let Some(fd) = handoff {
+            daemon = daemon.with_start_lock_fd(fd);
+        }
+        #[cfg(windows)]
+        if handoff {
+            daemon = daemon.with_bind_retry();
+        }
+        return Some(match daemon.serve() {
+            Ok(Stopped::Exit) | Err(DaemonError::AlreadyRunning(_)) => ExitCode::SUCCESS,
+            Ok(Stopped::Restart(restart)) => {
+                restart_daemon(socket_path, mux_config_files, &restart)
+            }
             Err(error) => {
                 eprintln!("zz daemon: {error}");
                 exit_code_for(CliFailure::Runtime)
@@ -2017,10 +2126,12 @@ fn protocol_version_output(
 
 fn format_local_daemon_error(error: DaemonError) -> String {
     match error {
+        error if zz_daemon_client::HostFailure::classify(&error).client_too_old() => {
+            error.to_string()
+        }
         error @ (DaemonError::IncompatibleDaemon { .. } | DaemonError::DaemonTooOld { .. }) => {
             format!("{error}\nrun 'zz kill-server' to restart it (sessions will be lost)")
         }
-        DaemonError::Server(error @ ServerError::ClientTooOld { .. }) => error.to_string(),
         error => error.to_string(),
     }
 }
@@ -2343,6 +2454,69 @@ fn spawn_daemon(
     #[cfg(unix)]
     ready.wait(DAEMON_READY_DEADLINE);
     Ok(server_id)
+}
+
+fn restart_daemon(
+    socket_path: &Path,
+    mux_config_files: &[PathBuf],
+    restart: &zz_daemon::Restart,
+) -> ExitCode {
+    use zz_config::owned::{self, BuildInfo};
+
+    let this = BuildInfo::current();
+    let Some(executable) = owned::installed()
+        .filter(|copy| copy.info.version > this.version)
+        .map(|copy| copy.binary)
+        .or_else(|| std::env::current_exe().ok())
+    else {
+        log::error!(target: "zz::diagnostics::process", "found no zz to restart the daemon with");
+        return exit_code_for(CliFailure::Runtime);
+    };
+    let mut command = Command::new(&executable);
+    command.arg(diagnostics::SOCKET_ARGUMENT).arg(socket_path);
+    for config in mux_config_files {
+        command.arg("-f").arg(config);
+    }
+    command.arg("daemon");
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt as _;
+
+        if let Some(fd) = restart.inheritable_lock_fd() {
+            command
+                .arg(DAEMON_START_LOCK_FD_ARGUMENT)
+                .arg(fd.to_string());
+        }
+        diagnostics::configure_spawned_process(&mut command);
+        let error = command.exec();
+        log::error!(
+            target: "zz::diagnostics::process",
+            "could not restart the daemon path={} error={error}",
+            executable.display(),
+        );
+        exit_code_for(CliFailure::Runtime)
+    }
+    #[cfg(windows)]
+    {
+        let _ = restart;
+        command
+            .arg(DAEMON_RETRY_BIND_ARGUMENT)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        diagnostics::configure_spawned_process(&mut command);
+        match command.spawn_unmasked() {
+            Ok(_) => ExitCode::SUCCESS,
+            Err(error) => {
+                log::error!(
+                    target: "zz::diagnostics::process",
+                    "could not restart the daemon path={} error={error}",
+                    executable.display(),
+                );
+                exit_code_for(CliFailure::Runtime)
+            }
+        }
+    }
 }
 
 fn reap_when_exited(mut child: std::process::Child) {
@@ -2772,7 +2946,7 @@ fn connect_host_command_client(name: &str, read_only: bool) -> Result<CommandCli
         .map_err(|error| host_connect_failure(name, &error))
 }
 
-fn configured_host_endpoint(name: &str) -> Result<Endpoint, String> {
+pub(crate) fn configured_host_endpoint(name: &str) -> Result<Endpoint, String> {
     let (mut hosts, _) = zz_daemon_client::configured_fleet_hosts()
         .map_err(|error| format!("could not read zz/config: {error}"))?;
     if !hosts.iter().any(|host| host.name == name) && !name.contains(['@', ':', '/']) {
@@ -2938,10 +3112,12 @@ fn fan_out_refusal(command_chain: &[CommandInvocation]) -> Option<(String, ExitC
             exit_code_for(CliFailure::Server(&error)),
         ))
     };
-    for invocation in command_chain
-        .iter()
-        .filter(|invocation| !matches!(invocation.name.as_str(), "protocol-version" | "--version"))
-    {
+    for invocation in command_chain.iter().filter(|invocation| {
+        !matches!(
+            invocation.name.as_str(),
+            "protocol-version" | "build-info" | "--version"
+        )
+    }) {
         if let Err(error) = zz_mux::validate_static_command_chain(std::slice::from_ref(invocation))
         {
             return refuse(error);
@@ -3377,6 +3553,10 @@ pub fn launch_application(socket_path: &Path) -> ExitCode {
 }
 
 pub fn daemon_executable() -> io::Result<PathBuf> {
+    #[cfg(windows)]
+    if let Some(copy) = owned_daemon_executable() {
+        return Ok(copy);
+    }
     let executable = std::env::current_exe()?;
     match executable.canonicalize() {
         Ok(executable) => Ok(daemon_executable_from(&executable)),
@@ -3385,6 +3565,15 @@ pub fn daemon_executable() -> io::Result<PathBuf> {
         #[cfg(not(target_os = "linux"))]
         Err(error) => Err(error),
     }
+}
+
+#[cfg(windows)]
+fn owned_daemon_executable() -> Option<PathBuf> {
+    use zz_config::owned::{self, BuildInfo, Launch};
+
+    let copy = owned::installed()?;
+    owned::hands_over(&BuildInfo::current(), &copy.info, Launch::from_env(true))
+        .then_some(copy.binary)
 }
 
 #[cfg(any(not(target_os = "macos"), test))]
@@ -5065,6 +5254,17 @@ mod tests {
                 })
             ),
             "xps stopped answering for 15 s; the command may have run there, check before retrying"
+        );
+    }
+
+    #[test]
+    fn a_newer_daemon_epoch_is_reported_without_a_restart_hint() {
+        assert_eq!(
+            super::format_local_daemon_error(DaemonError::IncompatibleDaemon {
+                daemon: Some(111),
+                client: 110,
+            }),
+            "this zz is too old for the running daemon: it speaks protocol v110 and the daemon speaks v111; update zz"
         );
     }
 

@@ -4,7 +4,7 @@ title: Process & threading model
 description: How zz splits work across the persistent daemon, GUI and CLI clients, CEF subprocesses, agent lens runtimes, and per-PTY worker threads.
 resource: crates/zz-daemon/src/daemon.rs
 tags: [architecture, process-model, daemon, threading, ipc]
-timestamp: 2026-11-13T00:00:00-03:00
+timestamp: 2026-11-23T00:00:00-03:00
 ---
 
 # Overview
@@ -19,7 +19,7 @@ lets terminal sessions survive GUI detach while keeping the mux state a single s
 
 | Process | Owns | Lifetime |
 |---------|------|----------|
-| Daemon ([server](/crates/zz-daemon.md)), running from the headless binary (`cli` in a bundle install, `zz` on a headless install) | mux state, PTYs, terminal frame fanout, IPC listener | persistent; survives GUI detach; exits on `kill-server`, or once it has **zero sessions and zero interactive clients**; dies on crash, logout, reboot |
+| Daemon ([server](/crates/zz-daemon.md)), running from the headless binary (`cli` in a bundle install, `zz` on a headless install, or the newer zz-owned copy below) | mux state, PTYs, terminal frame fanout, IPC listener | persistent; survives GUI detach; exits on `kill-server`, or once it has **zero sessions and zero interactive clients**; dies on crash, logout, reboot |
 | GUI client ([app](/crates/zz.md)) | ala windows, rendering, local CEF sessions, agent lens stream reducers | attached to at most one session; a session takes as many clients as devices attach |
 | CLI client ([headless binary](/crates/zz-cli.md)) | one short-lived command (`list-sessions`, `send-keys`, …) | request/response, then exits |
 | CEF browser process | Chromium main/GPU/renderer/utility (zygote) tree | spawned inside a GUI process; not kept alive without a GUI |
@@ -60,6 +60,32 @@ clients wait at the handshake until config finishes. A shell job that the starti
 a one-daemon re-entry token, `ZZ_SOCKET`, and a private `tmux` shim on its `PATH`. Foreground
 `run-shell` and `if-shell` config entries can call `tmux` back into zz without deadlocking or exposing
 half-loaded config to other clients.
+
+# The zz-owned copy
+
+The daemon's binary normally belongs to the package that installed the app. `zz update` adds one
+more: a zz-owned copy of the headless binary at `<data dir>/zz/owned/zz` (`zz.exe` on Windows),
+with a `build-info` file beside it that `zz build-info` printed when the copy was installed. It
+is written last and removed first, so a `build-info` means the copy beside it is complete.
+
+On Unix the headless binary reads `build-info` before it acts and, when the copy is newer than
+itself, `exec`s it with the same arguments, so the process id and inherited descriptors stay and
+`zz --version` answers for the copy that would become the daemon. It stays itself for the helper
+entry points, under `ZZ_TMUX_EXECUTABLE` (panes and the daemon's shell jobs run the daemon's
+pinned build), with `ZZ_OWNED_COPY=0`, after a handover (the `ZZ_OWNED_HANDOVER` marker, removed
+at startup), and, when a local client started it with `--bootstrap-server-id`, unless the copy is
+on the same wire epoch and meets both revision floors, so the app always gets a daemon it can
+attach to. On Windows, where there is no `exec` and the app's own executable is the daemon,
+`daemon_executable()` returns the owned `zz.exe` under the same rule. The desktop binary never
+hands over.
+
+`restart-server` moves a running daemon onto that copy in place: it ends every session as
+`kill-server` does, stops its tailnet thread, holds the socket's start lock, removes the socket,
+identity file and tmux pin, and execs the owned copy when it is newer than itself (else its own
+binary) with the same socket and config arguments and `--start-lock-fd`. The successor binds,
+then drops the lock, so a client that reconnects in between waits on the lock instead of starting
+another daemon. On Windows the old process starts the successor with `--retry-bind` and exits.
+See [daemon update](/designs/daemon-update.md).
 
 # Tray icon
 

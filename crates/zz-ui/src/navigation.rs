@@ -117,7 +117,7 @@ impl SidebarAction {
     pub const fn icon(self) -> IconName {
         match self {
             Self::NewChat => IconName::ChatPlus,
-            Self::AddHost => IconName::ServerPlus,
+            Self::AddHost => IconName::MonitorPlus,
             Self::Settings => IconName::Settings,
         }
     }

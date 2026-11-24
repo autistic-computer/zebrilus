@@ -201,7 +201,7 @@ impl Shared {
                 .name("zz-agent-accounts-add".to_owned())
                 .spawn(move || {
                     if let Some(shared) = shared.upgrade() {
-                        shared.add_agent_account(provider, &add.account, context);
+                        shared.add_agent_account(provider, context);
                     }
                 });
             if let Err(error) = spawned {
@@ -309,7 +309,7 @@ impl Shared {
         }
     }
 
-    fn refresh_agent_accounts(self: &Arc<Self>) {
+    pub(super) fn refresh_agent_accounts(self: &Arc<Self>) {
         {
             let mut accounts = self.agent_accounts.lock();
             if accounts.refreshing {
@@ -357,26 +357,22 @@ impl Shared {
                 })
                 .collect::<Vec<_>>()
                 .into_iter()
-                .flat_map(|(provider, handle)| {
-                    handle
-                        .join()
-                        .unwrap_or_default()
-                        .into_iter()
-                        .map(move |(id, probe)| {
-                            probe.unwrap_or_else(|| {
-                                (
-                                    AgentAccount {
-                                        id,
-                                        ..signed_out(provider)
-                                    },
-                                    None,
-                                )
-                            })
-                        })
-                })
+                .flat_map(|(_, handle)| handle.join().unwrap_or_default())
                 .filter(|(account, _)| account.id.is_none() || account.signed_in)
                 .collect::<Vec<_>>()
         });
+        let realigned = [AgentProvider::ClaudeCode, AgentProvider::Codex]
+            .into_iter()
+            .filter(|provider| {
+                let active = crate::agent::logins::load(*provider).and_then(|logins| logins.active);
+                !self
+                    .align_agent_accounts(*provider, active.as_deref())
+                    .is_empty()
+            })
+            .count();
+        if realigned > 0 {
+            self.publish_snapshot_state();
+        }
         let (list, quotas): (Vec<_>, Vec<_>) = probed.into_iter().unzip();
         let (changed, quotas_changed, again) = {
             let mut accounts = self.agent_accounts.lock();
@@ -442,16 +438,11 @@ impl Shared {
         }
     }
 
-    fn add_agent_account(
-        self: &Arc<Self>,
-        provider: AgentProvider,
-        choice: &AccountChoice,
-        mut context: ExecutionContext,
-    ) {
+    fn add_agent_account(self: &Arc<Self>, provider: AgentProvider, mut context: ExecutionContext) {
         use crate::agent::cli_session;
 
         let search = self.provider_search();
-        let Some(program) = providers::locate(provider, search.as_ref()) else {
+        if providers::locate(provider, search.as_ref()).is_none() {
             log::warn!(
                 target: "zz::agent",
                 "cannot add a {} account: {} is not installed",
@@ -459,14 +450,7 @@ impl Shared {
                 providers::program(provider)
             );
             return;
-        };
-        let (id, home) = match pick_account(provider, &program, search.as_ref(), choice) {
-            Ok(picked) => (picked.id, picked.home),
-            Err(error) => {
-                log::warn!(target: "zz::agent", "{error}");
-                return;
-            }
-        };
+        }
         let login: &[&str] = match provider {
             AgentProvider::ClaudeCode => &["claude", "auth", "login"],
             AgentProvider::Codex => &["codex", "login"],
@@ -478,16 +462,12 @@ impl Shared {
             .iter()
             .map(|word| (*word).to_owned())
             .collect::<Vec<_>>();
-        let name = id.as_deref().unwrap_or(zz_protocol::DEFAULT_AGENT_ACCOUNT);
         let mut args = vec![
             "-n".to_owned(),
-            format!("{} {name}", provider.label()),
+            format!("{} login", provider.label()),
             "--".to_owned(),
         ];
-        args.extend(cli_session::interactive_shell(
-            home.as_deref().map(|home| (provider, home)),
-            &login,
-        ));
+        args.extend(cli_session::interactive_shell(&login));
         context.no_hooks = true;
         if let Err(error) = self.execute(
             ClientId(u64::MAX),
@@ -497,74 +477,9 @@ impl Shared {
         ) {
             log::warn!(
                 target: "zz::agent",
-                "could not open the login of the {} account {name}: {error}",
+                "could not open the {} login: {error}",
                 provider.label()
             );
-        }
-    }
-}
-
-#[cfg(all(feature = "agent", unix))]
-pub(super) struct PickedAccount {
-    pub(super) id: Option<String>,
-    pub(super) home: Option<PathBuf>,
-    pub(super) fresh: bool,
-}
-
-#[cfg(all(feature = "agent", unix))]
-pub(super) fn pick_account(
-    provider: AgentProvider,
-    program: &Path,
-    search: Option<&OsString>,
-    choice: &AccountChoice,
-) -> Result<PickedAccount, String> {
-    use crate::agent::accounts;
-
-    if !provider.accounts() {
-        return Ok(PickedAccount {
-            id: None,
-            home: None,
-            fresh: false,
-        });
-    }
-    match choice {
-        AccountChoice::Default => Ok(PickedAccount {
-            id: None,
-            home: None,
-            fresh: false,
-        }),
-        AccountChoice::Named(id) => {
-            let home = accounts::prepare(provider, &accounts::Account::resolve(provider, id))?;
-            Ok(PickedAccount {
-                id: Some(id.clone()),
-                home: Some(home),
-                fresh: false,
-            })
-        }
-        AccountChoice::New => {
-            let probed = provider_accounts(provider, program, search);
-            let existing = probed
-                .iter()
-                .filter_map(|(id, probe)| {
-                    Some((
-                        id.as_deref()?,
-                        probe.as_ref().is_none_or(|(account, _)| account.signed_in),
-                    ))
-                })
-                .collect::<Vec<_>>();
-            let id = login_account(&existing);
-            let fresh = existing.iter().all(|(taken, _)| *taken != id);
-            let home = accounts::create(provider, &id).map_err(|error| {
-                format!(
-                    "could not create the {} account {id}: {error}",
-                    provider.label()
-                )
-            })?;
-            Ok(PickedAccount {
-                id: Some(id),
-                home: Some(home),
-                fresh,
-            })
         }
     }
 }
@@ -574,57 +489,68 @@ fn provider_accounts(
     provider: AgentProvider,
     program: &Path,
     search: Option<&OsString>,
-) -> Vec<(Option<String>, Option<(AgentAccount, Option<QuotaWindows>)>)> {
-    let ids = if provider.accounts() {
-        std::iter::once(None)
-            .chain(crate::agent::accounts::ids(provider).into_iter().map(Some))
-            .collect::<Vec<_>>()
-    } else {
-        vec![None]
-    };
-    thread::scope(|scope| {
-        ids.into_iter()
-            .map(|id| {
-                let probe = id.clone();
-                (
-                    id,
-                    scope.spawn(move || identify(provider, program, probe, search)),
-                )
-            })
-            .collect::<Vec<_>>()
+) -> Vec<(AgentAccount, Option<QuotaWindows>)> {
+    use crate::agent::logins;
+
+    let native = identify(provider, program, search, None);
+    if !logins::swaps(provider) {
+        return vec![native.unwrap_or_else(|| (signed_out(provider), None))];
+    }
+    let account = native.as_ref().map(|(account, _)| account);
+    let quota = native.as_ref().and_then(|(_, quota)| *quota);
+    let record = settle(provider, program, search, account);
+    logins::listed(&logins::System, provider, &record, account)
+        .into_iter()
+        .map(|listed| {
+            let quota = (listed.id.as_deref() == record.active())
+                .then_some(quota)
+                .flatten();
+            (listed, quota)
+        })
+        .collect()
+}
+
+#[cfg(all(feature = "agent", unix))]
+pub(super) fn settle(
+    provider: AgentProvider,
+    program: &Path,
+    search: Option<&OsString>,
+    native: Option<&AgentAccount>,
+) -> crate::agent::logins::Logins {
+    use crate::agent::{accounts, logins};
+
+    let vault = logins::System;
+    let _guard = logins::guard();
+    let stored = logins::load(provider);
+    let mut changed = stored.is_none();
+    let mut record = stored.unwrap_or_else(|| {
+        let folders = accounts::ids(provider)
             .into_iter()
-            .map(|(id, probe)| (id, probe.join().ok().flatten()))
-            .collect()
-    })
+            .filter_map(|id| Some((accounts::home(provider, &id).ok()?, id)))
+            .map(|(home, id)| (id, home))
+            .collect::<Vec<_>>();
+        logins::migrate(&vault, provider, &folders, |home| {
+            identify(provider, program, search, Some(home)).map(|(account, _)| account)
+        })
+    });
+    if let Some(native) = native {
+        changed |= logins::reconcile(&vault, &mut record, native);
+    }
+    if changed && let Err(error) = logins::store(provider, &record) {
+        log::warn!(target: "zz::agent", "could not record the {} accounts: {error}", provider.label());
+    }
+    record
 }
 
 #[cfg(all(feature = "agent", unix))]
 pub(super) fn identify(
     provider: AgentProvider,
     program: &Path,
-    id: Option<String>,
     search: Option<&OsString>,
+    home: Option<&Path>,
 ) -> Option<(AgentAccount, Option<QuotaWindows>)> {
     use crate::agent::accounts;
 
-    let home = match id.as_deref() {
-        None => None,
-        Some(name) => {
-            match accounts::prepare(provider, &accounts::Account::resolve(provider, name)) {
-                Ok(home) => Some(home),
-                Err(error) => {
-                    log::info!(target: "zz::agent", "{error}");
-                    return Some((
-                        AgentAccount {
-                            id,
-                            ..signed_out(provider)
-                        },
-                        None,
-                    ));
-                }
-            }
-        }
-    };
     let mut command = Command::new(program);
     providers::prepare(&mut command, search, None);
     for name in crate::PARENT_CLAUDE_SESSION_ENVIRONMENT.iter().chain(&[
@@ -635,7 +561,7 @@ pub(super) fn identify(
     ]) {
         command.env_remove(name);
     }
-    if let Some(home) = &home {
+    if let Some(home) = home {
         accounts::run_on(&mut command, provider, home);
     }
     let (account, quota) = match provider {
@@ -711,7 +637,7 @@ pub(super) fn identify(
             (account, None)
         }
     };
-    Some((AgentAccount { id, ..account }, quota))
+    Some((account, quota))
 }
 
 #[cfg(all(feature = "agent", unix))]
@@ -947,17 +873,6 @@ fn grok_billing(result: &serde_json::Value) -> (AgentAccount, Option<QuotaWindow
     (account, quota)
 }
 
-#[cfg(all(feature = "agent", unix))]
-fn login_account(accounts: &[(&str, bool)]) -> String {
-    if let Some((id, _)) = accounts.iter().find(|(_, signed_in)| !signed_in) {
-        return (*id).to_owned();
-    }
-    (1..=accounts.len() + 1)
-        .map(|number| format!("a{number}"))
-        .find(|id| accounts.iter().all(|(taken, _)| taken != id))
-        .expect("one more number than accounts leaves an id free")
-}
-
 #[cfg(all(test, feature = "agent", unix))]
 mod tests {
     use super::*;
@@ -1091,13 +1006,6 @@ mod tests {
         assert_eq!(accounts.quotas.get(&key), Some(&week));
         assert!(accounts.note_owner(&login("new@example.com", true)));
         assert_eq!(accounts.quotas.get(&key), None);
-    }
-
-    #[test]
-    fn a_login_reuses_the_first_signed_out_account_or_takes_the_next_id() {
-        assert_eq!(login_account(&[("a1", true), ("a2", false)]), "a2");
-        assert_eq!(login_account(&[("a1", true), ("a2", true)]), "a3");
-        assert_eq!(login_account(&[]), "a1");
     }
 
     #[test]

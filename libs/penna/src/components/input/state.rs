@@ -1,6 +1,6 @@
 #![allow(clippy::used_underscore_binding)]
 
-use std::{borrow::Cow, ops::Range, rc::Rc, sync::Arc};
+use std::{borrow::Cow, ops::Range, path::PathBuf, rc::Rc, sync::Arc};
 
 use ala::{
     App, AppContext as _, Bounds, ClipboardEntry, ClipboardItem, Context, DismissEvent, Entity,
@@ -38,6 +38,7 @@ pub enum InputEvent {
     Focus,
     Blur,
     PasteImages(Vec<Arc<Image>>),
+    PastePaths(Vec<PathBuf>),
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -86,6 +87,7 @@ pub struct InputState {
     input_mode: TextInputMode,
     submit_on_enter: bool,
     enable_context_menu: bool,
+    paste_paths: bool,
     normal_mode: bool,
 
     pub(super) disabled: bool,
@@ -160,6 +162,7 @@ impl InputState {
             input_mode: TextInputMode::default(),
             submit_on_enter: false,
             enable_context_menu: false,
+            paste_paths: false,
             normal_mode: false,
             disabled: false,
             loading: false,
@@ -217,6 +220,12 @@ impl InputState {
     #[must_use]
     pub fn context_menu(mut self, enable: bool) -> Self {
         self.enable_context_menu = enable;
+        self
+    }
+
+    #[must_use]
+    pub fn paste_paths(mut self, enable: bool) -> Self {
+        self.paste_paths = enable;
         self
     }
 
@@ -1238,6 +1247,22 @@ impl InputState {
     }
 
     fn paste_item(&mut self, item: ClipboardItem, cx: &mut Context<Self>) {
+        if self.paste_paths {
+            let paths = item
+                .entries()
+                .iter()
+                .filter_map(|entry| match entry {
+                    ClipboardEntry::ExternalPaths(paths) => Some(paths.paths()),
+                    ClipboardEntry::String(_) | ClipboardEntry::Image(_) => None,
+                })
+                .flatten()
+                .cloned()
+                .collect::<Vec<_>>();
+            if !paths.is_empty() {
+                cx.emit(InputEvent::PastePaths(paths));
+                return;
+            }
+        }
         if let Some(text) = item.text() {
             let range = self.selection.clone();
             self.edit(range, &text, EditKind::Other, cx);
@@ -1886,8 +1911,17 @@ mod tests {
         item: ala::ClipboardItem,
         cx: &mut ala::TestAppContext,
     ) -> (String, Vec<InputEvent>) {
+        paste_into(item, false, cx)
+    }
+
+    fn paste_into(
+        item: ala::ClipboardItem,
+        takes_paths: bool,
+        cx: &mut ala::TestAppContext,
+    ) -> (String, Vec<InputEvent>) {
         cx.update(crate::init);
-        let (state, cx) = cx.add_window_view(InputState::new);
+        let (state, cx) =
+            cx.add_window_view(|window, cx| InputState::new(window, cx).paste_paths(takes_paths));
         let cx: &mut ala::VisualTestContext = cx;
         let heard = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
         cx.update(|_, cx| {
@@ -2033,6 +2067,47 @@ mod tests {
                 .iter()
                 .any(|event| matches!(event, InputEvent::PasteImages(_))),
             "a text paste is not an image paste"
+        );
+    }
+
+    fn copied_file() -> (std::path::PathBuf, ala::ClipboardItem) {
+        let path = std::path::PathBuf::from("/Users/me/Desktop/Screen Recording.mov");
+        let item = ala::ClipboardItem {
+            entries: vec![
+                ala::ClipboardEntry::ExternalPaths(ala::ExternalPaths(
+                    std::iter::once(path.clone()).collect(),
+                )),
+                ala::ClipboardEntry::String(ala::ClipboardString::new(
+                    "Screen Recording.mov".to_owned(),
+                )),
+            ],
+        };
+        (path, item)
+    }
+
+    #[ala::test]
+    fn copied_files_go_to_an_owner_that_takes_paths(cx: &mut ala::TestAppContext) {
+        let (path, item) = copied_file();
+        let (value, heard) = paste_into(item, true, cx);
+
+        assert_eq!(value, "");
+        let [InputEvent::PastePaths(paths)] = heard.as_slice() else {
+            panic!("the paths should reach the owner: {heard:?}");
+        };
+        assert_eq!(paths, &[path]);
+    }
+
+    #[ala::test]
+    fn copied_files_paste_their_name_when_the_owner_takes_no_paths(cx: &mut ala::TestAppContext) {
+        let (_, item) = copied_file();
+        let (value, heard) = paste_into(item, false, cx);
+
+        assert_eq!(value, "Screen Recording.mov");
+        assert!(
+            !heard
+                .iter()
+                .any(|event| matches!(event, InputEvent::PastePaths(_))),
+            "{heard:?}"
         );
     }
 }

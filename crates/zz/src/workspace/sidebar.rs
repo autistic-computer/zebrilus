@@ -301,9 +301,15 @@ impl WorkspaceSidebar {
 
     fn reconcile_attention(&mut self, cx: &mut Context<Self>) {
         let attached_host = self.mux.read(cx).attached_host();
-        let statuses = self.agent_pane_statuses(cx);
+        let statuses = self.agent_pane_statuses();
         let watched = self.watched_pane(cx).map(|pane| (attached_host, pane));
         let edges = self.tracker.observe(&statuses, watched);
+        let edges = {
+            let mux = self.mux.read(cx);
+            attention::announced(&edges, |(host, pane)| {
+                mux.agent_parent(host, pane).is_some()
+            })
+        };
         if let Some(chime) = loudest(&edges) {
             crate::agent::sound::play(chime, cx);
         }
@@ -331,12 +337,13 @@ impl WorkspaceSidebar {
         if edges.is_empty() || cx.active_window().is_some() || !notifications_enabled(cx) {
             return;
         }
-        let snapshot = self.mux.read(cx).snapshot();
+        let mux = self.mux.read(cx);
         let now = Instant::now();
         let banners = edges
             .iter()
             .filter_map(|edge| {
-                let (title, body) = attention::banner(&snapshot, edge.pane.1, edge.status)?;
+                let snapshot = mux.host_snapshot(edge.pane.0)?;
+                let (title, body) = attention::banner(snapshot, edge.pane.1, edge.status)?;
                 self.banners
                     .admit(edge.pane, now)
                     .then(|| SystemNotification {
@@ -366,21 +373,27 @@ impl WorkspaceSidebar {
         }
     }
 
-    fn agent_pane_statuses(&self, cx: &App) -> BTreeMap<(HostId, PaneId), AgentPaneStatus> {
-        let attached_host = self.mux.read(cx).attached_host();
+    fn agent_pane_statuses(&self) -> BTreeMap<(HostId, PaneId), AgentPaneStatus> {
         self.tree_model
             .hosts
             .iter()
-            .filter(|host| host.id == attached_host)
-            .flat_map(|host| &host.sessions)
-            .flat_map(|session| &session.windows)
-            .flat_map(|window| &window.panes)
-            .filter_map(|pane| {
-                let status = match pane.kind {
-                    MuxTreePaneKind::Terminal => AgentPaneStatus::from_pane_status(pane.status),
-                    _ => return None,
-                };
-                Some(((attached_host, pane.id), status))
+            .flat_map(|host| {
+                host.sessions
+                    .iter()
+                    .flat_map(|session| &session.windows)
+                    .flat_map(|window| &window.panes)
+                    .filter(|pane| {
+                        matches!(
+                            pane.kind,
+                            MuxTreePaneKind::Terminal | MuxTreePaneKind::Agent(_)
+                        )
+                    })
+                    .map(move |pane| {
+                        (
+                            (host.id, pane.id),
+                            AgentPaneStatus::from_pane_status(pane.status),
+                        )
+                    })
             })
             .collect()
     }

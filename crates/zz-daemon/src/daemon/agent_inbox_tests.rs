@@ -282,3 +282,41 @@ fn a_shell_hook_keeps_the_agent_inbox_running() {
     }
     runtime.shutdown();
 }
+
+#[test]
+fn a_chat_turn_drives_its_pane_status() {
+    let mut fixture = fixture();
+    let pane = fixture.pane;
+    let (publisher, runtime, generation) = runtime(&fixture.shared, pane);
+    settle(&mut fixture);
+    let mut seen = Vec::new();
+    for phase in [
+        zz_protocol::AgentConnectionPhase::Running,
+        zz_protocol::AgentConnectionPhase::AwaitingPermission,
+        zz_protocol::AgentConnectionPhase::Running,
+        zz_protocol::AgentConnectionPhase::Ready,
+    ] {
+        publisher.publish_agent_state(
+            generation,
+            pane,
+            AgentPaneWire {
+                phase,
+                ..AgentPaneWire::default()
+            },
+        );
+        fixture.inbox.turn(&fixture.shared);
+        let inner = fixture.shared.inner.lock();
+        let status = inner.engine.state.pane(pane).expect("pane").status.clone();
+        seen.push(status.map(|status| (status.state, status.kind)));
+    }
+    assert_eq!(
+        seen,
+        [
+            Some((PaneStatusState::Working, None)),
+            Some((PaneStatusState::Blocked, Some(PaneStatusKind::Permission))),
+            Some((PaneStatusState::Working, None)),
+            Some((PaneStatusState::Idle, None)),
+        ]
+    );
+    runtime.shutdown();
+}

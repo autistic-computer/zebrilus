@@ -5,6 +5,7 @@ use penna::blocks::chat::{
 use std::{
     cell::Cell,
     collections::{BTreeSet, HashMap},
+    path::PathBuf,
     rc::Rc,
     sync::Arc,
 };
@@ -29,9 +30,9 @@ use zz_ui::agent::resume::{EmptyChat, HeaderMenu};
 use zz_ui::agent::tasks::plan_tray;
 
 use ala::{
-    Bounds, Context, Entity, EntityId, FocusHandle, Focusable, Image, IntoElement, KeyDownEvent,
-    MouseButton, MouseDownEvent, Pixels, Render, ScrollHandle, ScrollStrategy, SharedString,
-    Subscription, UniformListScrollHandle, Window, div, prelude::*, px, uniform_list,
+    Bounds, Context, Entity, EntityId, ExternalPaths, FocusHandle, Focusable, Image, IntoElement,
+    KeyDownEvent, MouseButton, MouseDownEvent, Pixels, Render, ScrollHandle, ScrollStrategy,
+    SharedString, Subscription, UniformListScrollHandle, Window, div, prelude::*, px, uniform_list,
 };
 use zz_client::agent_ask::{DENY_PLACEHOLDER, REPLAN_PLACEHOLDER};
 use zz_client::agent_completion::{
@@ -41,6 +42,7 @@ use zz_client::agent_completion::{
 use zz_client::agent_resume::{Menu, ResumeRow, folder_name};
 use zz_client::agent_settings::{self, ComposerSetter, composer_setter};
 use zz_ui::{
+    attachment::{Arrival, Recipient, arrival},
     command::mention_picker,
     target::{TargetPicker, mention_button, mention_keys, mention_layer},
 };
@@ -336,6 +338,7 @@ impl AgentView {
                 .submit_on_enter(true)
                 .placeholder(format!("Message {}…", provider.label()))
                 .context_menu(true)
+                .paste_paths(true)
         });
         let input_observer = cx.observe(&input, |view, input, cx| {
             view.synchronize_input(&input, cx);
@@ -347,6 +350,7 @@ impl AgentView {
                 InputEvent::PressEnter { shift: false, .. } => view.enter(window, cx),
                 InputEvent::Change if view.submission_error.take().is_some() => cx.notify(),
                 InputEvent::PasteImages(images) => view.attach_images(images, cx),
+                InputEvent::PastePaths(paths) => view.receive_paths(paths, window, cx),
                 _ => {}
             },
         );
@@ -1387,6 +1391,46 @@ impl AgentView {
         cx.notify();
     }
 
+    fn receive_paths(&mut self, paths: &[PathBuf], window: &mut Window, cx: &mut Context<Self>) {
+        let Some(host) = self.mention.read(cx).here(cx) else {
+            return;
+        };
+        let home = std::env::home_dir().and_then(|home| home.to_str().map(str::to_owned));
+        let chat = Recipient {
+            host: &host,
+            local: self.mux.read(cx).attached_is_local(),
+            takes_images: self.pane_state.session_capabilities.images,
+            home: home.as_deref(),
+        };
+        let mut references = Vec::new();
+        for path in paths {
+            match arrival(path, path.is_dir(), chat) {
+                Arrival::Attach(format) => match std::fs::read(path) {
+                    Ok(bytes) => {
+                        self.attach_images(&[Arc::new(Image::from_bytes(format, bytes))], cx);
+                    }
+                    Err(error) => {
+                        self.submission_error = Some(Arc::from(format!(
+                            "could not read {}: {error}",
+                            path.display()
+                        )));
+                    }
+                },
+                Arrival::Mention(reference) => references.push(reference),
+                Arrival::Refuse(message) => self.submission_error = Some(Arc::from(message)),
+            }
+        }
+        self.mention.update(cx, |picker, cx| {
+            picker.insert_references(&references, window, cx);
+        });
+        cx.notify();
+    }
+
+    fn drop_paths(&mut self, paths: &ExternalPaths, window: &mut Window, cx: &mut Context<Self>) {
+        self.input.update(cx, |input, cx| input.focus(window, cx));
+        self.receive_paths(paths.paths(), window, cx);
+    }
+
     fn remove_attachment(&mut self, index: usize, cx: &mut Context<Self>) {
         if index < self.attachments.len() {
             self.attachments.remove(index);
@@ -2211,6 +2255,7 @@ impl Render for AgentView {
             .size_full()
             .overflow_hidden()
             .on_mouse_down(MouseButton::Left, cx.listener(Self::on_mouse_down))
+            .on_drop(cx.listener(Self::drop_paths))
             .capture_action(cx.listener(Self::move_completion_up))
             .capture_action(cx.listener(Self::move_completion_down))
             .capture_action(cx.listener(Self::move_ask_left))

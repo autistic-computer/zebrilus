@@ -4,7 +4,7 @@ use std::{
     future::Future,
     path::{Path, PathBuf},
     pin::Pin,
-    sync::{Arc, atomic::AtomicU64},
+    sync::{Arc, Weak, atomic::AtomicU64},
     thread::{self, JoinHandle},
 };
 
@@ -150,7 +150,7 @@ fn select_permission(
         Some(id) => pending
             .iter()
             .find(|pending| pending.request_id == id)
-            .ok_or_else(|| format!("unknown permission request: {id}"))?,
+            .ok_or_else(|| "no pending permission".to_owned())?,
         None => pending
             .first()
             .ok_or_else(|| "no pending permission".to_owned())?,
@@ -243,6 +243,25 @@ pub(crate) struct QueuedPrompt {
     pub(crate) waiter: Option<AgentTurnWaiter>,
     pub(crate) source: PromptSource,
     pub(crate) note: Option<String>,
+    pub(crate) ask: Option<RelayedAsk>,
+}
+
+#[derive(Debug)]
+pub(crate) struct RelayedAsk {
+    pub(crate) request: u64,
+    pub(crate) asker: Weak<Mutex<AgentPaneState>>,
+}
+
+impl RelayedAsk {
+    fn answered(&self) -> bool {
+        self.asker.upgrade().is_none_or(|state| {
+            !state
+                .lock()
+                .pending_permissions
+                .iter()
+                .any(|pending| pending.request_id == self.request)
+        })
+    }
 }
 
 fn waiting_prompts(queue: &VecDeque<QueuedPrompt>) -> usize {
@@ -256,7 +275,17 @@ fn waiting_prompts(queue: &VecDeque<QueuedPrompt>) -> usize {
 pub(crate) enum PromptSource {
     Composer,
     Command,
+    Chat,
     Injected,
+}
+
+impl PromptSource {
+    fn note(self, text: &str, extra: Option<&str>) -> Option<String> {
+        match self {
+            Self::Composer | Self::Command => zz_protocol::agent_mention::hidden_note(text, extra),
+            Self::Chat | Self::Injected => extra.map(str::to_owned),
+        }
+    }
 }
 
 impl QueuedPrompt {
@@ -279,6 +308,7 @@ impl From<AgentPrompt> for QueuedPrompt {
             waiter: None,
             source: PromptSource::Composer,
             note: None,
+            ask: None,
         }
     }
 }
@@ -404,6 +434,7 @@ struct PaneHandle {
     prompts: Sender<QueuedPrompt>,
     close: Sender<()>,
     state: Arc<Mutex<AgentPaneState>>,
+    auto_approve: Arc<Mutex<AgentAutoApprove>>,
     thread: JoinHandle<()>,
 }
 
@@ -569,6 +600,7 @@ impl AgentHost {
         let runtime_auto_approve = Arc::new(Mutex::new(
             spec.auto_approve.unwrap_or(self.config.lock().auto_approve),
         ));
+        let auto_approve = Arc::clone(&runtime_auto_approve);
         let state = Arc::new(Mutex::new(AgentPaneState::new(&spec)));
         let pane_state = Arc::clone(&state);
         let sink = Arc::clone(&self.sink);
@@ -616,6 +648,7 @@ impl AgentHost {
                 prompts: prompt_tx,
                 close: close_tx,
                 state,
+                auto_approve,
                 thread,
             },
         );
@@ -656,6 +689,20 @@ impl AgentHost {
                     unreachable!()
                 }
             })
+    }
+
+    pub(crate) fn pane_state(&self, pane: PaneId) -> Weak<Mutex<AgentPaneState>> {
+        self.registry
+            .panes
+            .lock()
+            .get(&pane)
+            .map_or_else(Weak::new, |handle| Arc::downgrade(&handle.state))
+    }
+
+    pub(crate) fn set_auto_approve(&self, pane: PaneId, tier: AgentAutoApprove) {
+        if let Some(handle) = self.registry.panes.lock().get(&pane) {
+            *handle.auto_approve.lock() = tier;
+        }
     }
 
     pub(crate) fn close(&self, pane: PaneId) -> Option<JoinHandle<()>> {
@@ -1472,7 +1519,9 @@ impl PanePump {
             }
         }
         if self.state.lock().phase.accepts_prompt() {
-            self.dispatch(queued);
+            if !self.answered_ask(&queued) {
+                self.dispatch(queued);
+            }
             return;
         }
         let queued_bytes = self.queue.iter().fold(0usize, |total, queued| {
@@ -1531,7 +1580,8 @@ impl PanePump {
 
     fn dispatch(&mut self, queued: QueuedPrompt) {
         let source = queued.source;
-        let note = queued.note.clone();
+        let extra = queued.note;
+        let note = source.note(&queued.prompt.text, extra.as_deref());
         self.next_turn_id = self.next_turn_id.saturating_add(1).max(1);
         let turn_id = self.next_turn_id;
         self.active_turn = Some(turn_id);
@@ -1562,14 +1612,15 @@ impl PanePump {
                     state.phase = AgentConnectionPhase::Ready;
                     settle_turn(&mut state);
                 }
-                let RuntimeCommand::Prompt { prompt, note, .. } = error.into_inner() else {
+                let RuntimeCommand::Prompt { prompt, .. } = error.into_inner() else {
                     return;
                 };
                 self.queue.push_front(QueuedPrompt {
                     prompt,
                     waiter: self.active_waiter.take(),
                     source,
-                    note,
+                    note: extra,
+                    ask: None,
                 });
                 self.reclaim_queue();
             }
@@ -1577,11 +1628,28 @@ impl PanePump {
     }
 
     fn dispatch_next(&mut self) {
-        let Some(queued) = self.queue.pop_front() else {
+        while let Some(queued) = self.queue.pop_front() {
+            if self.answered_ask(&queued) {
+                continue;
+            }
+            self.publish_queue_depth();
+            self.dispatch(queued);
             return;
-        };
+        }
         self.publish_queue_depth();
-        self.dispatch(queued);
+    }
+
+    fn answered_ask(&self, queued: &QueuedPrompt) -> bool {
+        let Some(ask) = queued.ask.as_ref().filter(|ask| ask.answered()) else {
+            return false;
+        };
+        log::info!(
+            target: "zz::agent",
+            "request {} was answered before {} took its ask; dropped it",
+            ask.request,
+            self.pane
+        );
+        true
     }
 
     fn reclaim_queue(&mut self) {
@@ -2243,6 +2311,7 @@ mod tests {
                 }),
                 source: PromptSource::Composer,
                 note: None,
+                ask: None,
             }));
             reply
         }
@@ -3202,7 +3271,7 @@ mod tests {
         );
         assert_eq!(
             select_permission(&pending, Some(99), &PermissionChoice::Allow),
-            Err("unknown permission request: 99".to_owned())
+            Err("no pending permission".to_owned())
         );
     }
 
@@ -3261,6 +3330,7 @@ mod tests {
                 waiter: None,
                 source,
                 note: None,
+                ask: None,
             })
         };
         fixture.prompt("busy");
@@ -3315,6 +3385,7 @@ mod tests {
             }),
             source: PromptSource::Composer,
             note: None,
+            ask: None,
         }));
         let Err(AgentTurnFailure::Blocked { permission, reply }) =
             result.recv_timeout(DEADLINE).expect("blocked waiter")
@@ -3634,6 +3705,7 @@ mod tests {
                 }),
                 source: PromptSource::Composer,
                 note: None,
+                ask: None,
             })
             .unwrap();
         pump.observe(AgentStreamPayload::SessionReset { restoring: true });

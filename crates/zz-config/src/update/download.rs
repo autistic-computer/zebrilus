@@ -9,7 +9,7 @@ use std::{
 
 use sha2::{Digest as _, Sha256};
 
-use super::{Progress, UpdateError};
+use super::{Progress, UpdateError, tls};
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 const RESPONSE_TIMEOUT: Duration = Duration::from_secs(30);
@@ -20,6 +20,7 @@ const USER_AGENT: &str = concat!("zz/", env!("CARGO_PKG_VERSION"));
 
 fn agent() -> ureq::Agent {
     ureq::Agent::config_builder()
+        .tls_config(tls())
         .timeout_connect(Some(CONNECT_TIMEOUT))
         .timeout_recv_response(Some(RESPONSE_TIMEOUT))
         .timeout_per_read(Some(READ_TIMEOUT))
@@ -32,10 +33,13 @@ fn get(agent: &ureq::Agent, url: &str) -> Result<ureq::http::Response<ureq::Body
         .get(url)
         .header("User-Agent", USER_AGENT)
         .call()
-        .map_err(|error| UpdateError::Network(error.to_string()))
+        .map_err(|error| match error {
+            ureq::Error::StatusCode(404) => UpdateError::NotFound(error.to_string()),
+            error => UpdateError::Network(error.to_string()),
+        })
 }
 
-pub(super) fn expected_checksum(url: &str) -> Result<String, UpdateError> {
+pub(crate) fn expected_checksum(url: &str) -> Result<String, UpdateError> {
     let text = get(&agent(), url)?
         .body_mut()
         .read_to_string()
@@ -49,7 +53,7 @@ pub(super) fn parse_checksum(text: &str) -> Option<String> {
         .then(|| token.to_ascii_lowercase())
 }
 
-pub(super) fn fetch(
+pub(crate) fn fetch(
     url: &str,
     destination: &Path,
     cancel: &AtomicBool,
@@ -104,7 +108,7 @@ fn stream(
     Ok(hasher.finish())
 }
 
-pub(super) fn verify(file: &Path, expected: &str, actual: &str) -> Result<(), UpdateError> {
+pub(crate) fn verify(file: &Path, expected: &str, actual: &str) -> Result<(), UpdateError> {
     if expected == actual {
         return Ok(());
     }

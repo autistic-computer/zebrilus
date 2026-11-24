@@ -109,6 +109,10 @@ pub fn mentions(text: &str) -> Vec<Mention> {
         .collect()
 }
 
+const AGENT_REPLIES: &str = "Its reply and any questions come back to you as messages.";
+const AGENT_REPLIES_BEFORE: &str =
+    "Its reply and any permission asks come back to you as messages.";
+
 impl Mention {
     #[must_use]
     pub fn instruction(&self) -> String {
@@ -120,7 +124,7 @@ impl Mention {
                     .map(|model| format!(" --model {model}"))
                     .unwrap_or_default();
                 format!(
-                    "The user tagged {name}: {name} does this task, not you. Write it a brief that stands on its own, run zz new-pane -d --kind agent {name}{model} 'BRIEF' and end your turn. Do not do the task yourself. Its reply and any permission asks come back to you as messages."
+                    "The user tagged {name}: {name} does this task, not you. Write it a brief that stands on its own, run zz new-pane -d --kind agent {name}{model} 'BRIEF' and end your turn. Do not do the task yourself. {AGENT_REPLIES}"
                 )
             }
             Self::Chat { host, pane } if host == LOCAL_HOST => local_chat_note(host, *pane),
@@ -153,11 +157,9 @@ pub fn mention_note(text: &str) -> Option<String> {
 pub fn child_note(parent: PaneId, parent_provider: AgentProvider, child: AgentProvider) -> String {
     let name = parent_provider.command_name();
     let escalate = if child == AgentProvider::Codex {
-        format!(
-            " If a command fails with \"Operation not permitted\", rerun it with escalated permissions even if your brief says to stop on failure; {parent} is asked to approve it."
-        )
+        " If a command fails with \"Operation not permitted\", rerun it with escalated permissions even if your brief says to stop on failure; the approval is answered for you."
     } else {
-        String::new()
+        ""
     };
     format!(
         "{parent} ({name}) opened this chat. Your final message is sent to it as your reply, so finish with the answer. You cannot open other agents or message {parent}; if you need something, say so in your reply.{escalate}"
@@ -190,7 +192,8 @@ fn note_line(line: &str) -> bool {
             .split_once(&marker)
             .and_then(|(_, rest)| rest.split_once(" 'BRIEF'"))
             .map(|(model, _)| model.to_owned());
-        return Mention::Agent { provider, model }.instruction() == line;
+        let current = Mention::Agent { provider, model }.instruction();
+        return current == line || current.replace(AGENT_REPLIES, AGENT_REPLIES_BEFORE) == line;
     }
     if let Some((token, _)) = line.split_once(" is another chat, not you") {
         return match Mention::parse(token) {
@@ -499,6 +502,7 @@ pub struct AgentAsk {
     pub provider: AgentProvider,
     pub what: String,
     pub answers: AskAnswers,
+    pub request: Option<u64>,
 }
 
 impl fmt::Display for AgentAsk {
@@ -506,37 +510,26 @@ impl fmt::Display for AgentAsk {
         let pane = self.pane;
         write_header(formatter, pane, self.provider)?;
         write!(formatter, " asks: {}", self.what)?;
-        let deny = AgentRespond {
+        let respond = |decision| AgentRespond {
             pane,
-            decision: AgentDecision::Deny,
-            request: None,
+            decision,
+            request: self.request,
         };
+        let deny = respond(AgentDecision::Deny);
         match &self.answers {
             AskAnswers::AllowDeny => {
-                let allow = AgentRespond {
-                    pane,
-                    decision: AgentDecision::Allow,
-                    request: None,
-                };
+                let allow = respond(AgentDecision::Allow);
                 write!(formatter, "\n{allow}\n{deny}")
             }
             AskAnswers::Options(options) => {
                 for option in options {
-                    let pick = AgentRespond {
-                        pane,
-                        decision: AgentDecision::Option(option.id.clone()),
-                        request: None,
-                    };
+                    let pick = respond(AgentDecision::Option(option.id.clone()));
                     write!(formatter, "\n{pick}  # {}", option.label)?;
                 }
                 write!(formatter, "\n{deny}")
             }
             AskAnswers::FreeText => {
-                let answer = AgentRespond {
-                    pane,
-                    decision: AgentDecision::Answer("TEXT".to_owned()),
-                    request: None,
-                };
+                let answer = respond(AgentDecision::Answer("TEXT".to_owned()));
                 write!(formatter, "\n{answer}\n{deny}")
             }
         }
@@ -550,7 +543,11 @@ impl AgentAsk {
         let (pane, provider, tail) = header(lines.next()?)?;
         let what = tail.strip_prefix("asks: ")?.to_owned();
         let rest = lines.collect::<Vec<_>>();
-        let respond = |line: &str| AgentRespond::parse(line).filter(|respond| respond.pane == pane);
+        let request = AgentRespond::parse(rest.last()?)?.request;
+        let respond = |line: &str| {
+            AgentRespond::parse(line)
+                .filter(|respond| respond.pane == pane && respond.request == request)
+        };
         let denies = |line: &str| respond(line).is_some_and(|r| r.decision == AgentDecision::Deny);
         let answers = match rest.as_slice() {
             [allow, deny]
@@ -592,6 +589,7 @@ impl AgentAsk {
             provider,
             what,
             answers,
+            request,
         })
     }
 }
@@ -789,7 +787,7 @@ mod tests {
         let asks = [
             (
                 AskAnswers::AllowDeny,
-                "[zz] %4 (codex) asks: execute cargo test\nzz agent-respond -t %4 --allow\nzz agent-respond -t %4 --deny",
+                "[zz] %4 (codex) asks: execute cargo test\nzz agent-respond -t %4 --allow 9\nzz agent-respond -t %4 --deny 9",
             ),
             (
                 AskAnswers::Options(vec![
@@ -802,11 +800,11 @@ mod tests {
                         label: "Dark red".to_owned(),
                     },
                 ]),
-                "[zz] %4 (codex) asks: execute cargo test\nzz agent-respond -t %4 --option answer-0  # Blue\nzz agent-respond -t %4 --option answer-1  # Dark red\nzz agent-respond -t %4 --deny",
+                "[zz] %4 (codex) asks: execute cargo test\nzz agent-respond -t %4 --option answer-0 9  # Blue\nzz agent-respond -t %4 --option answer-1 9  # Dark red\nzz agent-respond -t %4 --deny 9",
             ),
             (
                 AskAnswers::FreeText,
-                "[zz] %4 (codex) asks: execute cargo test\nzz agent-respond -t %4 --answer 'TEXT'\nzz agent-respond -t %4 --deny",
+                "[zz] %4 (codex) asks: execute cargo test\nzz agent-respond -t %4 --answer 'TEXT' 9\nzz agent-respond -t %4 --deny 9",
             ),
         ];
         for (answers, text) in asks {
@@ -815,10 +813,22 @@ mod tests {
                 provider: codex,
                 what: "execute cargo test".to_owned(),
                 answers,
+                request: Some(9),
             };
             assert_eq!(ask.to_string(), text);
             assert_eq!(AgentAsk::parse(text), Some(ask));
         }
+        let earlier = "[zz] %4 (codex) asks: execute cargo test\nzz agent-respond -t %4 --allow\nzz agent-respond -t %4 --deny";
+        assert_eq!(
+            AgentAsk::parse(earlier).map(|ask| (ask.answers, ask.request)),
+            Some((AskAnswers::AllowDeny, None))
+        );
+        assert_eq!(
+            AgentAsk::parse(
+                "[zz] %4 (codex) asks: execute cargo test\nzz agent-respond -t %4 --allow 8\nzz agent-respond -t %4 --deny 9"
+            ),
+            None
+        );
         let opened = |route| ReplyNotice::Opened {
             verb: "new-pane".to_owned(),
             pane,
@@ -899,8 +909,8 @@ mod tests {
                 },
             ]
         );
-        let codex = "The user tagged codex: codex does this task, not you. Write it a brief that stands on its own, run zz new-pane -d --kind agent codex 'BRIEF' and end your turn. Do not do the task yourself. Its reply and any permission asks come back to you as messages.";
-        let claude = "The user tagged claude: claude does this task, not you. Write it a brief that stands on its own, run zz new-pane -d --kind agent claude --model opus 'BRIEF' and end your turn. Do not do the task yourself. Its reply and any permission asks come back to you as messages.";
+        let codex = "The user tagged codex: codex does this task, not you. Write it a brief that stands on its own, run zz new-pane -d --kind agent codex 'BRIEF' and end your turn. Do not do the task yourself. Its reply and any questions come back to you as messages.";
+        let claude = "The user tagged claude: claude does this task, not you. Write it a brief that stands on its own, run zz new-pane -d --kind agent claude --model opus 'BRIEF' and end your turn. Do not do the task yourself. Its reply and any questions come back to you as messages.";
         let chat = "@macbook:%2 is another chat, not you, on macbook: run zz --host macbook agent-send -t %2 'TEXT'. The command prints how its reply reaches you; do what it says.";
         let here = "@local:%2 is another chat, not you: run zz agent-send -t %2 'TEXT' and end your turn. Its reply comes back to you as a message.";
         assert_eq!(mention_note("ask @local:%2").as_deref(), Some(here));
@@ -912,7 +922,7 @@ mod tests {
         let child = child_note(PaneId(1), AgentProvider::ClaudeCode, AgentProvider::Codex);
         assert_eq!(
             child,
-            "%1 (claude) opened this chat. Your final message is sent to it as your reply, so finish with the answer. You cannot open other agents or message %1; if you need something, say so in your reply. If a command fails with \"Operation not permitted\", rerun it with escalated permissions even if your brief says to stop on failure; %1 is asked to approve it."
+            "%1 (claude) opened this chat. Your final message is sent to it as your reply, so finish with the answer. You cannot open other agents or message %1; if you need something, say so in your reply. If a command fails with \"Operation not permitted\", rerun it with escalated permissions even if your brief says to stop on failure; the approval is answered for you."
         );
         assert_eq!(
             child_note(PaneId(1), AgentProvider::Codex, AgentProvider::ClaudeCode),
@@ -921,6 +931,9 @@ mod tests {
         let hidden = hidden_note("@+claude/opus and @macbook:%2", Some(&child)).expect("note");
         assert_eq!(hidden, format!("{child}\n{claude}\n{chat}"));
         assert!(is_hidden_note(&hidden));
+        assert!(is_hidden_note(
+            "The user tagged codex: codex does this task, not you. Write it a brief that stands on its own, run zz new-pane -d --kind agent codex 'BRIEF' and end your turn. Do not do the task yourself. Its reply and any permission asks come back to you as messages."
+        ));
         assert!(!is_hidden_note(
             "The user tagged codex: please do it yourself."
         ));

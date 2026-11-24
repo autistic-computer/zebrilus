@@ -107,8 +107,8 @@ stage_headless() {
         echo "zz-cli links GUI crates" >&2
         return 1
     fi
-    if grep -Eq '^ureq ' <<<"$tree"; then
-        echo "zz-cli links the update checker's TLS stack" >&2
+    if cargo tree -p zz-cli -e features --target all -i rustls | grep -q 'rustls feature "ring"'; then
+        echo "zz-cli turns on rustls's ring beside aws-lc-rs, so rustls has no default provider" >&2
         return 1
     fi
 }

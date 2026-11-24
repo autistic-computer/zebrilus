@@ -18,6 +18,8 @@ use zz_daemon_client::{
 };
 
 const RECHECK: Duration = Duration::from_secs(30);
+const BIND_RETRY: Duration = Duration::from_secs(10);
+const BIND_RETRY_STEP: Duration = Duration::from_millis(500);
 const STOP_POLL: Duration = Duration::from_millis(250);
 const ACCEPT_POLL: Duration = Duration::from_millis(100);
 
@@ -102,18 +104,19 @@ pub(crate) fn spawn(
     socket: PathBuf,
     default_socket: bool,
     stopping: impl Fn() -> bool + Send + 'static,
-) -> io::Result<()> {
+) -> io::Result<JoinHandle<()>> {
     thread::Builder::new()
         .name("zz-tailnet".to_owned())
         .spawn(move || supervise(&socket, default_socket, &stopping))
-        .map(|_| ())
 }
 
 fn supervise(socket: &Path, default_socket: bool, stopping: &dyn Fn() -> bool) {
     let current: Current = Arc::new(RwLock::new(None));
     let mut listening: HashMap<SocketAddr, Listening> = HashMap::new();
     let mut reported = String::new();
+    let started = Instant::now();
     while !stopping() {
+        let mut bind_failed = false;
         let settings = read_settings();
         let own_report = own::step(&settings, socket);
         let wanted = match settings.mode {
@@ -154,6 +157,7 @@ fn supervise(socket: &Path, default_socket: bool, stopping: &dyn Fn() -> bool) {
                         Err(error) => failures.push(format!("{address}: {error}")),
                     }
                 }
+                bind_failed = !failures.is_empty();
                 let mut bound: Vec<String> = listening.keys().map(ToString::to_string).collect();
                 bound.sort();
                 if failures.is_empty() {
@@ -184,7 +188,12 @@ fn supervise(socket: &Path, default_socket: bool, stopping: &dyn Fn() -> bool) {
             log::info!("{report}");
             reported = report;
         }
-        let deadline = Instant::now() + RECHECK;
+        let recheck = if bind_failed && started.elapsed() < BIND_RETRY {
+            BIND_RETRY_STEP
+        } else {
+            RECHECK
+        };
+        let deadline = Instant::now() + recheck;
         while Instant::now() < deadline && !stopping() && !WAKE.swap(false, Ordering::AcqRel) {
             thread::sleep(STOP_POLL);
         }

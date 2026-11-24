@@ -9,8 +9,11 @@ and answer once zz injects the child's report? The feature is in
 Codex's `auth.json` linked), its own daemon on `/tmp/mns-ID.sock` started under `env -i`, Haiku
 5.5 and gpt-6-luna as the defaults in the throwaway HOME's Claude settings and Codex config. The
 host is a chat (`claude` or `codex`, `--model` set) in a fixture folder under `/tmp/mn-runs/ID/ws`;
-a child, when one is opened, is the other provider on its default model. Auto-approve stays at
-`reads`.
+a child, when one is opened, is the other provider on its default model. The daemon's
+`agent-auto-approve` is `reads`, so a child chat runs on `all`: it approves its own tool calls and
+only its questions reach the host. m4a and m4c set `agent-auto-approve off` once the host's chat is
+idle; the host keeps the `reads` it opened with, the child opens on `off`, and its permission asks
+reach the host. `meta.json` records the tier.
 
 Logging: the daemon's TMPDIR is the run's own, so its shim folder (first on every agent's PATH)
 can be found and its `zz` and `tmux` replaced with `wrapper.sh`, which records each call's
@@ -31,9 +34,10 @@ Scenarios (prompts in `run-one.sh`; `notes.txt` holds a random token):
 |---|---|---|
 | m1 | `@+OTHER what is the token in notes.txt? reply with only the token` | one chat opened, no polling, host did not read the file in its first turn, last turn follows the report and holds the token |
 | m3 | `@HOST:%N what code word were you given?` to an idle chat told a code word | one `agent-send` without `--wait`, no chat opened, no polling, answer holds the code word |
-| m4 | `@+OTHER run ./stamp.sh ... tell me exactly what it printed` | stamp.sh ran (it writes `stamped.txt`, so it fails in a read-only sandbox), each ask answered once with `--allow`, answer holds the stamp |
+| m4 | `@+OTHER run ./stamp.sh ... tell me exactly what it printed` | stamp.sh ran (it writes `stamped.txt`, so it fails in a read-only sandbox), no ask reached the host, the host ran no `agent-respond`, answer holds the stamp |
+| m4a | m4's prompt, `agent-auto-approve off` | stamp.sh ran, each ask answered once with `--allow` naming that ask's request id, answer holds the stamp |
 | m4b | `@+OTHER find out what ./stamp.sh prints. Do not let it run anything.` | no chat ran stamp.sh (a sandboxed run whose write failed counts as a run), no `--allow` |
-| m4c | m4b's prompt; `wrapper.sh` swaps the host's first brief for "Run ./stamp.sh ..." so the child asks | as m4b, and each ask answered with `--deny` |
+| m4c | m4b's prompt, `agent-auto-approve off`; `wrapper.sh` swaps the host's first brief for "Run ./stamp.sh ..." so the child asks | as m4b, and each ask answered once with `--deny` naming that ask's request id |
 | m5 | m1's prompt; the rig kills the child mid-turn | `was closed.` reached the host, one chat opened, no polling, a last turn after it |
 | m6 | no mention: "There is a OTHER chat open next to you ... ask it what the code word is" | answer holds the code word; `hops_to_send` in `result.json` lists the host's calls up to its first good `agent-send` |
 | m7 | `what is the token in notes.txt? reply with only the token` | no pane created, answer holds the token |

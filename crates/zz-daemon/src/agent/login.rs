@@ -45,8 +45,7 @@ pub(crate) enum Effect {
     StopCli,
     SendCode,
     Probe,
-    SwitchPane,
-    RemoveHome,
+    Discard,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -69,17 +68,17 @@ enum Phase {
 pub(crate) struct LoginState {
     pub(crate) browser: AgentLoginBrowser,
     pub(crate) step: AgentLoginStep,
-    fresh: bool,
+    discards: bool,
     phase: Phase,
     deadline: Option<Instant>,
 }
 
 impl LoginState {
-    pub(crate) fn new(browser: AgentLoginBrowser, fresh: bool, now: Instant) -> Self {
+    pub(crate) fn new(browser: AgentLoginBrowser, discards: bool, now: Instant) -> Self {
         Self {
             browser,
             step: AgentLoginStep::Starting,
-            fresh,
+            discards,
             phase: Phase::Starting,
             deadline: Some(now + START_TIMEOUT),
         }
@@ -97,7 +96,7 @@ impl LoginState {
         Self {
             browser: self.browser,
             step,
-            fresh: self.fresh,
+            discards: self.discards,
             phase,
             deadline,
         }
@@ -106,7 +105,7 @@ impl LoginState {
     fn end(&self, step: AgentLoginStep) -> LoginDecision {
         Decision::to(self.with(Phase::Finished, step, None))
             .with_effect(Effect::StopCli)
-            .with_effects(self.fresh.then_some(Effect::RemoveHome))
+            .with_effects(self.discards.then_some(Effect::Discard))
     }
 }
 
@@ -157,12 +156,10 @@ impl Machine for LoginMachine {
                         SIGNED_OUT_AFTER_LOGIN.to_owned(),
                     )));
                 }
-                let (pane, switch) = match pane {
-                    PaneCondition::Absent => (None, None),
-                    PaneCondition::Idle => {
-                        (Some(AgentLoginPane::Switched), Some(Effect::SwitchPane))
-                    }
-                    PaneCondition::Busy => (Some(AgentLoginPane::Busy), None),
+                let pane = match pane {
+                    PaneCondition::Absent => None,
+                    PaneCondition::Idle => Some(AgentLoginPane::Switched),
+                    PaneCondition::Busy => Some(AgentLoginPane::Busy),
                 };
                 let done = AgentLoginStep::Done {
                     email: account.email.clone(),
@@ -170,7 +167,7 @@ impl Machine for LoginMachine {
                     plan: account.plan.clone(),
                     pane,
                 };
-                Decision::to(state.with(Phase::Finished, done, None)).with_effects(switch)
+                Decision::to(state.with(Phase::Finished, done, None))
             }
             Fact::Prompted(_) | Fact::Verified { .. } => Decision::stay(),
             Fact::Failed(failure) => state.end(AgentLoginStep::Failed(failure.clone())),
@@ -220,10 +217,10 @@ mod tests {
     }
 
     impl Run {
-        fn new(browser: AgentLoginBrowser, fresh: bool) -> Self {
+        fn new(browser: AgentLoginBrowser, discards: bool) -> Self {
             let now = Instant::now();
             Self {
-                state: LoginState::new(browser, fresh, now),
+                state: LoginState::new(browser, discards, now),
                 now,
                 steps: vec![AgentLoginStep::Starting],
                 effects: Vec::new(),
@@ -265,7 +262,7 @@ mod tests {
     }
 
     #[test]
-    fn a_claude_sign_in_elsewhere_waits_for_the_pasted_code_then_switches_the_idle_pane() {
+    fn a_claude_sign_in_elsewhere_waits_for_the_pasted_code_and_reports_the_idle_pane_switched() {
         let mut run = Run::new(AgentLoginBrowser::Elsewhere, true);
         assert_eq!(
             run.feed(&Fact::CodeSubmitted),
@@ -297,12 +294,7 @@ mod tests {
         );
         assert_eq!(
             run.effects,
-            [
-                Effect::SendCode,
-                Effect::StopCli,
-                Effect::Probe,
-                Effect::SwitchPane
-            ]
+            [Effect::SendCode, Effect::StopCli, Effect::Probe]
         );
         assert_eq!(LoginMachine::wake_at(&run.state), None);
         assert_eq!(run.feed(&Fact::Cancel), Some(Reject::Finished));
@@ -376,13 +368,13 @@ mod tests {
                 Effect::StopCli,
                 Effect::Launch,
                 Effect::StopCli,
-                Effect::RemoveHome
+                Effect::Discard
             ]
         );
     }
 
     #[test]
-    fn a_codex_sign_in_fails_or_is_cancelled_and_only_a_fresh_account_is_removed() {
+    fn a_codex_sign_in_fails_or_is_cancelled_and_only_a_parked_copy_is_discarded() {
         let mut run = Run::new(AgentLoginBrowser::Elsewhere, true);
         run.feed(&Fact::Failed(AgentLoginFailure::DeviceCodeDisabled));
         assert_eq!(
@@ -391,7 +383,7 @@ mod tests {
                 AgentLoginFailure::DeviceCodeDisabled
             ))
         );
-        assert_eq!(run.effects, [Effect::StopCli, Effect::RemoveHome]);
+        assert_eq!(run.effects, [Effect::StopCli, Effect::Discard]);
 
         let mut run = Run::new(AgentLoginBrowser::Local, false);
         run.feed(&Fact::Prompted(Prompt::Browser {
@@ -426,7 +418,7 @@ mod tests {
                 Effect::StopCli,
                 Effect::Probe,
                 Effect::StopCli,
-                Effect::RemoveHome
+                Effect::Discard
             ]
         );
     }

@@ -50,8 +50,19 @@ pub(crate) fn fixture_runner(
     auto_approve: AgentAutoApprove,
     load: bool,
 ) -> PaneRunner {
+    let runner = fixture_runner_at_host_tier(provider, behavior, load);
     Box::new(move |channels: RuntimeChannels| {
         *channels.auto_approve.lock() = auto_approve;
+        runner(channels)
+    })
+}
+
+pub(crate) fn fixture_runner_at_host_tier(
+    provider: AgentProvider,
+    behavior: Behavior,
+    load: bool,
+) -> PaneRunner {
+    Box::new(move |channels: RuntimeChannels| {
         Box::pin(run_agent_connection(
             provider,
             channels.auto_approve,

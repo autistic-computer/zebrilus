@@ -1,6 +1,4 @@
 mod deb;
-mod download;
-mod error;
 mod homebrew;
 mod mac_bundle;
 mod tarball;
@@ -20,9 +18,7 @@ use semver::Version;
 use serde::{Deserialize, Serialize};
 use zz_daemon_client::unmasked::SpawnUnmasked as _;
 
-pub use error::UpdateError;
-
-use super::{Channel, Release, ReleaseAsset};
+use super::{Channel, Progress, Release, ReleaseAsset, UpdateError, download};
 
 const LOG_TARGET: &str = "zz::update";
 const BUNDLE_NAME: &str = "zz.app";
@@ -465,14 +461,6 @@ fn assets_for_arch(release: &Release, target: &Target, arch: &str) -> Option<Ass
         file: find(&name)?,
         checksum: find(&checksum)?,
     })
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Progress {
-    Downloading { received: u64, total: Option<u64> },
-    Running { detail: String },
-    Verifying,
-    Staging,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

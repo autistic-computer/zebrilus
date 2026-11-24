@@ -27,6 +27,8 @@ pub struct SegmentedControl {
     size: Size,
     disabled: bool,
     full_width: bool,
+    dots: Vec<usize>,
+    dimmed: Vec<usize>,
     on_select: Option<SelectHandler>,
 }
 
@@ -52,6 +54,8 @@ impl SegmentedControl {
             size: Size::Medium,
             disabled: false,
             full_width: false,
+            dots: Vec::new(),
+            dimmed: Vec::new(),
             on_select: None,
         }
     }
@@ -71,6 +75,18 @@ impl SegmentedControl {
     #[must_use]
     pub const fn full_width(mut self) -> Self {
         self.full_width = true;
+        self
+    }
+
+    #[must_use]
+    pub fn dots(mut self, indices: impl IntoIterator<Item = usize>) -> Self {
+        self.dots = indices.into_iter().collect();
+        self
+    }
+
+    #[must_use]
+    pub fn dimmed(mut self, indices: impl IntoIterator<Item = usize>) -> Self {
+        self.dimmed = indices.into_iter().collect();
         self
     }
 
@@ -197,6 +213,8 @@ impl RenderOnce for SegmentedControl {
 
         let skip = usize::from(pill.is_some());
         let measured = state.clone();
+        let dots = self.dots;
+        let dimmed = self.dimmed;
         let segments = self
             .segments
             .into_iter()
@@ -250,7 +268,20 @@ impl RenderOnce for SegmentedControl {
                             .active(move |style| style.bg(pressed_fill))
                         }
                     })
-                    .child(label)
+                    .map(|segment| {
+                        if dimmed.contains(&index) {
+                            segment.child(div().opacity(DIM).child(label))
+                        } else {
+                            segment.child(label)
+                        }
+                    })
+                    .when(dots.contains(&index), |segment| {
+                        segment.gap(Space::S6).child(crate::components::chip::dot(
+                            Tone::Accent,
+                            ground,
+                            cx,
+                        ))
+                    })
                     .when_some(click, |segment, click| {
                         let tap = Rc::clone(&click);
                         segment

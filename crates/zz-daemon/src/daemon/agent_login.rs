@@ -14,7 +14,10 @@ use zz_protocol::{
 };
 
 use super::accounts::{AccountChoice, AddAccount};
-use crate::agent::login::{Ctx, Effect, Fact, LoginMachine, LoginState, PaneCondition, Prompt};
+use crate::agent::{
+    login::{Ctx, Effect, Fact, LoginMachine, LoginState, PaneCondition, Prompt},
+    logins::{self, Landing},
+};
 
 const STDERR_LINES: usize = 3;
 const EXIT_WAIT: Duration = Duration::from_secs(2);
@@ -113,6 +116,8 @@ impl Shared {
                     },
                     outbox: sender,
                     generation: 0,
+                    copied: None,
+                    asked: None,
                 };
                 driver.run(&add.account, &receiver);
             });
@@ -164,32 +169,22 @@ impl Shared {
         }
     }
 
-    fn login_pane(&self, pane: Option<PaneId>, provider: AgentProvider) -> PaneCondition {
-        use crate::agent::cli_session;
-
-        let Some(pane) = pane else {
-            return PaneCondition::Absent;
-        };
-        let kind = self
-            .inner
-            .lock()
-            .engine
-            .state
-            .pane(pane)
-            .map(|state| state.kind.clone());
-        match kind {
-            Some(PaneKind::Agent(descriptor)) if descriptor.provider == provider => {
-                let state = self
-                    .open_agent_runtime()
-                    .and_then(|runtime| runtime.wire_state(pane))
-                    .unwrap_or_default();
-                if cli_session::busy(&cli_session::chat_running(&state)).is_some() {
-                    PaneCondition::Busy
-                } else {
-                    PaneCondition::Idle
-                }
-            }
-            _ => PaneCondition::Absent,
+    fn login_pane(
+        &self,
+        pane: Option<PaneId>,
+        provider: AgentProvider,
+        landing: Landing,
+    ) -> PaneCondition {
+        let chat = pane.is_some_and(|pane| {
+            matches!(
+                self.inner.lock().engine.state.pane(pane).map(|state| &state.kind),
+                Some(PaneKind::Agent(descriptor)) if descriptor.provider == provider
+            )
+        });
+        match (chat, landing) {
+            (false, _) => PaneCondition::Absent,
+            (true, Landing::Active) => PaneCondition::Idle,
+            (true, Landing::Parked) => PaneCondition::Busy,
         }
     }
 }
@@ -199,12 +194,13 @@ struct Driver {
     login: AgentLogin,
     outbox: mpsc::Sender<Input>,
     generation: u64,
+    copied: Option<String>,
+    asked: Option<String>,
 }
 
 struct Account {
     program: PathBuf,
     search: Option<OsString>,
-    home: Option<PathBuf>,
 }
 
 impl Driver {
@@ -212,8 +208,8 @@ impl Driver {
         let now = Instant::now();
         let mut state = LoginState::new(self.login.browser, false, now);
         let account = match self.account(choice) {
-            Ok((account, fresh)) => {
-                state = LoginState::new(self.login.browser, fresh, now);
+            Ok(account) => {
+                state = LoginState::new(self.login.browser, self.copied.is_some(), now);
                 Some(account)
             }
             Err(failure) => {
@@ -232,7 +228,7 @@ impl Driver {
         }
     }
 
-    fn account(&mut self, choice: &AccountChoice) -> Result<(Account, bool), AgentLoginFailure> {
+    fn account(&mut self, choice: &AccountChoice) -> Result<Account, AgentLoginFailure> {
         let provider = self.login.provider;
         let shared = self
             .shared
@@ -241,17 +237,26 @@ impl Driver {
         let search = shared.provider_search();
         let program =
             providers::locate(provider, search.as_ref()).ok_or(AgentLoginFailure::NotInstalled)?;
-        let picked = super::accounts::pick_account(provider, &program, search.as_ref(), choice)
-            .map_err(AgentLoginFailure::Cli)?;
-        self.login.account = picked.id;
-        Ok((
-            Account {
-                program,
-                search,
-                home: picked.home,
-            },
-            picked.fresh,
-        ))
+        if logins::swaps(provider) {
+            let native = super::accounts::identify(provider, &program, search.as_ref(), None)
+                .map(|(account, _)| account);
+            super::accounts::settle(provider, &program, search.as_ref(), native.as_ref());
+            let _guard = logins::guard();
+            let record = logins::load(provider).unwrap_or_default();
+            self.copied =
+                logins::begin_sign_in(&logins::System, provider, &record).map_err(|error| {
+                    AgentLoginFailure::Cli(format!(
+                        "Could not set the current {} login aside: {error}",
+                        provider.label()
+                    ))
+                })?;
+            self.asked = match choice {
+                AccountChoice::Named(id) => Some(id.clone()),
+                AccountChoice::New | AccountChoice::Default => None,
+            };
+            self.login.account.clone_from(&self.asked);
+        }
+        Ok(Account { program, search })
     }
 
     fn drive(&mut self, state: &mut LoginState, account: &Account, inbox: &mpsc::Receiver<Input>) {
@@ -339,12 +344,13 @@ impl Driver {
                 _ => None,
             },
             Effect::Probe => Some(self.probe(account)),
-            Effect::SwitchPane => {
-                self.switch_pane();
-                None
-            }
-            Effect::RemoveHome => {
-                remove_home(account.home.as_deref());
+            Effect::Discard => {
+                let _guard = logins::guard();
+                logins::abandon_sign_in(
+                    &logins::System,
+                    self.login.provider,
+                    self.copied.take().as_deref(),
+                );
                 None
             }
         }
@@ -382,45 +388,75 @@ impl Driver {
         )
     }
 
-    fn probe(&self, account: &Account) -> Fact {
+    fn probe(&mut self, account: &Account) -> Fact {
         let provider = self.login.provider;
-        let id = self.login.account.clone();
-        let (probed, quota) = super::accounts::identify(
-            provider,
-            &account.program,
-            id.clone(),
-            account.search.as_ref(),
-        )
-        .unwrap_or_else(|| {
-            let unread = super::accounts::signed_out(provider);
-            (zz_protocol::AgentAccount { id, ..unread }, None)
-        });
-        let pane = match self.shared.upgrade() {
-            Some(shared) => {
-                shared.record_agent_account(probed.clone(), quota);
-                shared.login_pane(self.login.pane, provider)
-            }
-            None => PaneCondition::Absent,
+        let (mut probed, quota) =
+            super::accounts::identify(provider, &account.program, account.search.as_ref(), None)
+                .unwrap_or_else(|| (super::accounts::signed_out(provider), None));
+        let Some(shared) = self.shared.upgrade() else {
+            return Fact::Verified {
+                account: probed,
+                pane: PaneCondition::Absent,
+            };
         };
+        if !probed.signed_in {
+            return Fact::Verified {
+                account: probed,
+                pane: PaneCondition::Absent,
+            };
+        }
+        let busy = shared.provider_busy(provider).is_some();
+        let landing = if logins::swaps(provider) {
+            let _guard = logins::guard();
+            let mut record = logins::load(provider).unwrap_or_default();
+            let finished = logins::finish_sign_in(
+                &logins::System,
+                provider,
+                &mut record,
+                self.copied.as_deref(),
+                &probed,
+                self.asked.as_deref(),
+                busy,
+            );
+            self.copied = None;
+            let (id, landing) = match finished {
+                Ok(finished) => finished,
+                Err(error) => return Fact::Failed(AgentLoginFailure::Cli(error)),
+            };
+            if let Err(error) = logins::store(provider, &record) {
+                log::warn!(target: "zz::agent", "could not record the {} accounts: {error}", provider.label());
+            }
+            probed.id = Some(id.clone());
+            self.login.account = Some(id);
+            landing
+        } else if busy {
+            Landing::Parked
+        } else {
+            Landing::Active
+        };
+        shared.record_agent_account(probed.clone(), quota);
+        match (landing, busy) {
+            (Landing::Active, false) => {
+                shared.relaunch_agent_chats(provider, || {
+                    logins::load(provider).and_then(|record| record.active)
+                });
+            }
+            (Landing::Active, true) => {
+                let active = logins::load(provider).and_then(|record| record.active);
+                if !shared
+                    .align_agent_accounts(provider, active.as_deref())
+                    .is_empty()
+                {
+                    shared.publish_snapshot_state();
+                }
+            }
+            (Landing::Parked, _) => {}
+        }
+        shared.refresh_agent_accounts();
         Fact::Verified {
             account: probed,
-            pane,
+            pane: shared.login_pane(self.login.pane, provider, landing),
         }
-    }
-
-    fn switch_pane(&self) {
-        if let (Some(shared), Some(pane)) = (self.shared.upgrade(), self.login.pane) {
-            shared.switch_agent_account(pane, self.login.account.clone());
-        }
-    }
-}
-
-fn remove_home(home: Option<&Path>) {
-    let Some(home) = home else {
-        return;
-    };
-    if let Err(error) = fs::remove_dir_all(home) {
-        log::warn!(target: "zz::agent", "could not remove {}: {error}", home.display());
     }
 }
 
@@ -454,9 +490,6 @@ impl Cli {
             .chain(accounts::login_overrides(provider))
         {
             command.env_remove(name);
-        }
-        if let Some(home) = &account.home {
-            accounts::run_on(&mut command, provider, home);
         }
         let text_mode = match provider {
             AgentProvider::ClaudeCode => {
@@ -1036,7 +1069,7 @@ done
         let login = |id, provider, step| AgentLogin {
             id,
             provider,
-            account: None,
+            account: matches!(step, AgentLoginStep::Done { .. }).then(|| "a1".to_owned()),
             pane: None,
             browser: AgentLoginBrowser::Elsewhere,
             step,

@@ -2616,6 +2616,7 @@ impl MuxState {
             pane_state.title = pane_title(&kind, &default_title);
         }
         pane_state.kind = kind;
+        pane_state.status = None;
         pane_state.summary.process.clear();
         pane_state.summary.flip_armed = false;
         self.revive_pane(pane)?;

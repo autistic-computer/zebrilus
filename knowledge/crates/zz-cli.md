@@ -4,7 +4,7 @@ title: zz-cli crate
 description: Headless CLI, daemon entrypoint, and terminal attach client shared with the desktop app.
 resource: crates/zz-cli/src/lib.rs
 tags: [crate, cli, daemon, tui, headless, packaging]
-timestamp: 2026-10-20T18:00:00-03:00
+timestamp: 2026-11-23T00:00:00-03:00
 ---
 
 # Overview
@@ -92,6 +92,34 @@ else `can't reach NAME: <reason>`, with `; known hosts: a, b` when NAME has no h
 the login zz tried (`user@box`, or `ssh://user@box:PORT` with a port). OpenSSH folds every failure
 into exit 255, so login and host-key refusals are read from the reason the endpoint built from
 ssh's stderr.
+
+# zz update and the owned copy
+
+`zz build-info` prints five `key=value` lines: `version`, `epoch`, `revision`,
+`min-client-revision` and `min-daemon-revision`. `zz update` installs a release's headless archive
+as the zz-owned copy in `<data dir>/zz/owned/` through `zz_config::owned`: an OS file lock on
+`.lock`, a sweep of `.staging-*` and `zz.old-*`, a refusal for a version not newer than the running
+zz (or already in the copy), the archive checked against its `.sha256`, the binary unpacked into
+`.staging-<pid>/` and run with `build-info` and `ZZ_OWNED_COPY=0`, then a swap that removes
+`build-info` first and writes it last. `ZZ_UPDATE_BASE_URL` replaces the release download origin.
+`--remove` deletes the copy, `--check` reports, `--version V` and `--beta` pick the target, and
+`--restart [-y]` sends `restart-server` afterwards, or `kill-server` to a daemon that lacks it.
+It refuses on zz Dev; inside a macOS app bundle it installs and removes nothing, since that
+Mac's zz updates through the app.
+
+Host names, `-a` (this machine and every host) and `zz --host NAME update` reach other machines in
+parallel, one line each: an ssh host runs `zz update --version V` in its own CLI through
+`remote_cli_output`, a tailnet host's daemon gets `update-server --version V` (or `--remove`) and
+`restart-server`, and a host whose zz knows neither answers "zz on NAME is too old to update
+itself; update it there once". A host is sent this machine's version unless `--version` or
+`--beta` says otherwise; this machine takes the newest release on its channel. `--check` reads
+each daemon's `#{zz_version}`, `#{zz_revision}`, `#{server_sessions}`, `#{zz_owned_version}` and
+`#{zz_owned_epoch}`.
+
+On Unix `run_startup` hands over to a newer owned copy before anything else when zz-cli's own
+`main` called it; see [process model](/architecture/process-model.md#the-zz-owned-copy). The
+`daemon` verb serves with `Daemon::serve` and, when it returns `Stopped::Restart`, execs the
+successor with `--start-lock-fd` (Unix) or starts it with `--retry-bind` (Windows).
 
 `zz tools` in every form is answered by the CLI from the guide text in `zz-daemon`, so it needs no
 daemon and never prints an older daemon's guide. `just tools skill` writes

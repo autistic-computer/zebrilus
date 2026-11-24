@@ -635,6 +635,9 @@ run_names() {
   mapfile -t names < <(native_names)
   for name in "${names[@]}"; do
     [ -n "$name" ] || continue
+    case "$name" in
+    update | update-server | restart-server) continue ;;
+    esac
     total=$((total + 1))
     run_zz "$name" </dev/null
     if [ "$LAST_OUTPUT" = "unknown command: $name" ]; then

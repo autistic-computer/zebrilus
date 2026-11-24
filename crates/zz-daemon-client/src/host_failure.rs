@@ -99,6 +99,18 @@ impl HostFailure {
     }
 
     #[must_use]
+    pub const fn client_too_old(&self) -> bool {
+        match self {
+            Self::ClientTooOld { .. } => true,
+            Self::Incompatible {
+                local,
+                remote: Some(remote),
+            } => *remote > *local,
+            _ => false,
+        }
+    }
+
+    #[must_use]
     pub const fn install_offer(&self) -> Option<InstallOffer> {
         match self {
             Self::Missing => Some(InstallOffer::Install),

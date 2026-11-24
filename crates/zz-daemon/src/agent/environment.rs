@@ -72,12 +72,12 @@ pub(crate) struct AgentWorkspaceEnvironment {
     pub(crate) tmux_pane: Option<String>,
     pub(crate) tools: Option<String>,
     pub(crate) tools_executable: Option<String>,
-    pub(crate) account: Option<crate::agent::accounts::Account>,
+    pub(crate) managed_login: bool,
 }
 
 impl AgentWorkspaceEnvironment {
     pub(crate) fn adopt_pane_identity(&mut self, pane: &Self) {
-        self.account.clone_from(&pane.account);
+        self.managed_login = pane.managed_login;
         if pane.pane.is_some() {
             self.pane.clone_from(&pane.pane);
         }
@@ -146,26 +146,17 @@ pub(crate) fn with_workspace_environment(
     AcpAgent::new(config)
 }
 
-pub(crate) fn with_account(
+pub(crate) fn with_login(
     agent: AcpAgent,
     provider: zz_protocol::AgentProvider,
-    home: Option<&std::path::Path>,
+    workspace: &AgentWorkspaceEnvironment,
 ) -> AcpAgent {
-    let Some(home) = home else {
+    if !workspace.managed_login || crate::agent::accounts::login_overrides(provider).is_empty() {
         return agent;
-    };
-    let Some(name) = crate::agent::accounts::variable(provider) else {
-        return agent;
-    };
-    let config = agent.into_config();
-    let config = if config.environment().contains_key(name) {
-        config
-    } else {
-        config.env(name, home.to_string_lossy())
-    };
+    }
     #[cfg(unix)]
-    let config = without_login_overrides(&config, provider);
-    AcpAgent::new(config)
+    let agent = AcpAgent::new(without_login_overrides(&agent.into_config(), provider));
+    agent
 }
 
 #[cfg(unix)]
@@ -822,14 +813,14 @@ mod workspace_tests {
 
     #[cfg(unix)]
     #[test]
-    fn an_account_adapter_runs_without_inherited_logins_unless_configured() {
+    fn a_managed_login_adapter_runs_without_inherited_logins_unless_configured() {
         let agent = AcpAgent::from_str("ANTHROPIC_API_KEY=mine npx -y adapter")
             .expect("valid configured command");
-        let agent = super::with_account(
-            agent,
-            zz_protocol::AgentProvider::ClaudeCode,
-            Some(std::path::Path::new("/accounts/claude/a1")),
-        );
+        let managed = AgentWorkspaceEnvironment {
+            managed_login: true,
+            ..AgentWorkspaceEnvironment::default()
+        };
+        let agent = super::with_login(agent, zz_protocol::AgentProvider::ClaudeCode, &managed);
         assert_eq!(
             agent.config().command(),
             std::path::Path::new("/usr/bin/env")
@@ -854,17 +845,15 @@ mod workspace_tests {
         );
         assert_eq!(
             environment(&agent),
-            [
-                ("ANTHROPIC_API_KEY".to_owned(), "mine".to_owned()),
-                (
-                    "CLAUDE_CONFIG_DIR".to_owned(),
-                    "/accounts/claude/a1".to_owned()
-                ),
-            ]
+            [("ANTHROPIC_API_KEY".to_owned(), "mine".to_owned())]
         );
 
         let agent = AcpAgent::from_str("npx -y adapter").expect("valid command");
-        let agent = super::with_account(agent, zz_protocol::AgentProvider::ClaudeCode, None);
+        let agent = super::with_login(
+            agent,
+            zz_protocol::AgentProvider::ClaudeCode,
+            &AgentWorkspaceEnvironment::default(),
+        );
         assert_eq!(agent.config().command(), std::path::Path::new("npx"));
         assert!(environment(&agent).is_empty());
     }

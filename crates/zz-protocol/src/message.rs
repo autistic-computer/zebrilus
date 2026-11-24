@@ -24,7 +24,7 @@ use crate::{
 };
 
 pub const PROTOCOL_VERSION: u16 = 125;
-pub const REVISION: u32 = 8;
+pub const REVISION: u32 = 9;
 pub const MIN_DAEMON_REVISION: u32 = 1;
 pub const MIN_CLIENT_REVISION: u32 = 1;
 pub const NEW_SESSION_ATTACH_CAPABILITY: &str = "new-session-attach-v1";
@@ -3527,6 +3527,9 @@ pub enum EventPayload {
         pane: PaneId,
         through_seq: u64,
     },
+    AgentParents {
+        parents: BTreeMap<PaneId, PaneId>,
+    },
 }
 
 impl EventPayload {
@@ -3606,6 +3609,7 @@ impl EventPayload {
                 Some(crate::SIMULATOR_PANE_CAPABILITY)
             }
             Self::AgentReplayed { .. } => Some(crate::AGENT_REPLAYED_CAPABILITY),
+            Self::AgentParents { .. } => Some(crate::AGENT_PARENTS_CAPABILITY),
         }
     }
 

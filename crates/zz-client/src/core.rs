@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{BTreeMap, HashMap, HashSet, VecDeque},
     sync::Arc,
 };
 
@@ -300,6 +300,7 @@ pub struct ClientCore {
     history_limit: usize,
     agent_states: HashMap<PaneId, AgentPaneWire>,
     simulators: HashMap<PaneId, SimulatorDescriptor>,
+    agent_parents: BTreeMap<PaneId, PaneId>,
     providers: Option<zz_protocol::ProvidersReport>,
     agent_accounts: Option<Vec<zz_protocol::AgentAccount>>,
     agent_quotas: Vec<zz_protocol::AgentQuota>,
@@ -726,6 +727,11 @@ impl ClientCore {
     }
 
     #[must_use]
+    pub fn agent_parent(&self, pane: PaneId) -> Option<PaneId> {
+        self.agent_parents.get(&pane).copied()
+    }
+
+    #[must_use]
     pub const fn providers(&self) -> Option<&zz_protocol::ProvidersReport> {
         self.providers.as_ref()
     }
@@ -907,6 +913,7 @@ impl ClientCore {
         self.spare_cells.clear();
         self.agent_states.clear();
         self.simulators.clear();
+        self.agent_parents.clear();
         self.full_pending.clear();
     }
 
@@ -1324,6 +1331,7 @@ impl ClientCore {
                 self.events
                     .push_back(CoreEvent::SimulatorCommand { pane, command });
             }
+            EventPayload::AgentParents { parents } => self.agent_parents = parents,
             EventPayload::ControlExit { .. }
             | EventPayload::HookEvent { .. }
             | EventPayload::PaneOutput { .. }

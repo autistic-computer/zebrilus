@@ -382,71 +382,126 @@ pub fn whois(address: IpAddr) -> Result<Caller, TailnetError> {
     parse_whois(&run_cli(&["whois", "--json", &address.to_string()])?)
 }
 
-struct Candidate {
-    program: PathBuf,
-    be_cli: bool,
-}
-
-fn candidates() -> Vec<Candidate> {
-    let mut candidates = vec![Candidate {
-        program: PathBuf::from("tailscale"),
-        be_cli: false,
-    }];
+fn candidates() -> Vec<PathBuf> {
+    let mut candidates = vec![PathBuf::from("tailscale")];
     #[cfg(target_os = "macos")]
-    {
-        for program in ["/opt/homebrew/bin/tailscale", "/usr/local/bin/tailscale"] {
-            candidates.push(Candidate {
-                program: PathBuf::from(program),
-                be_cli: false,
-            });
-        }
-        candidates.push(Candidate {
-            program: PathBuf::from("/Applications/Tailscale.app/Contents/MacOS/Tailscale"),
-            be_cli: true,
-        });
-    }
+    candidates.extend(
+        [
+            "/opt/homebrew/bin/tailscale",
+            "/usr/local/bin/tailscale",
+            "/Applications/Tailscale.app/Contents/MacOS/Tailscale",
+        ]
+        .map(PathBuf::from),
+    );
     #[cfg(all(unix, not(target_os = "macos")))]
-    for program in [
-        "/usr/bin/tailscale",
-        "/usr/local/bin/tailscale",
-        "/snap/bin/tailscale",
-    ] {
-        candidates.push(Candidate {
-            program: PathBuf::from(program),
-            be_cli: false,
-        });
-    }
+    candidates.extend(
+        [
+            "/usr/bin/tailscale",
+            "/usr/local/bin/tailscale",
+            "/snap/bin/tailscale",
+        ]
+        .map(PathBuf::from),
+    );
     #[cfg(windows)]
     if let Some(program_files) = std::env::var_os("ProgramFiles") {
-        candidates.push(Candidate {
-            program: PathBuf::from(program_files).join(r"Tailscale\tailscale.exe"),
-            be_cli: false,
-        });
+        candidates.push(PathBuf::from(program_files).join(r"Tailscale\tailscale.exe"));
     }
     candidates
 }
 
 fn run_cli(arguments: &[&str]) -> Result<String, TailnetError> {
+    #[cfg(target_os = "macos")]
+    let _turn = take_turn()?;
     let mut failures = Vec::new();
-    for candidate in candidates() {
-        match run_candidate(&candidate, arguments) {
+    for program in candidates() {
+        match run_candidate(&program, arguments) {
             Ok(output) => return Ok(output),
-            Err(reason) => failures.push(format!("{}: {reason}", candidate.program.display())),
+            Err(reason) => failures.push(format!("{}: {reason}", program.display())),
         }
     }
     Err(TailnetError::Cli(failures.join("; ")))
 }
 
-fn run_candidate(candidate: &Candidate, arguments: &[&str]) -> Result<String, String> {
-    let mut command = Command::new(&candidate.program);
+#[cfg(target_os = "macos")]
+const TURN_LOCK: &str = "Library/Caches/zz-tailscale.lock";
+
+#[cfg(target_os = "macos")]
+fn take_turn() -> Result<std::fs::File, TailnetError> {
+    use std::os::unix::fs::OpenOptionsExt as _;
+
+    let account = account_home()
+        .ok_or_else(|| TailnetError::Cli("this account has no home folder".to_owned()))?;
+    let home = std::env::var_os("HOME")
+        .filter(|home| !home.is_empty())
+        .map(PathBuf::from);
+    if let Some(reason) = foreign_home(home.as_deref(), &account) {
+        return Err(TailnetError::Cli(reason));
+    }
+    let lock = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .mode(0o600)
+        .open(account.join(TURN_LOCK))?;
+    lock.lock()?;
+    Ok(lock)
+}
+
+#[cfg(target_os = "macos")]
+fn foreign_home(home: Option<&Path>, account: &Path) -> Option<String> {
+    let Some(home) = home else {
+        return Some("HOME is not set".to_owned());
+    };
+    let same = home == account
+        || std::fs::canonicalize(home)
+            .ok()
+            .zip(std::fs::canonicalize(account).ok())
+            .is_some_and(|(home, account)| home == account);
+    (!same).then(|| {
+        format!(
+            "HOME is {}, not this account's home {}",
+            home.display(),
+            account.display()
+        )
+    })
+}
+
+#[cfg(target_os = "macos")]
+#[allow(unsafe_code, clippy::undocumented_unsafe_blocks)]
+fn account_home() -> Option<PathBuf> {
+    use std::{ffi::CStr, mem::MaybeUninit, os::unix::ffi::OsStrExt as _};
+
+    let mut passwd = MaybeUninit::<libc::passwd>::uninit();
+    let mut result = std::ptr::null_mut();
+    let mut buffer = vec![0_u8; 16 * 1024];
+    let status = unsafe {
+        libc::getpwuid_r(
+            libc::getuid(),
+            passwd.as_mut_ptr(),
+            buffer.as_mut_ptr().cast(),
+            buffer.len(),
+            &raw mut result,
+        )
+    };
+    if status != 0 || result.is_null() {
+        return None;
+    }
+    let passwd = unsafe { passwd.assume_init() };
+    if passwd.pw_dir.is_null() {
+        return None;
+    }
+    let home = unsafe { CStr::from_ptr(passwd.pw_dir) };
+    Some(PathBuf::from(std::ffi::OsStr::from_bytes(home.to_bytes())))
+}
+
+fn run_candidate(program: &Path, arguments: &[&str]) -> Result<String, String> {
+    let mut command = Command::new(program);
     command
         .args(arguments)
+        .env("TAILSCALE_BE_CLI", "true")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    if candidate.be_cli {
-        command.env("TAILSCALE_BE_CLI", "1");
-    }
     let mut child = command
         .spawn_unmasked()
         .map_err(|error| match error.kind() {

@@ -666,7 +666,12 @@ pub(crate) fn status_cache_callbacks(request: &StatusRequest) -> Option<Vec<Stri
         } else if zz_mux::format_variable_is_known(name)
             || matches!(
                 name,
-                "pane_kind"
+                "zz_version"
+                    | "zz_revision"
+                    | "zz_exit_rule"
+                    | "zz_owned_version"
+                    | "zz_owned_epoch"
+                    | "pane_kind"
                     | "agent_state"
                     | "agent_pending_permission"
                     | "agent_parent"
@@ -2892,6 +2897,32 @@ impl StatusHooks for DaemonFormatHooks<'_> {
             return self.copy_mode_variable(name, context, &line_option);
         }
         match name {
+            "zz_version" => Some(env!("CARGO_PKG_VERSION").to_owned()),
+            "zz_revision" => Some(zz_protocol::REVISION.to_string()),
+            "zz_owned_version" => Some(
+                zz_config::owned::installed()
+                    .map(|copy| copy.info.version.to_string())
+                    .unwrap_or_default(),
+            ),
+            "zz_owned_epoch" => Some(
+                zz_config::owned::installed()
+                    .map(|copy| copy.info.epoch.to_string())
+                    .unwrap_or_default(),
+            ),
+            "zz_exit_rule" => Some(
+                context
+                    .engine()
+                    .map_or("", |engine| {
+                        if engine.exit_unattached_explicit() == Some(true) {
+                            "exit-unattached"
+                        } else if engine.exit_empty_explicit() == Some(true) {
+                            "exit-empty"
+                        } else {
+                            ""
+                        }
+                    })
+                    .to_owned(),
+            ),
             "config_files" => self
                 .variables
                 .and_then(|variables| variables.get(name))
