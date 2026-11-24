@@ -15,7 +15,7 @@ use ala::{
     SharedString, Subscription, Window, WindowControlArea, div, img, prelude::*, px,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName, IndexPath, Label, TextStyle,
+    ActiveTheme as _, Disableable as _, IndexPath, Label, Space, TextStyle,
     blocks::notification::Notification,
     components::button::{Button, ButtonVariants as _},
     components::input::{Input, InputEvent, InputState, NumberInput},
@@ -23,7 +23,7 @@ use penna::{
     components::menu::{DropdownMenu as _, PopupMenuItem},
     components::select::{Select, SelectEvent, SelectState},
     components::switch::Switch,
-    h_flex,
+    h_flex, v_flex,
 };
 
 use crate::{
@@ -34,7 +34,7 @@ use crate::{
     },
     diagnostics,
     mux::{
-        client::MuxClient,
+        client::{HostUpdate, MuxClient},
         hosts::{HostId, HostState},
     },
     window::toast,
@@ -879,96 +879,112 @@ impl SettingsView {
             .into_any_element()
     }
 
+    fn machines_stack(&self, hosts: Vec<config::HostEntry>, cx: &Context<Self>) -> ala::Div {
+        use zz_ui::settings::hosts::{HostRow, HostZz, hosts_heading, hosts_table};
+
+        let mux = self.mux.read(cx);
+        let target = SharedString::from(zz_config::owned::BuildInfo::current().version.to_string());
+        let ids = mux
+            .fleet_hosts()
+            .filter(|(id, _, _, _)| *id != HostId::LOCAL)
+            .map(|(id, name, state, _)| (name.to_owned(), (id, state.clone())))
+            .collect::<BTreeMap<_, _>>();
+        let rows = hosts
+            .into_iter()
+            .map(|host| {
+                let known = ids.get(&host.name);
+                let update = known.and_then(|(id, _)| mux.host_update(*id));
+                let version = known
+                    .and_then(|(id, _)| mux.host_daemon_version(*id))
+                    .map(|version| SharedString::from(version.to_string()));
+                let state = known.map_or(HostState::Disconnected, |(_, state)| state.clone());
+                let zz = match update {
+                    Some(HostUpdate::Updating { progress }) => HostZz::Updating {
+                        progress: progress.map(SharedString::from),
+                    },
+                    Some(HostUpdate::Outdated { daemon, failed }) => HostZz::Outdated {
+                        daemon: daemon.map(|daemon| daemon.to_string().into()),
+                        target: target.clone(),
+                        failed: failed.map(SharedString::from),
+                    },
+                    Some(HostUpdate::RestartPending { installed, failed }) => {
+                        HostZz::RestartPending {
+                            installed: installed.to_string().into(),
+                            failed: failed.map(SharedString::from),
+                        }
+                    }
+                    Some(HostUpdate::CannotUpdate) => HostZz::CannotUpdate {
+                        daemon: version,
+                        advice: zz_daemon_client::cannot_update_text(&host.name).into(),
+                    },
+                    None if state != HostState::Connected => HostZz::Offline(state.label().into()),
+                    None => version.map_or(HostZz::Unknown, HostZz::Current),
+                };
+                let found = config::is_discovered(&host.name, cx);
+                HostRow {
+                    platform: known.map_or_default(|(id, _)| mux.host_platform(*id)),
+                    address: host.endpoint.to_string().into(),
+                    remove: format!(
+                        "{} ({})",
+                        if found { "Hide" } else { "Remove host" },
+                        state.label()
+                    )
+                    .into(),
+                    name: host.name.into(),
+                    zz,
+                }
+            })
+            .collect::<Vec<_>>();
+        let outdated = mux.hosts_to_update();
+        let update_all = (outdated.len() > 1).then(|| {
+            let mux = self.mux.clone();
+            move |_: &mut Window, cx: &mut App| {
+                mux.update(cx, |mux, cx| mux.request_host_updates(&outdated, cx));
+            }
+        });
+        let host_id = |mux: &Entity<MuxClient>, name: &str, cx: &App| {
+            mux.read(cx).fleet_hosts().find_map(|(id, current, _, _)| {
+                (id != HostId::LOCAL && current == name).then_some(id)
+            })
+        };
+        let update_mux = self.mux.clone();
+        let remove_mux = self.mux.clone();
+        v_flex()
+            .w_full()
+            .gap(Space::GAP_RELATED)
+            .child(hosts_heading(update_all, cx))
+            .child(hosts_table(
+                &rows,
+                move |name, _, cx| {
+                    if let Some(host) = host_id(&update_mux, name, cx) {
+                        update_mux.update(cx, |mux, cx| mux.request_host_updates(&[host], cx));
+                    }
+                },
+                move |name, _, cx| {
+                    if let Some(host) = host_id(&remove_mux, name, cx) {
+                        crate::workspace::sidebar::close_host(&remove_mux, host, name, cx);
+                        return;
+                    }
+                    match config::remove_fleet_host_live(name, cx) {
+                        Ok(removed) => log::info!(
+                            target: "zz::config",
+                            "removed fleet host name={name} config_removed={removed}",
+                        ),
+                        Err(error) => {
+                            log::warn!("could not remove host-{name} from zz/config: {error}");
+                        }
+                    }
+                },
+                cx,
+            ))
+    }
+
     fn hosts_section(&self, cx: &Context<Self>) -> AnyElement {
         const INPUT_WIDTH: f32 = 220.0;
 
         let hosts = config::known_hosts(cx);
         let discovered = config::discovered(cx);
-        let states = self
-            .mux
-            .read(cx)
-            .fleet_hosts()
-            .filter(|(id, _, _, _)| *id != HostId::LOCAL)
-            .map(|(_, name, state, _)| (name.to_owned(), state.clone()))
-            .collect::<BTreeMap<_, _>>();
-        let mut machine_entries = Vec::with_capacity(hosts.len().max(1));
-        if hosts.is_empty() {
-            machine_entries.push(
-                SettingEntry::new("No hosts yet")
-                    .description("Hosts you add show up in the sidebar"),
-            );
-        } else {
-            for host in hosts {
-                let name = host.name;
-                let state = states
-                    .get(&name)
-                    .cloned()
-                    .unwrap_or(HostState::Disconnected);
-                let (glyph, color) = match &state {
-                    HostState::Connected => (IconName::Globe, cx.theme().success),
-                    HostState::Unreachable { .. }
-                    | HostState::Incompatible { .. }
-                    | HostState::DaemonTooOld { .. }
-                    | HostState::ClientTooOld { .. }
-                    | HostState::Missing => (IconName::Globe, cx.theme().danger),
-                    HostState::Connecting
-                    | HostState::Reconnecting { .. }
-                    | HostState::Installing => (IconName::Globe, cx.theme().warning),
-                    HostState::Disconnected => (IconName::Globe, cx.theme().foreground.muted()),
-                };
-                let remove_name = name.clone();
-                let remove_mux = self.mux.clone();
-                let found = config::is_discovered(&name, cx);
-                let (description, action) = if found {
-                    let source = if matches!(host.endpoint, zz_daemon_client::Endpoint::Wsl(_)) {
-                        "Found in WSL"
-                    } else {
-                        "Found on Tailscale"
-                    };
-                    (format!("{source}, {}", host.endpoint), "Hide")
-                } else {
-                    (host.endpoint.to_string(), "Remove host")
-                };
-                let entry = SettingEntry::new(name.clone())
-                    .description(description)
-                    .title_icon(Icon::new(glyph).text_color(color))
-                    .control(
-                        Button::new(format!("settings-remove-host-{name}"))
-                            .ghost()
-                            .icon(IconName::Xmark)
-                            .tooltip(format!("{action} ({})", state.label()))
-                            .on(settings_card_ground(cx))
-                            .on_click(move |_, _, cx| {
-                                let host_id = remove_mux.read(cx).fleet_hosts().find_map(
-                                    |(id, current_name, _, _)| {
-                                        (id != HostId::LOCAL
-                                            && current_name == remove_name.as_str())
-                                        .then_some(id)
-                                    },
-                                );
-                                if let Some(host_id) = host_id {
-                                    crate::workspace::sidebar::close_host(
-                                        &remove_mux,
-                                        host_id,
-                                        &remove_name,
-                                        cx,
-                                    );
-                                } else {
-                                    match config::remove_fleet_host_live(&remove_name, cx) {
-                                        Ok(removed) => log::info!(
-                                            target: "zz::config",
-                                            "removed fleet host name={remove_name} config_removed={removed}",
-                                        ),
-                                        Err(error) => log::warn!(
-                                            "could not remove host-{remove_name} from zz/config: {error}",
-                                        ),
-                                    }
-                                }
-                            }),
-                    );
-                machine_entries.push(entry);
-            }
-        }
+        let machines = self.machines_stack(hosts, cx);
 
         let state = self
             .hosts_state
@@ -1104,7 +1120,7 @@ impl SettingsView {
 
         Self::scroll_column("settings-hosts")
             .child(settings_page_title(SettingsSection::Hosts, cx))
-            .child(SettingsStack::titled("Machines").children(machine_entries))
+            .child(machines)
             .child(SettingsStack::titled("Tailscale").children(tailscale_entries))
             .child(SettingsStack::titled("Add host").child(destination))
             .into_any_element()

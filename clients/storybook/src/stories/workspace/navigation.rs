@@ -8,7 +8,10 @@ use zz_protocol::{HostPlatform, LinuxDistro};
 use zz_ui::{
     navigation::{
         WORKSPACE_TREE_NODE_ICON_SIZE, WorkspaceStatusWindowState, WorkspaceTreeInk,
-        sidebar::{tree_action_strip, tree_host_indicator, tree_host_marker, tree_node_marker},
+        sidebar::{
+            HostUpdateMark, tree_action_strip, tree_host_indicator, tree_host_marker,
+            tree_host_update_mark, tree_node_marker,
+        },
         workspace_status_window, workspace_tree_action_button, workspace_tree_disclosure,
         workspace_tree_marker,
     },
@@ -520,6 +523,50 @@ fn markers(_: &mut Window, cx: &mut App) -> AnyElement {
                         "indicator-lost",
                         false,
                         Some("Connection lost: devbox closed the ssh session".into()),
+                        cx,
+                    ),
+                )),
+        )
+        .state(
+            "host update mark, where the connection indicator sits",
+            row()
+                .child(labeled(
+                    "outdated",
+                    tree_host_update_mark(
+                        "update-outdated",
+                        HostUpdateMark::Update,
+                        "zz 0.30.0, this zz is 0.31.0".into(),
+                        None,
+                        cx,
+                    ),
+                ))
+                .child(labeled(
+                    "restart pending",
+                    tree_host_update_mark(
+                        "update-restart",
+                        HostUpdateMark::Restart,
+                        "zz 0.31.0 installed, restart to finish".into(),
+                        None,
+                        cx,
+                    ),
+                ))
+                .child(labeled(
+                    "cannot update from here",
+                    tree_host_update_mark(
+                        "update-blocked",
+                        HostUpdateMark::Blocked,
+                        "Update zz on nas itself".into(),
+                        None,
+                        cx,
+                    ),
+                ))
+                .child(labeled(
+                    "failed, reason in tooltip",
+                    tree_host_update_mark(
+                        "update-failed",
+                        HostUpdateMark::Failed,
+                        "zz 0.31.0 has no headless build for macos-x86_64".into(),
+                        None,
                         cx,
                     ),
                 )),

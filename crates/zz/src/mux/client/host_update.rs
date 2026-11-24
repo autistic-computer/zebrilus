@@ -107,6 +107,33 @@ impl MuxClient {
         }
     }
 
+    #[must_use]
+    pub(crate) fn host_daemon_version(&self, host: HostId) -> Option<Version> {
+        let entry = self.registry.get(host)?;
+        if !self.connections.get(&host)?.is_connected() {
+            return None;
+        }
+        self.host_updates
+            .get(&entry.name)?
+            .facts
+            .as_ref()?
+            .version
+            .clone()
+    }
+
+    #[must_use]
+    pub(crate) fn hosts_to_update(&self) -> Vec<HostId> {
+        self.registry
+            .iter()
+            .map(|(host, _)| host)
+            .filter(|host| *host != HostId::LOCAL)
+            .filter(|host| {
+                self.host_update(*host)
+                    .is_some_and(|update| update.offered())
+            })
+            .collect()
+    }
+
     pub(super) fn fetch_host_facts(&mut self, host: HostId, cx: &mut Context<Self>) {
         if DEVELOPMENT || cfg!(test) {
             return;

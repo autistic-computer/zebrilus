@@ -12,6 +12,7 @@ use penna::{
 use zz_ui::settings::{
     SettingEntry, SettingsFold, SettingsSection, SettingsStack,
     appearance::ZzRow,
+    hosts::{HostRow, HostZz, hosts_heading, hosts_table},
     panes_page,
     panes_preview::PanesPreview,
     providers::{
@@ -74,6 +75,12 @@ pub const STORY: Story = Story {
             name: "Agents, states",
             summary: "An unreachable machine picked, checking, a Windows host that does not sign in, a sign-in card open, an install zz leaves to a package manager, installing, a failed update, one machine, ten machines and nothing behind.",
             build: |_, cx| stateless(agents_states, cx),
+        },
+        Section {
+            id: "hosts",
+            name: "Hosts",
+            summary: "The Machines card of the Hosts page as a table: platform mark and name, address, the daemon's zz version, the button. One host per update state: outdated, installed and waiting for a restart, updating, a failed update with its reason under the row, one that cannot be updated from here, current, and one that is not connected. Update all sits in the heading when two or more hosts can update.",
+            build: |_, cx| stateless(hosts, cx),
         },
     ],
 };
@@ -420,6 +427,89 @@ fn framed_card(
         .w(px(792.0))
         .p(px(16.0))
         .child(card(id, machine, signing_in, cx))
+}
+
+fn hosts(_: &mut Window, cx: &mut App) -> AnyElement {
+    use zz_protocol::{HostPlatform, LinuxDistro};
+
+    let host = |name: &'static str, platform, address: &'static str, zz| HostRow {
+        name: name.into(),
+        platform,
+        address: address.into(),
+        remove: "Remove host (connected)".into(),
+        zz,
+    };
+    let arch = HostPlatform::Linux(LinuxDistro::Arch);
+    let rows = [
+        host(
+            "xps",
+            HostPlatform::Linux(LinuxDistro::Ubuntu),
+            "me@xps",
+            HostZz::Outdated {
+                daemon: Some("0.30.0".into()),
+                target: "0.31.0".into(),
+                failed: None,
+            },
+        ),
+        host(
+            "alienware",
+            arch,
+            "alienware.tail1a2b.ts.net",
+            HostZz::RestartPending {
+                installed: "0.31.0".into(),
+                failed: None,
+            },
+        ),
+        host(
+            "win-desktop",
+            HostPlatform::Windows,
+            "win-desktop.tail1a2b.ts.net",
+            HostZz::Updating {
+                progress: Some("downloading zz 0.31.0".into()),
+            },
+        ),
+        host(
+            "mini",
+            HostPlatform::Macos,
+            "me@mini.local",
+            HostZz::Outdated {
+                daemon: Some("0.30.0".into()),
+                target: "0.31.0".into(),
+                failed: Some("zz 0.31.0 has no headless build for macos-x86_64".into()),
+            },
+        ),
+        host(
+            "nas",
+            arch,
+            "me@nas:2222",
+            HostZz::CannotUpdate {
+                daemon: Some("0.28.0".into()),
+                advice: "Update zz on nas itself".into(),
+            },
+        ),
+        host(
+            "hetzner",
+            arch,
+            "me@hetzner-fsn1",
+            HostZz::Current("0.31.0".into()),
+        ),
+        host(
+            "studio",
+            HostPlatform::Unknown,
+            "me@studio.local",
+            HostZz::Offline("unreachable".into()),
+        ),
+    ];
+    div()
+        .id("hosts-table")
+        .w(px(760.0))
+        .p(px(16.0))
+        .flex()
+        .flex_col()
+        .gap(penna::Space::GAP_RELATED)
+        .child(hosts_heading(Some(|_: &mut Window, _: &mut App| {}), cx))
+        .child(hosts_table(&rows, |_, _, _| {}, |_, _, _| {}, cx))
+        .into_any_element()
 }
 
 fn agents_xps(_: &mut Window, cx: &mut App) -> AnyElement {
