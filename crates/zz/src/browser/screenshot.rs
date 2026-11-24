@@ -64,6 +64,17 @@ impl Screenshot {
         })
     }
 
+    pub(crate) fn png(self) -> Result<Vec<u8>, String> {
+        let buffer: ImageBuffer<Rgba<u8>, Vec<u8>> =
+            ImageBuffer::from_raw(self.width, self.height, self.rgba)
+                .ok_or_else(|| "could not build an image from the browser frame".to_owned())?;
+        let mut png = Vec::new();
+        buffer
+            .write_to(&mut std::io::Cursor::new(&mut png), ImageFormat::Png)
+            .map_err(|error| format!("could not encode the browser frame: {error}"))?;
+        Ok(png)
+    }
+
     pub(crate) fn write_png(self, path: &Path) -> Result<(), String> {
         let buffer: ImageBuffer<Rgba<u8>, Vec<u8>> =
             ImageBuffer::from_raw(self.width, self.height, self.rgba)
@@ -116,5 +127,14 @@ mod tests {
         let decoded = image::open(&path).expect("decode png").to_rgba8();
         assert_eq!(decoded.dimensions(), (2, 1));
         assert_eq!(decoded.as_raw()[..4], [3, 2, 1, 255]);
+
+        let png = Screenshot::from_bgra(2, 1, &[1, 2, 3, 255, 4, 5, 6, 255])
+            .expect("screenshot")
+            .png()
+            .expect("encode png");
+        let decoded = image::load_from_memory(&png)
+            .expect("decode png")
+            .to_rgba8();
+        assert_eq!(decoded.as_raw(), &[3, 2, 1, 255, 6, 5, 4, 255]);
     }
 }

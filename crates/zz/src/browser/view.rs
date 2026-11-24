@@ -1049,21 +1049,28 @@ impl BrowserView {
     }
 
     pub(crate) fn screenshot(&mut self, request_id: u64, path: String, cx: &mut Context<Self>) {
-        let response = match self.write_screenshot(Path::new(&path), cx) {
-            Ok(()) => GuiResponse::Success {
-                request_id,
-                output: path,
-            },
-            Err(message) => GuiResponse::Error {
+        let mux = self.mux.read(cx);
+        let taken = self.frame().and_then(|frame| {
+            if mux.takes_screenshots() {
+                mux.send_screenshot(request_id, &frame.png()?)?;
+                return Ok(None);
+            }
+            frame.write_png(Path::new(&path))?;
+            Ok(Some(path))
+        });
+        match taken {
+            Ok(None) => {}
+            Ok(Some(output)) => {
+                mux.respond_to_request(GuiResponse::Success { request_id, output });
+            }
+            Err(message) => mux.respond_to_request(GuiResponse::Error {
                 request_id,
                 message,
-            },
-        };
-        self.mux.read(cx).respond_to_request(response);
+            }),
+        }
     }
 
-    fn write_screenshot(&self, path: &Path, cx: &mut Context<Self>) -> Result<(), String> {
-        let _ = cx;
+    fn frame(&self) -> Result<Screenshot, String> {
         if let Some(image) = &self.image {
             let size = image.size(0);
             let bytes = image
@@ -1073,11 +1080,11 @@ impl BrowserView {
                 u32::try_from(size.width.0).map_err(|_| "invalid frame width".to_owned())?;
             let height =
                 u32::try_from(size.height.0).map_err(|_| "invalid frame height".to_owned())?;
-            return Screenshot::from_bgra(width, height, bytes)?.write_png(path);
+            return Screenshot::from_bgra(width, height, bytes);
         }
         #[cfg(target_os = "macos")]
         if let Some(surface) = &self.mac_surface {
-            return crate::browser::macos_surface::read_pixel_buffer(surface)?.write_png(path);
+            return crate::browser::macos_surface::read_pixel_buffer(surface);
         }
         Err(
             "no CPU-readable frame: either this pane has not rendered yet, or it renders \

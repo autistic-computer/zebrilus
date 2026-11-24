@@ -4240,7 +4240,13 @@ impl MuxClient {
         std::mem::take(&mut self.simulator_commands)
     }
 
-    #[cfg(target_os = "macos")]
+    pub(crate) fn takes_screenshots(&self) -> bool {
+        self.attached_connection()
+            .client
+            .as_ref()
+            .is_some_and(|client| client.daemon_has(zz_protocol::BROWSER_SCREENSHOT_CAPABILITY))
+    }
+
     pub(crate) fn send_screenshot(&self, request_id: u64, png: &[u8]) -> Result<(), String> {
         let Some(client) = &self.attached_connection().client else {
             return Err("the zz window is not connected".to_owned());

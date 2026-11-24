@@ -2624,6 +2624,15 @@ impl InteractiveClient {
         self.send_locked(&TracedMessage(message), |writer| writer.send(message))
     }
 
+    #[must_use]
+    pub fn daemon_has(&self, capability: &str) -> bool {
+        self.writer
+            .lock()
+            .daemon_capabilities
+            .iter()
+            .any(|name| name == capability)
+    }
+
     fn send_locked(
         &self,
         message: &impl std::fmt::Debug,

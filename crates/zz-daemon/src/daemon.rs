@@ -53891,9 +53891,11 @@ is read on that host; send a local page with `zz --host NAME html -t %N - < page
 
 ### `zz capture-browser -t %N -o /absolute/out.png`
 
-Save the latest browser frame as a PNG and print its path. Use an absolute path: a desktop app
-window showing the pane writes the file on its own machine; an iPad sends the picture and the
-daemon writes it on this host. On Linux, restart with `ZZ_BROWSER_SHARED_TEXTURE=0` if the GPU
+Save the latest browser frame as a PNG and print its path. Use an absolute path on the daemon's
+host: the window showing the pane sends the picture and the daemon writes it there, wherever
+that window runs. A desktop app talking to an older daemon writes the file on its own machine
+instead. `set-browser-url` returns before the page loads, so a capture straight after it can show
+the old page: wait until `#{pane_title}` or `#{browser_url}` reads as the new page. On Linux, restart with `ZZ_BROWSER_SHARED_TEXTURE=0` if the GPU
 path reports that readback is unavailable.
 
 ### `zz capture-simulator -t %N -o /absolute/out.png`
