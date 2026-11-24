@@ -121,6 +121,15 @@ still running` on stderr during a turn. `agent-respond --answer TEXT` answers a 
 one question with typed text (`AgentAnswerQuestion`'s host path), and nothing pending reads `%N has
 no pending request (already answered, or none was asked)`.
 
+What `agent-send` delivers to a chat starts with a line that names the sender (`SentMessage`):
+`[zz] %N (claude) sent this, not the user:` from a chat, `[zz] a command in %N sent this:` from a
+terminal pane, `[zz] a command sent this:` from anywhere else, with `HOST:%N` (or `a command on
+HOST`) for a sender on another machine. `Shared::sent_message` writes it from the caller chat, the
+client's origin pane, or for a remote client the `ZZ_SENDER` fact its CLI put in the command's
+environment; a text that already names a machine, which is what the relay sends, is kept as is.
+The clients fold a user item that parses as one into a `PeerMessage::Sent` note and draw it as a
+"Message from" row with the sender's chip, not as the user's bubble.
+
 **Reopening a child.** A child chat is its session, not its pane. For every chat a chat opens,
 the daemon keeps a `ChildRecord` under the opener's provider and session
 (`AgentRuntime::update_child`): the child's original pane id, provider, session id once its
