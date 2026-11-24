@@ -1,5 +1,9 @@
 # Update Log
 
+## 2026-11-25
+
+* The desktop app marks hosts on an older zz and updates them on request. An outdated host carries an arrow in a ring on its sidebar row, and Settings › Hosts is a table with each host's version and Update or Restart. The dialog that opened on connect is gone. See [host updates in the app](/designs/host-update-ui.md).
+
 ## 2026-11-24
 
 * Compacted the knowledge bundle. The full daily log from July 14 through November 24 is available in the [archived log](https://github.com/autistic-computer/zebrilus/blob/1ce632dce46bc0a4aa6167111f5625f3a7abaefd/knowledge/log.md) or locally with `git show 1ce632dce:knowledge/log.md`.

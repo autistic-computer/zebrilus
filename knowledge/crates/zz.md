@@ -30,7 +30,7 @@ to the desktop process. See [session persistence](/concepts/session-persistence.
 | `browser/controller.rs`, `browser/view.rs`, `browser/element.rs` | Create sessions, route tab and browser input, present off-screen frames from [ala-cef](/crates/ala-cef.md) |
 | `agent/controller.rs`, `agent/view.rs` | Consume daemon agent events, show chat state and send prompts, answers or actions |
 | `workspace/sidebar.rs`, `workspace/sidebar/flat.rs` | Present host, session, window and pane data from the client model |
-| `workspace/remote_install.rs`, `workspace/ssh_prompt.rs` | Remote install and interactive authentication dialogs |
+| `mux/client/host_update.rs`, `workspace/host_update.rs`, `workspace/ssh_prompt.rs` | Host updates, the question before one, and interactive authentication dialogs |
 | `config/mod.rs`, `theme.rs`, `diagnostics/mod.rs` | Desktop preference integration, theme application, logs and main-thread stall sampling |
 
 The `desktop` and `agent-pane` features are on by default. `editor-pane` enables the optional

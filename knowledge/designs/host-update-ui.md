@@ -1,8 +1,8 @@
 ---
 type: Design Plan
 title: Host updates in the app . outdated hosts in the sidebar and Settings
-description: "Plan to make the desktop app show which hosts run an older zz and update them with one click, over ssh or the tailnet. A host is outdated when its running daemon's version is below this app's, read from the facts `zz update --check` already asks for. The app's Update runs the same code as `zz update <host> --restart`, so the owned copy and `restart-server` replace the shell script the app pipes over ssh today, and tailnet hosts get the offer for the first time. An outdated host carries an arrow in a ring on its sidebar row, and Settings > Hosts becomes a table with each host's version and Update or Restart beside it. Nothing updates on its own. Board picked, nothing built."
-status: Draft; written 2026-11-24, board picked 2026-11-24, nothing built
+description: "The desktop app shows which hosts run an older zz and updates them with one click, over ssh or the tailnet. A host is outdated when its running daemon's version is below this app's, read from the facts `zz update --check` already asks for. The app's Update runs the same code as `zz update <host> --restart`, so the owned copy and `restart-server` replace the shell script the app piped over ssh, and tailnet hosts get the offer for the first time. An outdated host carries an arrow in a ring on its sidebar row, and Settings > Hosts is a table with each host's version and Update or Restart beside it. Nothing updates on its own. Built on branch host-update, drawn in the storybook, never run against a real host."
+status: Built on branch host-update 2026-11-24, not merged; the update run is unchecked on real hosts
 tags:
 - update
 - daemon
@@ -150,7 +150,7 @@ functions the CLI and the app both call:
 ## 5. Settings > Hosts shows the version and offers the update
 
 - The card is a table, take B on the board, like the Agents card: platform mark and name, address,
-  a zz column, the buttons. Not confirmed by fabrico, who named the sidebar pick only.
+  a zz column, the buttons. fabrico confirmed it on 2026-11-24.
 - Each connected host's row shows its daemon's version, with a check when it is current.
 - Outdated: an **Update** button before the remove button.
 - Restart pending: a **Restart** button, and the row says the new version is installed.
@@ -202,31 +202,84 @@ build fetches no facts, shows no icon and offers no update.
 
 The rest is checked on xps, alienware and win-desktop against the list above.
 
+# As built
+
+Built on 2026-11-24 on branch `host-update`, in the build order above. Decided where the plan was
+silent, or built differently:
+
+- **Settings > Hosts is take B, the table.** fabrico confirmed it on 2026-11-24. The zz column is
+  176 wide, not the board's 150: "0.28.0, update it there" did not fit. A failed update shows its
+  reason under the row, as decision 5 says, not in the cell as the board drew it. A host that is
+  not connected shows its connection state in the zz column, since the table has no tinted globe.
+- **The question's text** follows the board: "This ends 3 sessions there." for one host, and for
+  several "This ends 2 sessions: 0 on xps, 2 on alienware.", hosts with no sessions listed too.
+  Its accept button is the primary one, as on the board, not the red one the old dialog had.
+- **Update all** covers hosts that are outdated and hosts that only need the restart, and shows
+  when there are two or more of them. It asks only when one of them has sessions. When every
+  host in the run only needs the restart, the question is the restart one.
+- **A click fetches the facts again** before anything runs, for the session count. The row shows
+  the spinner from the click on, and Not now puts the icon back.
+- **Same version, lower revision** is Outdated with the Update action. The install answers
+  "already zz {v}" and the restart then starts whatever binary the host has on disk.
+- **A daemon that answers `#{zz_version}` with nothing** is Outdated on both routes. A tailnet
+  host in that state turns into "Cannot update from here" when its daemon answers `unknown
+  command: update-server` or has no `restart-server`, and stays so until the app restarts.
+- **A host that cannot attach** takes its state from the failure, not from facts: an ssh host on
+  an older epoch or below the daemon floor is Outdated, a tailnet host on another epoch cannot be
+  updated from here, a newer host shows nothing. Its row keeps the warning triangle, so its
+  action is in the row's menu and in Settings.
+- **A failed update** shows the warning triangle with the reason as its tooltip, and a click
+  tries again. The failure is forgotten when the app restarts.
+- **This machine's row** takes its state from the same facts. Its click opens "Restart the zz
+  daemon?", and it has no menu item.
+- **No toast on success.** The icon going away is the notice. A failure toasts its reason.
+- **ssh progress.** The remote CLI prints no progress without a terminal, so an ssh host shows
+  "Updating" with no line. A tailnet host shows `update-server`'s lines: "downloading zz 0.31.0",
+  "checking the download", "unpacking zz 0.31.0", not the byte counts the board drew.
+- **The script fallback** for an ssh host without the `update` verb also covers Install only: the
+  script then installs without restarting.
+- **`install_offered` stayed as `auto_installed`**, for the one thing it still does: a host with
+  no zz gets one automatic install per app run.
+- **The thin clients keep `update_prompt`** and the script route. The desktop's questions are
+  `host_update_question` and `host_restart_question`; "in ~/.local" is gone from those only.
+- **penna** got two glyphs (`RingUp`, `Restart`) and `AlertDialog::action` for the third button.
+- **A command client's stdout handler** is a closure now, so the app can keep the last progress
+  line per host.
+
+Checked: the state table and the question strings as tests, the existing `zz update` tests
+unchanged, and the Hosts table and the four sidebar marks drawn in the storybook
+(`#/settings/hosts`, `#/sidebar/markers`). fabrico picked the storybook over a Dev switch for open
+item 5, so no Dev build shows any of this.
+
+Never run: every item of Done when. No facts fetch, install or restart has run against a daemon,
+the question dialog has not been seen in the app, and the sidebar row has not been seen with the
+mark in place.
+
 # Open
 
-1. The table for Settings > Hosts, which fabrico has not confirmed.
-2. Install only as a third button, or two buttons and the CLI for the staged case.
-3. Update all in the first build, or later.
-4. Whether the question should also open by itself when a host cannot attach at all, since that
+1. Whether the question should also open by itself when a host cannot attach at all, since that
    is the one case where the user is stopped.
-5. How to check this live from a Dev build, which decision 6 leaves blind.
+2. A failed update and a host found to lack the verbs are both forgotten on app restart.
 
 # Citations
 
-- `crates/zz/src/mux/client.rs` `install_zz_on_host`, `offer_update`, `accept_update_offers`,
-  `host_update_offer`, `daemon_behind`, `execute_on_host`
+- `crates/zz/src/mux/client.rs` `install_zz_on_host`, `daemon_behind`, `execute_on_host`
+- `crates/zz/src/mux/client/host_update.rs` `host_update`, `fetch_host_facts`,
+  `request_host_updates`, `run_host_updates`, `HostUpdateQuestion`
 - `crates/zz/src/mux/nav.rs` `MuxTreeHost::install_offer`, `MuxTreeHost::indicator`,
-  `HostIndicator`
+  `MuxTreeHost::update_label`, `HostIndicator`
 - `crates/zz/src/mux/hosts.rs` `HostState`
 - `crates/zz/src/workspace/sidebar.rs` `render_host_indicator`, `render_tree_row_context_menu`
-- `crates/zz/src/workspace/remote_install.rs` `open`
-- `crates/zz/src/config/settings.rs` `hosts_section`
-- `crates/zz-ui/src/navigation/sidebar.rs` `tree_host_indicator`
-- `crates/zz-daemon-client/src/host_failure.rs` `DaemonBehind`, `InstallOffer`, `update_prompt`
+- `crates/zz/src/workspace/host_update.rs` `ask`
+- `crates/zz/src/config/settings.rs` `hosts_section`, `machines_stack`
+- `crates/zz-ui/src/settings/hosts.rs` `hosts_table`, `hosts_heading`, `HostZz`
+- `crates/zz-ui/src/navigation/sidebar.rs` `tree_host_indicator`, `tree_host_update_mark`
+- `crates/zz-daemon-client/src/host_failure.rs` `DaemonBehind`, `InstallOffer`, `update_prompt`,
+  `UpdateState`, `host_update_question`, `host_restart_question`
 - `crates/zz-daemon-client/src/endpoint.rs` `install_remote`, `remote_install_script`
 - `crates/zz-cli/src/update.rs` `DAEMON_FACTS`, `Daemon`, `parse_daemon_facts`,
   `endpoint_daemon`, `ssh_install`, `tailnet_install`, `update_server`, `restart_server`,
-  `daemon_behind`
+  `daemon_behind`, `host_daemon`, `host_install`, `host_restart`, `HostUpdateError`
 - `crates/zz-daemon/src/status.rs` `zz_version`, `zz_revision`, `zz_owned_version`
 - `crates/zz-protocol/src/message.rs` `REVISION`
 - [daemon update](/designs/daemon-update.md), [split updates](/designs/split-updates.md)

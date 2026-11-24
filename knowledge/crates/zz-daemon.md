@@ -80,6 +80,10 @@ CLI there. `zz --host NAME build-info` inspects the remote binary and `zz --host
 queries its daemon. Use `zz fleet install --restart-daemon NAME` when the running daemon also
 needs replacement. Its sessions end on restart. [Fleet attach](/designs/fleet-attach.md).
 
+The desktop app marks a host on an older zz on its sidebar row and in Settings › Hosts and
+updates it on request with the steps `zz update <host> --restart` runs. Nothing opens on connect.
+See [host updates in the app](/designs/host-update-ui.md).
+
 ### Connection sharing
 
 Desktop Unix clients can reuse an OpenSSH control master. An existing master receives
