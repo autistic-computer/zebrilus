@@ -46,7 +46,7 @@
     {
       "type": "class",
       "status": "partial",
-      "verification": "Documentation SVG bodies match upstream with theme colors in place of CSS variables; see tests/class.rs, tests/fixtures/class-reference.json and tools/compat.mjs.",
+      "verification": "Tests compare normalized SVG bodies from the pinned fixtures; see tests/class.rs, tests/fixtures/class-reference.json and tools/compat.mjs.",
       "features": [
         "Classes, members, methods, visibility, generics and annotations",
         "Relations with markers, cardinalities and labels",
@@ -56,7 +56,7 @@
     {
       "type": "state",
       "status": "partial",
-      "verification": "Documentation SVG bodies match upstream with theme colors in place of CSS variables; see tests/state.rs, tests/fixtures/state.json and tools/compat.mjs.",
+      "verification": "Tests compare normalized SVG bodies from the pinned fixtures; see tests/state.rs, tests/fixtures/state.json and tools/compat.mjs.",
       "features": [
         "Start and end states, composite states with their own direction and concurrency regions",
         "Fork, join, choice, notes and state descriptions",
@@ -66,7 +66,7 @@
     {
       "type": "er",
       "status": "partial",
-      "verification": "Documentation SVG bodies match upstream with theme colors in place of CSS variables; see tests/er.rs, tests/fixtures/er.json and tools/compat.mjs.",
+      "verification": "Tests compare normalized SVG bodies from the pinned fixtures; see tests/er.rs, tests/fixtures/er.json and tools/compat.mjs.",
       "features": [
         "Entities with attribute tables, keys, comments and aliases",
         "Every relationship cardinality, identifying and non-identifying",
@@ -76,7 +76,7 @@
     {
       "type": "gantt",
       "status": "partial",
-      "verification": "Documentation SVG bodies match upstream with theme colors in place of CSS variables; see tests/gantt.rs, tests/fixtures/gantt.json and tools/compat.mjs.",
+      "verification": "Tests compare normalized SVG bodies from the pinned fixtures; see tests/gantt.rs, tests/fixtures/gantt.json and tools/compat.mjs.",
       "features": [
         "Sections, tasks, dependencies, milestones and task states",
         "Date formats, durations, excludes, weekends and axis ticks, computed in UTC",
@@ -113,7 +113,7 @@
   ],
   "remaining_cross_cutting_work": [
     "Full parser compatibility against upstream Mermaid parser specifications and differential fuzzing for flowchart, sequence, pie and quadrant",
-    "Byte-level SVG or pixel-level compatibility is asserted only for the class, state, ER and gantt documentation samples",
+    "Pixel equivalence remains unverified. The class, state, ER and gantt fixtures compare normalized SVG bodies. The rasterization test checks for visible diagram content.",
     "Upstream entity encoding before parsing is not applied to flowcharts, and the shared preprocessor rejects some front matter and unterminated directives upstream accepts",
     "Icons, math, images, executable click callbacks and browser mount/zoom APIs are outside the initial native rendering scope",
     "Multilingual font fallback through a host text measurer still needs validation on each platform",

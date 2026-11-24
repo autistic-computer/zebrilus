@@ -55,10 +55,11 @@ cargo test --all-features
 The tests use checked-in oracle fixtures and need no Node or upstream checkout.
 They cover native rendering and resvg 0.49 rasterization, source diagnostics,
 layered and compound layout coordinates, edge paths, chart geometry, extended
-shapes, text measurement, escaping and limits. The class, state, ER and gantt
-suites compare whole SVG bodies with upstream output, and the sequence suite
-compares the lifelines, participants, destroy crosses and message lines of
-diagrams that create and destroy participants.
+shapes, text measurement, escaping and limits. The class, state, ER and gantt suites compare normalized SVG bodies against
+pinned fixtures. Their `body` helpers strip the outer SVG and normalize text
+size attributes. The raster test checks for visible marks against the background.
+The sequence suite compares lifelines, participants, destroy crosses and message
+lines for diagrams that create and destroy participants.
 
 ## Comparing with upstream
 
