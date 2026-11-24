@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Host update</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/penna-src/components/button/button.css">
+<link rel="stylesheet" href="/penna-src/components/spinner/spinner.css">
+<link rel="stylesheet" href="/penna-src/blocks/settings/settings.css">
+<link rel="stylesheet" href="/penna-src/blocks/dialog/dialog.css">
+<link rel="stylesheet" href="/zz.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+<script src="../agents-settings/marks.js"></script>
+<link rel="stylesheet" href="../agents-settings/board.css">
+<style>
+  .hu-takes { display: flex; gap: 40px; align-items: flex-start; }
+  .hu-take { display: grid; grid-template-columns: 256px; gap: 10px; width: 256px; }
+  .hu-take > b, .hu-fig > b { font-size: 13px; line-height: 16px; font-weight: 600; }
+  .hu-take > p, .hu-fig > p { margin: 0; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-fg-muted); }
+  .hu-fig { display: grid; gap: 10px; justify-items: start; }
+  .hu-fig > p { max-width: 92ch; }
+  .hu-figs { display: grid; gap: 36px; }
+
+  .hu-snip { position: relative; width: 256px; }
+  .hu-snip > .zz-nav[data-penna] { padding: 12px 0 14px; border-radius: calc(12px * var(--penna-corner-grow, 1)); corner-shape: superellipse(var(--penna-window-k, 2)); }
+  .zz-nav[data-penna="sidebar"] { display: flex; flex-direction: column; gap: 0; --zz-ground: var(--penna-fill); }
+  .zz-list { display: flex; flex-direction: column; padding-right: 8px; }
+  .zz-host { display: flex; flex: none; align-items: center; gap: 8px; height: 30px; padding: 0 12px 0 16px; font-size: 13px; font-weight: 600; line-height: 16px; color: color-mix(in oklab, var(--penna-fg) 85%, transparent); }
+  .zz-list > .hu-chat + .zz-host { margin-top: 14px; }
+  .zz-host > .hu-os { position: relative; display: flex; flex: none; color: var(--penna-fg-muted); }
+  .zz-host > .hu-os > .ag-mark { width: 16px; height: 16px; margin: 0; }
+  .zz-host > .hu-os > .ag-mark[data-mark="windows"] { width: 14px; height: 14px; margin: 1px; }
+  .zz-host > .hu-name { flex: 1; min-width: 0; }
+  .hu-ind { display: flex; flex: none; align-items: center; gap: 5px; --penna-icon-size: 14px; font: 400 11px/14px var(--penna-mono); color: var(--penna-fg-muted); }
+  .hu-ind[data-tone="accent"] { color: var(--penna-accent); }
+  .hu-ind[data-tone="warning"] { color: var(--penna-warning); }
+  .hu-ind > .penna-spinner { color: var(--penna-fg-muted); }
+  .hu-badge { position: absolute; right: -3px; bottom: -3px; width: 7px; height: 7px; border-radius: 50%; background: var(--penna-accent); box-shadow: 0 0 0 1.5px var(--zz-ground); }
+  .hu-chat[data-penna] { height: 30px; margin: 0 var(--penna-row-inset); padding: 0 10px; gap: 8px; font-size: 13px; line-height: 16px; }
+  .hu-chat > .ag-mark { color: var(--penna-fg-muted); }
+  .hu-chat > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hu-tip[data-penna="tooltip"] { position: absolute; z-index: 5; right: 6px; white-space: nowrap; }
+  .hu-menu { display: flex; flex-direction: column; box-sizing: border-box; width: 256px; padding: 4px; }
+  .hu-menu > [data-penna="menu-item"] { padding: 0 8px; }
+
+  .hu-frame { width: 760px; padding: 20px; border-radius: 12px; background: var(--penna-bg); box-shadow: inset 0 0 0 1px var(--penna-divider); }
+  .hu-head { display: flex; align-items: center; gap: 10px; }
+  .hu-head > span { flex: 1; }
+  .hu-row { display: flex; align-items: center; gap: 10px; min-height: 56px; padding: 8px var(--penna-inset-card); }
+  .hu-row[data-slim] { min-height: 48px; padding-top: 0; padding-bottom: 0; }
+  .hu-copy { display: flex; flex: 1; flex-direction: column; gap: var(--penna-gap-tight); min-width: 0; }
+  .hu-title { display: flex; align-items: center; gap: 6px; font-size: var(--penna-text-body-size); line-height: var(--penna-text-body-line); --penna-icon-size: 14px; }
+  .hu-title > [data-icon="globe"][data-state="ok"] { color: var(--penna-success); }
+  .hu-title > [data-icon="globe"][data-state="busy"] { color: var(--penna-warning); }
+  .hu-title > [data-icon="globe"][data-state="off"] { color: var(--penna-fg-muted); }
+  .hu-desc { font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-fg-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hu-desc[data-tone="warning"], .hu-ver[data-tone="warning"] { color: var(--penna-warning); }
+  .hu-chip { padding: 0 6px; border-radius: 999px; font: 400 11px/16px var(--penna-mono); color: var(--penna-accent); background: color-mix(in oklab, var(--penna-accent) 14%, transparent); }
+  .hu-acts { display: flex; flex: none; align-items: center; gap: 8px; }
+  .hu-x.penna-button { width: 24px; height: 24px; color: var(--penna-muted); }
+  .hu-who { display: flex; flex: none; align-items: center; gap: 8px; width: 150px; min-width: 0; }
+  .hu-who > .ag-mark { color: var(--penna-fg-muted); }
+  .hu-addr { flex: 1; min-width: 0; overflow: hidden; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-muted); text-overflow: ellipsis; white-space: nowrap; }
+  .hu-ver { display: flex; flex: none; align-items: center; gap: 5px; width: 150px; font: 400 var(--penna-text-caption-size)/var(--penna-text-caption-line) var(--penna-mono); color: var(--penna-muted); white-space: nowrap; --penna-icon-size: 12px; }
+  .hu-ver > [data-icon="check"] { color: var(--penna-success); }
+  .hu-th { min-height: 32px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--penna-fg-muted); }
+  .hu-th > .hu-ver { font: inherit; letter-spacing: inherit; color: inherit; }
+
+  .hu-dialogs { display: flex; gap: 24px; align-items: flex-start; }
+  .hu-dialogs > .penna-dialog { --dialog-offset: 0px; }
+</style>
+</head>
+<body>
+<main class="zz-page">
+  <div class="zz-intro">
+    <h1>Host update</h1>
+    <p>This zz is 0.31.0. Six machines, one per state: macbook current, xps outdated on 0.30.0, alienware with 0.31.0 installed and its daemon still on 0.30.0, win-desktop updating, mini with a failed update, nas too old to update from here.</p>
+  </div>
+
+  <section data-take="sidebar">
+    <h2>Sidebar row</h2>
+    <p>The mark sits where the connecting spinner and the warning triangle sit today. Hovering it shows the two versions; a click runs the update.</p>
+    <div class="hu-takes" data-sidebar></div>
+  </section>
+
+  <section data-take="settings">
+    <h2>Settings &gt; Hosts</h2>
+    <div class="hu-figs" data-settings></div>
+  </section>
+
+  <section data-take="question">
+    <h2>The question</h2>
+    <p>Asked only when the host has sessions. With none, Update runs at once.</p>
+    <div class="hu-dialogs" data-question></div>
+  </section>
+
+  <section data-take="compare">
+    <h2>Side by side</h2>
+    <div class="ag-table" data-compare></div>
+  </section>
+</main>
+<script>
+(() => {
+  const NEW = {
+    "ring-up": "<circle cx='12' cy='12' r='9.75'/><path d='M12 16.5V8'/><path d='M8.25 11.5 12 7.75l3.75 3.75'/>",
+    "restart": "<path d='M20 12a8 8 0 1 1-2.75-6.05'/><path d='M20.25 4v4.5h-4.5'/>",
+  };
+  const icons = document.createElement("style");
+  icons.textContent = Object.entries(NEW).map(([name, body]) => `[data-icon="${name}"] { --penna-icon: url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'>${body}</svg>`)}"); }`).join("\n");
+  document.head.append(icons);
+
+  const ic = (name) => `<i data-icon="${name}"></i>`;
+  const mark = (key) => `<i class="ag-mark" data-mark="${key}"></i>`;
+  const spin = `<span class="penna-spinner" data-size="small">${ic("loader")}</span>`;
+  const text = (label) => `<span class="penna-label" data-penna-text>${label}</span>`;
+  const btn = (label, o = {}) => `<button class="penna-button" data-penna="${o.ghost ? "button.quiet" : "button"}" data-size="small"${o.primary ? ` data-tone="primary" data-prominent` : ""}${o.loading ? " data-loading disabled" : ""}>${o.loading ? ic("loader") : ""}${text(label)}</button>`;
+  const x = `<button class="penna-button hu-x" data-penna="button.quiet" data-shape="icon" data-size="small" aria-label="Remove host">${ic("xmark")}</button>`;
+
+  const HOSTS = [
+    { name: "macbook", os: "macos", state: "current", here: true, addr: "", v: "0.31.0", chats: [["claude", "Remote update zz daemon"]] },
+    { name: "xps", os: "arch", state: "outdated", addr: "me@xps", v: "0.30.0", chats: [["codex", "Fix flaky attach test"], ["claude", "Tailnet node notes"]] },
+    { name: "alienware", os: "arch", state: "restart", addr: "Found on Tailscale, alienware.tail1a2b.ts.net", v: "0.30.0", chats: [["claude", "Release runner cleanup"]] },
+    { name: "win-desktop", os: "windows", state: "updating", addr: "Found on Tailscale, win-desktop.tail1a2b.ts.net", v: "0.30.0", chats: [["codex", "Windows pipe retry"]] },
+    { name: "mini", os: "macos", state: "failed", addr: "me@mini.local", v: "0.30.0", chats: [["claude", "Simulator pane"]] },
+    { name: "nas", os: "arch", state: "blocked", addr: "me@nas:2222", v: "0.28.0", chats: [["claude", "Backup script"]] },
+  ];
+  const TARGET = "0.31.0";
+
+  const SIDE = {
+    arrow: {
+      label: "1. Arrow",
+      caption: "The kit's arrow-up in accent. Restart pending gets a restart mark, a failure keeps the warning triangle, and a host that cannot be updated from here gets the arrow muted.",
+      ind: { outdated: ["accent", ic("arrow-up")], restart: ["accent", ic("restart")], updating: ["", spin], failed: ["warning", ic("triangle-alert")], blocked: ["", ic("arrow-up")] },
+    },
+    ring: {
+      label: "2. Ring",
+      caption: "A new glyph, the arrow in a ring. Heavier than the bare arrow, so it holds up next to the platform mark, and it does not read as a scroll or send arrow.",
+      ind: { outdated: ["accent", ic("ring-up")], restart: ["accent", ic("restart")], updating: ["", spin], failed: ["warning", ic("triangle-alert")], blocked: ["", ic("ring-up")] },
+    },
+    dot: {
+      label: "3. Dot",
+      caption: "No trailing mark: an accent dot on the platform mark, the same dot the Agents picker uses for a machine with something behind. Outdated and restart pending look alike; the action is in the right-click menu and in Settings.",
+      dot: new Set(["outdated", "restart", "blocked"]),
+      ind: { updating: ["", spin], failed: ["warning", ic("triangle-alert")] },
+    },
+    version: {
+      label: "4. Version",
+      caption: "The host's version in mono caption beside the arrow, so the row says what is wrong with no hover. The widest of the four; a long host name loses room.",
+      ind: { outdated: ["accent", `<span>0.30.0</span>${ic("arrow-up")}`], restart: ["accent", `<span>0.31.0</span>${ic("restart")}`], updating: ["", spin], failed: ["warning", ic("triangle-alert")], blocked: ["", `<span>0.28.0</span>${ic("arrow-up")}`] },
+    },
+  };
+  const hostRow = (host, take) => {
+    const ind = take.ind[host.state];
+    const dot = take.dot?.has(host.state) ? `<i class="hu-badge"></i>` : "";
+    const trailing = ind ? `<span class="hu-ind"${ind[0] ? ` data-tone="${ind[0]}"` : ""}>${ind[1]}</span>` : "";
+    return `<div class="zz-host" role="button" data-host="${host.name}"><span class="hu-os">${mark(host.os)}${dot}</span><span class="hu-name" data-penna-text>${host.name}</span>${trailing}</div>`
+      + host.chats.map(([agent, title]) => `<div class="hu-chat" data-penna="sidebar.row" role="button">${mark(agent)}<span data-penna-text>${title}</span></div>`).join("");
+  };
+  const sidebar = (take) => `<div class="hu-snip"><nav class="zz-nav" data-penna="sidebar"><div class="zz-list">${HOSTS.map((host) => hostRow(host, take)).join("")}</div></nav><div class="hu-tip" data-penna="tooltip">zz 0.30.0, this zz is 0.31.0</div></div>`;
+  document.querySelector("[data-sidebar]").innerHTML = Object.values(SIDE).map((take) => `<div class="hu-take"><b>${take.label}</b>${sidebar(take)}<p>${take.caption}</p></div>`).join("")
+    + `<div class="hu-take"><b>Right-click</b><div class="penna-menu hu-menu" data-penna="popover"><div data-penna="menu-item"><span>Update zz to 0.31.0</span></div><div data-penna="menu-item"><span>Remove host</span></div></div><p>The item follows the state: Update zz to 0.31.0, Restart to finish the update, or no item when the host cannot be updated from here.</p></div>`;
+
+  const globe = (host) => `<i data-icon="globe" data-state="${host.state === "updating" ? "busy" : "ok"}"></i>`;
+  const card = (rows) => `<div class="ag-card" data-penna="settings.card" data-ground>${rows}</div>`;
+  const entry = (inner) => `<div class="ag-entry">${inner}</div>`;
+  const head = (all) => `<div class="penna-settings-group hu-head"><span>Machines</span>${all ? btn("Update all", { primary: true }) : ""}</div>`;
+  const stack = (all, rows) => `<div class="penna-settings-stack">${head(all)}${card(rows)}</div>`;
+  const remote = HOSTS.filter((host) => !host.here);
+
+  const rowsTake = remote.map((host) => {
+    const facts = {
+      outdated: [`${host.addr} · zz ${host.v}`, "", btn("Update", { primary: true })],
+      restart: [`${host.addr} · zz ${TARGET} installed, daemon on ${host.v}`, "", btn("Restart", { primary: true })],
+      updating: ["Downloading zz 0.31.0 (14.2 of 31.0 MB)", "", btn("Updating", { loading: true })],
+      failed: ["zz 0.31.0 has no headless build for macos-x86_64", "warning", btn("Try again")],
+      blocked: [`${host.addr} · zz ${host.v}, update it on ${host.name} itself`, "", ""],
+    }[host.state];
+    return entry(`<div class="hu-row"><div class="hu-copy"><span class="hu-title">${globe(host)}<span>${host.name}</span></span><span class="hu-desc"${facts[1] ? ` data-tone="${facts[1]}"` : ""}>${facts[0]}</span></div><span class="hu-acts">${facts[2]}${x}</span></div>`);
+  }).join("");
+
+  const tableTake = entry(`<div class="hu-row hu-th" data-slim><span class="hu-who">Host</span><span class="hu-addr" style="color: inherit; font-size: inherit">Address</span><span class="hu-ver">zz</span><span class="hu-acts" style="width: 132px"></span></div>`)
+    + remote.map((host) => {
+      const facts = {
+        outdated: [`<span>${host.v} → ${TARGET}</span>`, "", btn("Update", { primary: true })],
+        restart: [`<span>${TARGET} installed</span>`, "", btn("Restart", { primary: true })],
+        updating: [`<span>14.2 of 31.0 MB</span>`, "", btn("Updating", { loading: true })],
+        failed: [`<span>no build for x86_64</span>`, "warning", btn("Try again")],
+        blocked: [`<span>${host.v}, update it there</span>`, "", ""],
+      }[host.state];
+      return entry(`<div class="hu-row" data-slim><span class="hu-who">${mark(host.os)}<span>${host.name}</span></span><span class="hu-addr">${host.addr.replace("Found on Tailscale, ", "")}</span><span class="hu-ver"${facts[1] ? ` data-tone="${facts[1]}"` : ""}>${facts[0]}</span><span class="hu-acts" style="width: 132px; justify-content: flex-end">${facts[2]}${x}</span></div>`);
+    }).join("")
+    + entry(`<div class="hu-row" data-slim><span class="hu-who">${mark("arch")}<span>hetzner</span></span><span class="hu-addr">me@hetzner-fsn1</span><span class="hu-ver">${ic("check")}<span>${TARGET}</span></span><span class="hu-acts" style="width: 132px; justify-content: flex-end">${x}</span></div>`);
+
+  const chipTake = remote.map((host) => {
+    const facts = {
+      outdated: [`<span class="hu-chip">${host.v}</span>`, host.addr, "", btn("Update", { primary: true })],
+      restart: [`<span class="hu-chip">restart to finish</span>`, host.addr, "", btn("Restart", { primary: true })],
+      updating: ["", "Downloading zz 0.31.0 (14.2 of 31.0 MB)", "", btn("Updating", { loading: true })],
+      failed: [`<span class="hu-chip">${host.v}</span>`, "zz 0.31.0 has no headless build for macos-x86_64", "warning", btn("Try again")],
+      blocked: [`<span class="hu-chip">${host.v}</span>`, `${host.addr} · update it on ${host.name} itself`, "", ""],
+    }[host.state];
+    return entry(`<div class="hu-row"><div class="hu-copy"><span class="hu-title">${globe(host)}<span>${host.name}</span>${facts[0]}</span><span class="hu-desc"${facts[2] ? ` data-tone="${facts[2]}"` : ""}>${facts[1]}</span></div><span class="hu-acts">${facts[3]}${x}</span></div>`);
+  }).join("")
+    + entry(`<div class="hu-row"><div class="hu-copy"><span class="hu-title"><i data-icon="globe" data-state="ok"></i><span>hetzner</span></span><span class="hu-desc">me@hetzner-fsn1</span></div><span class="hu-acts">${x}</span></div>`);
+
+  const FIGS = [
+    ["A. In the row", "Today's rows. The version joins the address line, and Update or Restart sits before the remove button. A running update writes its last line where the address was; a failure writes its reason there in warning tone.", stack(true, rowsTake)],
+    ["B. Table", "The card as a table like the Agents page: platform mark and name, address, a zz column, the button. A current host shows its version with a check. One line per host, so six hosts take 60% of the height of take A.", stack(true, tableTake)],
+    ["C. Chip", "Today's rows untouched for a current host: no version shown at all. An outdated host gets its version as a chip beside the name and the button. Least change, and the page never says a host is current.", stack(false, chipTake)],
+  ];
+  document.querySelector("[data-settings]").innerHTML = FIGS.map(([label, caption, html]) => `<div class="hu-fig"><b>${label}</b><p>${caption}</p><div class="hu-frame">${html}</div></div>`).join("");
+
+  const dialog = (title, description, buttons) => `<div class="penna-dialog" data-penna="dialog"><div class="penna-dialog-gutter"><div class="penna-dialog-lines"><div class="penna-dialog-title">${title}</div><div class="penna-dialog-description">${description}</div></div></div><div class="penna-dialog-gutter"><div class="penna-dialog-footer">${buttons}</div></div></div>`;
+  document.querySelector("[data-question]").innerHTML = [
+    dialog("Update zz on xps?", "This ends 2 sessions there.", btn("Not now", { ghost: true }) + btn("Install only") + btn("Update and restart", { primary: true })),
+    dialog("Restart zz on alienware?", "zz 0.31.0 is installed. Restarting ends 3 sessions there.", btn("Not now", { ghost: true }) + btn("Restart", { primary: true })),
+    dialog("Update zz on xps and alienware?", "This ends 5 sessions: 2 on xps, 3 on alienware.", btn("Not now", { ghost: true }) + btn("Install only") + btn("Update and restart", { primary: true })),
+  ].join("");
+
+  const COMPARE = [
+    ["", "1. Arrow", "2. Ring", "3. Dot", "4. Version"],
+    ["New glyphs", "restart", "ring-up, restart", "none", "restart"],
+    ["Trailing width", "14", "14", "0", "about 62"],
+    ["Tells outdated from restart pending", "yes", "yes", "no", "yes"],
+    ["Click target on the row", "yes", "yes", "no", "yes"],
+    ["Says the version with no hover", "no", "no", "no", "yes"],
+  ];
+  document.querySelector("[data-compare]").innerHTML = COMPARE.map((line, at) => line.map((cell, col) => at === 0 ? `<span data-head>${cell}</span>` : col === 0 ? `<b>${cell}</b>` : `<span>${cell}</span>`).join("")).join("");
+
+  const settle = () => new Promise((resolve) => {
+    const tick = () => getComputedStyle(document.documentElement).getPropertyValue("--penna-control-sm").trim() ? resolve() : requestAnimationFrame(tick);
+    tick();
+  });
+  settle().then(() => document.fonts.ready).then(() => {
+    window.pennaKit?.roundAll?.();
+    for (const snip of document.querySelectorAll(".hu-snip")) {
+      const row = snip.querySelector('[data-host="xps"]');
+      snip.querySelector(".hu-tip").style.top = `${row.offsetTop + row.offsetHeight + 2}px`;
+    }
+    const only = new URLSearchParams(location.search).get("only");
+    if (only) {
+      document.documentElement.dataset.only = only;
+      document.querySelector(".zz-intro").style.display = "none";
+      for (const section of document.querySelectorAll("[data-take]")) if (section.dataset.take !== only) section.style.display = "none";
+    }
+  });
+})();
+</script>
+</body>
+</html>
