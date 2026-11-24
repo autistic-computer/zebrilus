@@ -435,24 +435,32 @@ impl Settings {
         })
     }
 
-    fn applied_value(&self) -> Option<&str> {
-        let applied = self.applied_model.as_deref()?;
-        let resolved = applied.split('[').next().unwrap_or(applied);
+    fn listed_value<'a>(&'a self, model: &'a str) -> &'a str {
+        let resolved = model.split('[').next().unwrap_or(model);
         self.listed()
-            .find(|model| {
-                model["value"].as_str() == Some(applied)
-                    || model["resolvedModel"].as_str() == Some(resolved)
+            .find(|listed| {
+                listed["value"].as_str() == Some(model)
+                    || listed["resolvedModel"].as_str() == Some(resolved)
+                    || listed["displayName"]
+                        .as_str()
+                        .is_some_and(|name| name.eq_ignore_ascii_case(model))
             })
-            .and_then(|model| model["value"].as_str())
-            .or(Some(applied))
+            .and_then(|listed| listed["value"].as_str())
+            .unwrap_or(model)
+    }
+
+    fn applied_value(&self) -> Option<&str> {
+        self.applied_model
+            .as_deref()
+            .map(|applied| self.listed_value(applied))
+    }
+
+    fn picked_value(&self) -> Option<&str> {
+        (!self.model.is_empty()).then(|| self.listed_value(&self.model))
     }
 
     fn shown_model(&self) -> Option<&str> {
-        if self.model.is_empty() {
-            self.applied_value()
-        } else {
-            Some(self.model.as_str())
-        }
+        self.picked_value().or_else(|| self.applied_value())
     }
 
     fn current_model(&self) -> Option<&Value> {
@@ -531,7 +539,7 @@ impl Settings {
                 "name": "Model",
                 "category": "model",
                 "type": "select",
-                "currentValue": self.model,
+                "currentValue": self.picked_value().unwrap_or_default(),
                 "options": choices,
             });
             if let Some(applied) = applied {
@@ -2802,6 +2810,19 @@ mod tests {
                 "auto",
                 "bypassPermissions"
             ]
+        );
+        for alias in ["fable", "claude-fable-5-2", "claude-fable-5-2[1m]"] {
+            settings.model = alias.to_owned();
+            let options = settings.config_options();
+            assert_eq!(
+                options[0]["currentValue"], "claude-fable-5-2[1m]",
+                "{alias}"
+            );
+        }
+        settings.model = "claude-opus-4-1".to_owned();
+        assert_eq!(
+            settings.config_options()[0]["currentValue"],
+            "claude-opus-4-1"
         );
         settings.model = "haiku".to_owned();
         let options = settings.config_options();
