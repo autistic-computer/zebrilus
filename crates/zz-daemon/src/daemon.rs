@@ -53481,8 +53481,11 @@ pub fn workspace_tools(args: &[RawText]) -> Result<String, ServerError> {
             ));
         }
     };
-    Ok(format!("{WORKSPACE_TOOLS_HEAD}{section}"))
+    Ok(format!("{WORKSPACE_TOOLS_SECTION_HEAD}{section}"))
 }
+
+const WORKSPACE_TOOLS_SECTION_HEAD: &str =
+    "Run `zz tools` for targets, remote hosts, exit codes and every section.\n\n";
 
 const WORKSPACE_TOOLS_FRONTMATTER: &str = r"---
 name: zz-workspace
@@ -86324,8 +86327,16 @@ set-option -g @alias-mixed-next yes
                 )
                 .expect("section catalog")
                 .output;
-            assert!(output.starts_with(WORKSPACE_TOOLS_HEAD));
-            assert!(output.contains(heading));
+            assert_eq!(
+                output
+                    .split_once("\n\n")
+                    .map(|(head, rest)| (head, rest.starts_with(heading))),
+                Some((
+                    "Run `zz tools` for targets, remote hosts, exit codes and every section.",
+                    true
+                ))
+            );
+            assert!(!output.contains("## CLI contract"));
             for (_, other) in sections {
                 assert_eq!(output.contains(other), heading == other);
             }
