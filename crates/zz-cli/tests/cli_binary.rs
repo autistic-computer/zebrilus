@@ -159,7 +159,11 @@ fn help_after_a_bare_double_dash_belongs_to_the_command() {
 fn tools_answers_from_the_cli_without_a_daemon() {
     for (arguments, start, status) in [
         (&["tools"][..], "# Workspace tools\n", 0),
-        (&["tools", "terminal"][..], "# Workspace tools\n", 0),
+        (
+            &["tools", "terminal"][..],
+            "Run `zz tools` for targets, remote hosts, exit codes and every section.\n\n## Terminal panes\n",
+            0,
+        ),
         (&["tools", "--skill"][..], "---\nname: zz-workspace\n", 0),
         (&["tools", "bogus"][..], "", 2),
     ] {
