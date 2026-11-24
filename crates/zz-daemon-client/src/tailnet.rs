@@ -1,14 +1,13 @@
 use std::{
-    io::{self, Read},
+    io,
     net::{IpAddr, Shutdown, SocketAddr, TcpStream},
     path::{Path, PathBuf},
-    process::{Child, Command, Stdio},
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
     },
     thread::{self, JoinHandle},
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use serde_json::Value;
@@ -17,8 +16,10 @@ use thiserror::Error;
 use crate::{
     endpoint::TailnetEndpoint,
     transport::{LocalStream, LocalTransport, Transport, TransportListener, TransportStream},
-    unmasked::SpawnUnmasked as _,
 };
+
+#[path = "tailnet_api.rs"]
+mod api;
 
 pub const PORT: u16 = TailnetEndpoint::DEFAULT_PORT;
 pub const MODE_KEY: &str = "tailnet";
@@ -27,8 +28,6 @@ pub const HIDE_KEY: &str = "tailnet-hide";
 pub const HOSTNAME_KEY: &str = "tailnet-hostname";
 pub const CONTROL_URL_KEY: &str = "tailnet-control-url";
 
-const CLI_TIMEOUT: Duration = Duration::from_secs(5);
-const CLI_POLL: Duration = Duration::from_millis(10);
 const DIAL_TIMEOUT: Duration = Duration::from_secs(5);
 const PROBE_TIMEOUT: Duration = Duration::from_secs(1);
 
@@ -148,9 +147,9 @@ impl Allow {
 
 #[derive(Debug, Error)]
 pub enum TailnetError {
-    #[error("no working tailscale command ({0})")]
-    Cli(String),
-    #[error("tailscale printed something zz could not read: {0}")]
+    #[error("{0}")]
+    Api(String),
+    #[error("Tailscale answered something zz could not read: {0}")]
     Parse(String),
     #[error("{0}")]
     Unusable(String),
@@ -200,8 +199,10 @@ pub struct Caller {
 impl Status {
     #[must_use]
     pub fn unusable(&self) -> Option<String> {
-        if self.backend != "Running" {
-            return Some(format!("Tailscale is {}", self.backend));
+        match self.backend.as_str() {
+            "Running" => {}
+            "NeedsLogin" => return Some("Tailscale is not signed in".to_owned()),
+            backend => return Some(format!("Tailscale is {backend}")),
         }
         if !self.tun {
             return Some(
@@ -375,178 +376,11 @@ fn addresses(value: &Value) -> Vec<IpAddr> {
 }
 
 pub fn status() -> Result<Status, TailnetError> {
-    parse_status(&run_cli(&["status", "--json"])?)
+    parse_status(&api::get(api::STATUS)?)
 }
 
 pub fn whois(address: IpAddr) -> Result<Caller, TailnetError> {
-    parse_whois(&run_cli(&["whois", "--json", &address.to_string()])?)
-}
-
-fn candidates() -> Vec<PathBuf> {
-    let mut candidates = vec![PathBuf::from("tailscale")];
-    #[cfg(target_os = "macos")]
-    candidates.extend(
-        [
-            "/opt/homebrew/bin/tailscale",
-            "/usr/local/bin/tailscale",
-            "/Applications/Tailscale.app/Contents/MacOS/Tailscale",
-        ]
-        .map(PathBuf::from),
-    );
-    #[cfg(all(unix, not(target_os = "macos")))]
-    candidates.extend(
-        [
-            "/usr/bin/tailscale",
-            "/usr/local/bin/tailscale",
-            "/snap/bin/tailscale",
-        ]
-        .map(PathBuf::from),
-    );
-    #[cfg(windows)]
-    if let Some(program_files) = std::env::var_os("ProgramFiles") {
-        candidates.push(PathBuf::from(program_files).join(r"Tailscale\tailscale.exe"));
-    }
-    candidates
-}
-
-fn run_cli(arguments: &[&str]) -> Result<String, TailnetError> {
-    #[cfg(target_os = "macos")]
-    let _turn = take_turn()?;
-    let mut failures = Vec::new();
-    for program in candidates() {
-        match run_candidate(&program, arguments) {
-            Ok(output) => return Ok(output),
-            Err(reason) => failures.push(format!("{}: {reason}", program.display())),
-        }
-    }
-    Err(TailnetError::Cli(failures.join("; ")))
-}
-
-#[cfg(target_os = "macos")]
-const TURN_LOCK: &str = "Library/Caches/zz-tailscale.lock";
-
-#[cfg(target_os = "macos")]
-fn take_turn() -> Result<std::fs::File, TailnetError> {
-    use std::os::unix::fs::OpenOptionsExt as _;
-
-    let account = account_home()
-        .ok_or_else(|| TailnetError::Cli("this account has no home folder".to_owned()))?;
-    let home = std::env::var_os("HOME")
-        .filter(|home| !home.is_empty())
-        .map(PathBuf::from);
-    if let Some(reason) = foreign_home(home.as_deref(), &account) {
-        return Err(TailnetError::Cli(reason));
-    }
-    let lock = std::fs::OpenOptions::new()
-        .create(true)
-        .truncate(false)
-        .write(true)
-        .mode(0o600)
-        .open(account.join(TURN_LOCK))?;
-    lock.lock()?;
-    Ok(lock)
-}
-
-#[cfg(target_os = "macos")]
-fn foreign_home(home: Option<&Path>, account: &Path) -> Option<String> {
-    let Some(home) = home else {
-        return Some("HOME is not set".to_owned());
-    };
-    let same = home == account
-        || std::fs::canonicalize(home)
-            .ok()
-            .zip(std::fs::canonicalize(account).ok())
-            .is_some_and(|(home, account)| home == account);
-    (!same).then(|| {
-        format!(
-            "HOME is {}, not this account's home {}",
-            home.display(),
-            account.display()
-        )
-    })
-}
-
-#[cfg(target_os = "macos")]
-#[allow(unsafe_code, clippy::undocumented_unsafe_blocks)]
-fn account_home() -> Option<PathBuf> {
-    use std::{ffi::CStr, mem::MaybeUninit, os::unix::ffi::OsStrExt as _};
-
-    let mut passwd = MaybeUninit::<libc::passwd>::uninit();
-    let mut result = std::ptr::null_mut();
-    let mut buffer = vec![0_u8; 16 * 1024];
-    let status = unsafe {
-        libc::getpwuid_r(
-            libc::getuid(),
-            passwd.as_mut_ptr(),
-            buffer.as_mut_ptr().cast(),
-            buffer.len(),
-            &raw mut result,
-        )
-    };
-    if status != 0 || result.is_null() {
-        return None;
-    }
-    let passwd = unsafe { passwd.assume_init() };
-    if passwd.pw_dir.is_null() {
-        return None;
-    }
-    let home = unsafe { CStr::from_ptr(passwd.pw_dir) };
-    Some(PathBuf::from(std::ffi::OsStr::from_bytes(home.to_bytes())))
-}
-
-fn run_candidate(program: &Path, arguments: &[&str]) -> Result<String, String> {
-    let mut command = Command::new(program);
-    command
-        .args(arguments)
-        .env("TAILSCALE_BE_CLI", "true")
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    let mut child = command
-        .spawn_unmasked()
-        .map_err(|error| match error.kind() {
-            io::ErrorKind::NotFound => "not found".to_owned(),
-            _ => error.to_string(),
-        })?;
-    let stdout = read_in_background(child.stdout.take());
-    let stderr = read_in_background(child.stderr.take());
-    let status = wait_bounded(&mut child)?;
-    let stdout = stdout.join().unwrap_or_default();
-    let stderr = stderr.join().unwrap_or_default();
-    if status.success() {
-        Ok(stdout)
-    } else {
-        Err(stderr
-            .lines()
-            .find(|line| !line.starts_with("Warning:") && !line.trim().is_empty())
-            .unwrap_or("failed")
-            .to_owned())
-    }
-}
-
-fn read_in_background(pipe: Option<impl Read + Send + 'static>) -> JoinHandle<String> {
-    thread::spawn(move || {
-        let mut text = String::new();
-        if let Some(mut pipe) = pipe {
-            let _ = pipe.read_to_string(&mut text);
-        }
-        text
-    })
-}
-
-fn wait_bounded(child: &mut Child) -> Result<std::process::ExitStatus, String> {
-    let deadline = Instant::now() + CLI_TIMEOUT;
-    loop {
-        if let Some(status) = child.try_wait().map_err(|error| error.to_string())? {
-            return Ok(status);
-        }
-        if Instant::now() >= deadline {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err(format!("no answer within {}s", CLI_TIMEOUT.as_secs()));
-        }
-        thread::sleep(CLI_POLL);
-    }
+    parse_whois(&api::get(&api::whois_path(address))?)
 }
 
 pub fn bridge(tcp: TcpStream, local: LocalStream) -> io::Result<()> {
@@ -772,7 +606,7 @@ pub fn dial_socket(daemon_socket: &Path) -> PathBuf {
 
 #[cfg(unix)]
 fn own_dial(endpoint: &TailnetEndpoint) -> Option<Result<LocalStream, TailnetError>> {
-    use std::io::Write as _;
+    use std::io::{Read as _, Write as _};
 
     let socket = dial_socket(&crate::transport::default_socket_path());
     let mut stream = LocalTransport::connect(&socket).ok()?;

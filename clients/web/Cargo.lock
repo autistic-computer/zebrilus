@@ -8656,6 +8656,7 @@ dependencies = [
 name = "zz-daemon-client"
 version = "0.31.0"
 dependencies = [
+ "base64",
  "core-foundation",
  "ed25519-dalek",
  "getrandom 0.4.3",

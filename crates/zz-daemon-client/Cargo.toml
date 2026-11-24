@@ -8,6 +8,7 @@ description = "The client half of the zz daemon: endpoints, ssh tunnels, and the
 publish = false
 
 [dependencies]
+base64.workspace = true
 ed25519-dalek.workspace = true
 getrandom.workspace = true
 interprocess.workspace = true
@@ -39,9 +40,12 @@ rustix = { workspace = true, features = ["fs", "net"] }
 [target.'cfg(windows)'.dependencies]
 sysinfo.workspace = true
 windows = { workspace = true, features = [
+    "Win32_Foundation",
     "Win32_Security",
+    "Win32_Storage_FileSystem",
     "Win32_System_Console",
     "Win32_System_JobObjects",
+    "Win32_System_Pipes",
     "Win32_System_Threading",
 ] }
 

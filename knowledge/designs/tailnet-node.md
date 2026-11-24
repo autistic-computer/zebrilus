@@ -110,22 +110,54 @@ path as typed here instead of the path the daemon sent (`file_grants` in
 
 # Using the running Tailscale
 
-This mode adds no dependency (`crates/zz-daemon-client/src/tailnet.rs`). zz talks to the Tailscale
-on the machine through its CLI, trying each candidate in order with a 5 s limit:
+This mode adds no dependency and starts no process (`crates/zz-daemon-client/src/tailnet.rs`, with
+the client in `tailnet_api.rs`). zz asks the Tailscale daemon on the machine through its local HTTP
+API, the one the `tailscale` command uses, for two things: the status and who owns an address. Each
+call opens one connection, sends one `GET` and reads the answer within 5 s. Finding the daemon reads
+neither PATH nor HOME.
 
-| Platform | Candidates |
+| Platform | Where zz finds Tailscale, in this order |
 | --- | --- |
-| macOS | `tailscale` on PATH, then `/opt/homebrew/bin/tailscale` and `/usr/local/bin/tailscale` (a daemon the app spawns has a short PATH), then `/Applications/Tailscale.app/Contents/MacOS/Tailscale` run with `TAILSCALE_BE_CLI=1` so it acts as the CLI instead of opening the app |
-| Linux | `tailscale` on PATH, then `/usr/bin`, `/usr/local/bin` and `/snap/bin`; normal users get read access to tailscaled's socket, which is all `status` and `whois` need |
-| Windows | `tailscale` on PATH, then `%ProgramFiles%\Tailscale\tailscale.exe` |
+| macOS | 1. The App Store app: its `IPNExtension` process, one of this user's processes, holds open a file named `sameuserproof-<port>-<token>` in its group container. zz lists the user's processes and that one's open files with libproc (`proc_listpids`, `proc_name`, `proc_pidinfo` with `PROC_PIDLISTFDS`, `proc_pidfdinfo` with `PROC_PIDFDVNODEPATHINFO`), then connects to `127.0.0.1:<port>` with the token. 2. The standalone app: the port is the target of the symlink `/Library/Tailscale/ipnport` and the token is in `/Library/Tailscale/sameuserproof-<port>`, readable by the admin group. 3. The open-source `tailscaled` (Homebrew): the Unix socket `/var/run/tailscaled.socket` |
+| Linux | the Unix socket `/var/run/tailscale/tailscaled.sock`. It is `0666`, and tailscaled lets any local user make read-only calls, which are all zz makes |
+| Windows | the named pipe `\\.\pipe\ProtectedPrefix\Administrators\Tailscale\tailscaled`, opened with impersonation level Identification. A process that is not elevated may use it |
 
-Stderr is ignored (the CLI warns there when its version differs from the daemon's). When no
-candidate answers, the error lists each one and why.
+The first place that accepts a connection is used. When none exists the error is "Tailscale is not
+running" with the places zz looked; when one refuses, the error names it. An answer other than 200
+is reported with Tailscale's status code and message.
+
+zz ran the `tailscale` command for this until 2026-11-23. With no PATH it fell through to the menu
+bar app's own executable, and concurrent runs of that removed the active VPN configuration, which is
+why zz now starts no process for it.
+
+## What zz relies on upstream
+
+Checked on 2026-11-23 against the macOS App Store app 1.104.4, tailscaled 1.104.7 on Linux and the
+Windows client 1.104.5, and against upstream's source at v1.104.4. When a Tailscale update breaks
+`zz tailnet status`, recheck these first.
+
+| What zz relies on | Value | Upstream source |
+| --- | --- | --- |
+| Request | `GET <path> HTTP/1.1` with `Host: local-tailscaled.sock` and `Connection: close`, and no `Origin` or `Referer`; the server refuses another `Host` unless it holds a password, and needs no other header | `client/local/local.go`, `ipn/localapi/localapi.go` (`ServeHTTP`, `validHost`) |
+| Status | `/localapi/v0/status`, the same JSON `tailscale status --json` prints | `Client.Status`, `serveStatus` |
+| Who owns an address | `/localapi/v0/whois?addr=<ip>` (`:` written `%3A`), the JSON `tailscale whois --json` prints; 404 `no match for IP:port` for an unknown address | `Client.WhoIs`, `serveWhoIsWithBackend` |
+| macOS token | HTTP basic auth with an empty user and the token as password; 401 without it, 403 with a wrong one | `Client.DoLocalRequest`, `ServeHTTP` |
+| App Store app | a same-user process whose name starts with `IPNExtension` holds open a path containing `.tailscale.ipn.macos/sameuserproof-<port>-<token>` (upstream finds it with `lsof -n -a -u<uid> -c IPNExtension -F`) | `safesocket/safesocket_darwin.go` (`readMacosSameUserProof`, `initSameUserProofToken`) |
+| Standalone app | `/Library/Tailscale/ipnport`, a symlink to the port number, and `/Library/Tailscale/sameuserproof-<port>`, holding the token | `readMacsysSameUserProof` |
+| Unix sockets | `/var/run/tailscaled.socket` on macOS, `/var/run/tailscale/tailscaled.sock` on Linux | `paths/paths.go` (`DefaultTailscaledSocket`) |
+| Windows pipe | `\\.\pipe\ProtectedPrefix\Administrators\Tailscale\tailscaled`, opened with `SECURITY_SQOS_PRESENT \| SECURITY_IDENTIFICATION`; with no level or Anonymous it answers 401 | `paths/paths.go`, `safesocket/pipe_windows.go` |
+| Framing | the status and whois answers came chunked, the 401 and 404 answers with `Content-Length`; zz reads both | the Go HTTP server |
+
+Verified by running it: the App Store app on macOS, tailscaled on Linux, and the Windows client from
+an elevated and a non-elevated process. The standalone app and the Homebrew `tailscaled` on macOS
+follow upstream's source and have not been run. Not handled: a tailscaled on a socket other than
+these (upstream's defaults on Synology, QNAP and Gokrazy, or any `--socket`), and the per-user pipe
+of `tailscaled --windows-mode=dev`.
 
 ## Is it usable
 
 The daemon (`crates/zz-daemon/src/tailnet.rs`) reads `tailnet` and `tailnet-allow` from `zz/config`
-and runs `status --json` at start and every 30 seconds, logging only when the outcome changes. It
+and asks for the status at start and every 30 seconds, logging only when the outcome changes. It
 uses Tailscale only when all hold:
 
 - `BackendState` is `Running`;
@@ -143,7 +175,8 @@ before it reaches the socket. For each connection:
 
 1. Refuse it if it comes from one of this machine's own tailnet addresses (local clients use the
    owner-only socket; without this rule another OS user here would pass as this machine's node).
-2. Ask who it is: `whois --json <addr>` (an IPv4-mapped IPv6 caller is checked as its IPv4 address).
+2. Ask Tailscale who it is (`/localapi/v0/whois`; an IPv4-mapped IPv6 caller is checked as its
+   IPv4 address).
 3. Run the [admission check](#who-may-attach). On a refusal or a whois error, close and log the
    peer's name and why.
 4. Connect to the daemon's own local endpoint through `LocalTransport` (the Unix socket, or the named
@@ -376,6 +409,9 @@ Few and exact:
 - status and whois parsing from fixed JSON, and the usability reasons for `NeedsLogin`, no `TUN` and
   no account (built);
 - settings from config text, and `tailnet://` parsing and printing (built);
+- the local API client: the App Store app's `sameuserproof` file name, including names it must
+  reject, the exact request bytes with and without a token, and one `Content-Length` and one chunked
+  answer (built);
 - discovery filtering from a fixed peer list: other user, tagged, offline, probe timeout and protocol
   mismatch each drop the peer, and a rename keeps the stable ID;
 - the own node's status lines, read back to the same state, and the dial socket's path (built).

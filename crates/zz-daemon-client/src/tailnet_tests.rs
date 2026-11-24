@@ -100,7 +100,7 @@ fn status_is_unusable_unless_running_with_an_interface() {
                 backend: "NeedsLogin".to_owned(),
                 ..running.clone()
             },
-            "Tailscale is NeedsLogin",
+            "Tailscale is not signed in",
         ),
         (
             Status {
@@ -350,24 +350,58 @@ fn tailnet_endpoints_parse_and_print() {
     }
 }
 
-#[cfg(target_os = "macos")]
 #[test]
-fn tailscale_runs_only_under_this_accounts_home() {
-    let account = Path::new("/Users/fabrico");
+fn the_app_store_proof_names_the_port_and_token() {
     assert_eq!(
-        foreign_home(Some(Path::new("/Users/fabrico")), account),
-        None
+        api::sameuserproof(
+            "/Users/fabrico/Library/Group Containers/W5364U7YZB.group.io.tailscale.ipn.macos/sameuserproof-49616-0a1b2c3d4e5f60718293"
+        ),
+        Some((49616, "0a1b2c3d4e5f60718293".to_owned()))
+    );
+    for path in [
+        "/Users/fabrico/Library/Group Containers/W5364U7YZB.group.io.tailscale.ipn.macos/sameuserproof-49616",
+        "/Users/fabrico/Library/Group Containers/W5364U7YZB.group.io.tailscale.ipn.macos/sameuserproof-+80-0a1b",
+        "/Users/fabrico/Library/Group Containers/W5364U7YZB.group.io.tailscale.ipn.macos/sameuserproof-70000-0a1b",
+        "/Users/fabrico/Library/Group Containers/W5364U7YZB.group.io.tailscale.ipn.macos/sameuserproof-49616-0a1b\r\nX: y",
+        "/Library/Tailscale/sameuserproof-49616-0a1b2c3d4e5f60718293",
+    ] {
+        assert_eq!(api::sameuserproof(path), None, "{path}");
+    }
+}
+
+#[test]
+fn requests_are_these_bytes() {
+    assert_eq!(
+        api::request(api::STATUS, Some("0a1b2c3d4e5f60718293")),
+        "GET /localapi/v0/status HTTP/1.1\r\nHost: local-tailscaled.sock\r\nAuthorization: Basic OjBhMWIyYzNkNGU1ZjYwNzE4Mjkz\r\nConnection: close\r\n\r\n"
     );
     assert_eq!(
-        foreign_home(Some(Path::new("/Users/fabrico/")), account),
-        None
+        api::request(api::STATUS, None),
+        "GET /localapi/v0/status HTTP/1.1\r\nHost: local-tailscaled.sock\r\nConnection: close\r\n\r\n"
     );
     assert_eq!(
-        foreign_home(Some(Path::new("/tmp/zz-live-home")), account),
-        Some("HOME is /tmp/zz-live-home, not this account's home /Users/fabrico".to_owned())
+        api::request(
+            &api::whois_path(ip("100.99.198.46")),
+            Some("0a1b2c3d4e5f60718293")
+        ),
+        "GET /localapi/v0/whois?addr=100.99.198.46 HTTP/1.1\r\nHost: local-tailscaled.sock\r\nAuthorization: Basic OjBhMWIyYzNkNGU1ZjYwNzE4Mjkz\r\nConnection: close\r\n\r\n"
     );
     assert_eq!(
-        foreign_home(None, account),
-        Some("HOME is not set".to_owned())
+        api::request(&api::whois_path(ip("fd7a:115c:a1e0::1")), None),
+        "GET /localapi/v0/whois?addr=fd7a%3A115c%3Aa1e0%3A%3A1 HTTP/1.1\r\nHost: local-tailscaled.sock\r\nConnection: close\r\n\r\n"
+    );
+}
+
+#[test]
+fn responses_read_with_a_length_or_in_chunks() {
+    let sized: &[u8] = b"HTTP/1.1 401 Unauthorized\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: 14\r\nConnection: close\r\n\r\nauth required\nleftover";
+    assert_eq!(
+        api::read_response(sized).unwrap(),
+        (401, b"auth required\n".to_vec())
+    );
+    let chunked: &[u8] = b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\nTransfer-Encoding: chunked\r\n\r\n7\r\n{\"Node\"\r\nc;ext=1\r\n: {\"ID\": 7}}\r\n0\r\n\r\n";
+    assert_eq!(
+        api::read_response(chunked).unwrap(),
+        (200, br#"{"Node": {"ID": 7}}"#.to_vec())
     );
 }
