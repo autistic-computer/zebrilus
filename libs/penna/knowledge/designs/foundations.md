@@ -2,14 +2,14 @@
 type: Design Plan
 title: "Foundations: penna's design language"
 description: "The spec for penna's design language and the source of truth for every penna screen: principles, the rules and scales (space, type, sizes, color, corners, depth, focus, motion, layout), and each component's purpose, anatomy, states, behavior, content and placement. The docs site draws it with real components."
-status: Built (2026-11-04, steps 1 to 9)
+status: Maintained specification (2026-11-24)
 resource: src/foundation/space.rs
 tags:
 - ui
 - design-system
 - tokens
 - design-plan
-timestamp: 2026-11-03T00:00:00Z
+timestamp: 2026-11-24T00:00:00Z
 ---
 
 # Foundations
@@ -18,7 +18,7 @@ penna's design language: the principles, the rules and scales, and how each comp
 
 Values are design pixels: one unit is 1/16 of the root rem, so the interface font size and window zoom scale everything together. `rems_from_px` converts.
 
-Status marks: **built** is in the code; **step N** is planned in the work order at the end.
+Each component's Status records the implemented parts and outstanding work.
 
 ## Principles
 
@@ -54,7 +54,7 @@ penna draws zz and nidus: tools people keep open all day, mostly driven from the
 | `control-md` | `--penna-control-md` | `Size::Medium` | built |
 | colors | `--penna-fg`, `--penna-fg-muted`, ... | `cx.theme()` fields and looks | built |
 
-Until step 1, `Space` variants were named in 2px steps (`Space::S4` was 8px), while ala's helpers count 4px steps (`gap_4()` is 16px). Don't use ala's spacing helpers (`gap_2()`, `px_3()`, ...) in penna; use `Space`.
+Use `Space` for spacing. Its suffix gives the design pixels: `Space::S4` is 4. Ala's `gap_4()` is 16.
 
 ## Space
 
@@ -85,7 +85,7 @@ Insets, set by the container:
 
 Rows in a plain list (row inset 0) touch: their height keeps the rhythm. In an inset list (`theme.inset_rows()`, a row inset above 0, as in the look) rows sit `space-2` apart, so their rounded highlights never merge: menus, select lists, settings navigation and the touch which-key list. `list_inset` sets both the side inset and that gap; `theme.row_gap()` is the gap alone, for a list whose sides are padded some other way. The docs navigation keeps its rows `space-2` apart in every theme.
 
-Components take every padding, gap and margin from `Space` (built in step 6), so spacing scales with the rem like type does. Settings pages are a pane (`inset-pane` 16 around the page, `gap-group` 16 between groups); a settings row is inside a card (`inset-card` 12 all round, title and description `gap-tight` 4 apart); under a coarse pointer its title is never cut or covered and nothing leaves the card: the title stays on one line while it and its control fit, a control that can shrink gives way first (a select, 200 wide, down to 120, which still shows about ten characters of its value, `settings_select_box`), then the title wraps onto more lines, never inside a word, beside a control of fixed size (a switch, a segmented control), which never shrinks; when the title's widest word and the control at its smallest do not fit side by side, the control goes on its own line under the title, at the row's end, `space-8` below it. The control stays centered on the title's lines and the description sits under them. Dialogs are panes too (`inset-pane` 16). Sidebar sections are `gap-group` 16 apart. Which-key's columns and lines are `gap-group` 16 apart inside an `inset-card` sheet. What stays in pixels: drawing geometry inside a fixed-size picture (Appearance's theme miniatures), focus halos and swatch rings that feed radius math, window snap margins, and the sidebar title bar's insets, alignment geometry computed from the rows' action column (and the traffic lights on macOS) so the window's buttons line up over the rows.
+Components take every padding, gap and margin from `Space`, so spacing scales with the rem like type does. Settings pages are a pane (`inset-pane` 16 around the page, `gap-group` 16 between groups); a settings row is inside a card (`inset-card` 12 all round, title and description `gap-tight` 4 apart); under a coarse pointer its title is never cut or covered and nothing leaves the card: the title stays on one line while it and its control fit, a control that can shrink gives way first (a select, 200 wide, down to 120, which still shows about ten characters of its value, `settings_select_box`), then the title wraps onto more lines, never inside a word, beside a control of fixed size (a switch, a segmented control), which never shrinks; when the title's widest word and the control at its smallest do not fit side by side, the control goes on its own line under the title, at the row's end, `space-8` below it. The control stays centered on the title's lines and the description sits under them. Dialogs are panes too (`inset-pane` 16). Sidebar sections are `gap-group` 16 apart. Which-key's columns and lines are `gap-group` 16 apart inside an `inset-card` sheet. What stays in pixels: drawing geometry inside a fixed-size picture (Appearance's theme miniatures), focus halos and swatch rings that feed radius math, window snap margins, and the sidebar title bar's insets, alignment geometry computed from the rows' action column (and the traffic lights on macOS) so the window's buttons line up over the rows.
 
 An inset reaches the text's line box, not its letters. In `body` (13 on 18) capitals start 4.27px inside the box and the baseline sits 4.27px above its bottom, so an `inset-card` reads as about 16px to the capitals. Keep the token; never nudge text natively. An HTML twin may move a text run by a pixel at most (`position: relative; top`, usually ±0.5px) where ala rounds the baseline differently from the browser, so parity holds; that is the only nudge, and it lives in the twin's CSS.
 
@@ -109,15 +109,17 @@ Interface (`TextStyle`, built):
 
 Reading, for documents and chat (`TextStyle::ReadH1` to `ReadH5` and `ReadBody`, built). Sizes reuse the interface sizes with lines made for paragraphs:
 
-| Style | Size | Line | Weight | Before step 2 |
-|---|---|---|---|---|
-| `read-h1` | 26 | 32 | 600 | 28 on 45.5, bold |
-| `read-h2` | 20 | 28 | 600 | 21 on 34 |
-| `read-h3` | 16 | 24 | 600 | 17.5 on 28.5 |
-| `read-h4` | 14 | 22 | 600 | 15.75 on 25.5 |
-| `read-h5` (h5 and h6) | 13 | 20 | 600 | 14 on 22.5 |
-| `read-body` | 14 | 22 | 400 | 16 on 26 |
-| `read-small` | 13 | 20 | 400 | planned, for captions and table cells |
+| Style | Size | Line | Weight |
+|---|---|---|---|
+| `read-h1` | 26 | 32 | 600 |
+| `read-h2` | 20 | 28 | 600 |
+| `read-h3` | 16 | 24 | 600 |
+| `read-h4` | 14 | 22 | 600 |
+| `read-h5` (h5 and h6) | 13 | 20 | 600 |
+| `read-body` | 14 | 22 | 400 |
+| `read-small` | 13 | 20 | 400 |
+
+`read-small` is planned for captions and table cells.
 
 Reading rhythm (built): blocks (paragraphs, lists, quotes, code, tables) sit `space-12` apart (`TextViewStyle::paragraph_gap`); a heading has `space-24` above it (h1 and h2) or `space-16` (h3 to h6) and `space-8` below. The first block has nothing above it. Bold in reading text is 600.
 
@@ -125,7 +127,7 @@ Reading rhythm (built): blocks (paragraphs, lists, quotes, code, tables) sit `sp
 
 Touch, for the compact, touch and sheet blocks and the phone components (`TextStyle::TouchSmall`, `TouchBody`, `TouchTitle`, built): `touch-small` 15 on 20, `touch-body` 17 on 22, `touch-title` 34 on 40, weights 400, 400, 600; strong is 500 for the first two.
 
-Component text (step 3, built): list and tree rows `lead`, centered in the row height (which follows density and the rem), their details `small`; sidebar headings strong `small`, under the `body` rows they head; menu rows `small` with 12 icons, and `body` with 14 icons on a 44 row under a coarse pointer; their shortcuts `small`; menu section labels `caption`. Controls take the text of their size from `Size::control_text()`, the Text column of the control ladder: buttons, fields, selects and segmented controls set it once on the control and their label, icon and children inherit it, so a caller's weight (a selected sidebar row's 500) still wins. A field's caret, selection and rows follow its line (18 at `body`). Badges are strong `caption` (`micro` at the `xs` and `sm` rungs), keycaps `caption` (`micro`), the stepped slider `small` (`caption` at `xs` and `sm`), and the touch slider's value `touch-small` muted. Surfaces (dialogs, alerts, notifications, callouts, notices, popovers) set `body` on the surface, before the caller's own style, so content with no style of its own is 13 on 18; their titles are `body` at the heading weight, 600, and their descriptions and messages `small`; a stacked notice's title is `lead` at 600. An empty state sets `small` on itself, since its message is its bare content, and its title is `body` at 600. A marker beside a first line (a notification, callout or notice icon) sits in a box as tall as that line: 18 beside a `body` title, 20 beside a stacked notice's `lead` title, 16 beside a message alone. Tooltips are `small`. Chrome: the title bar's content area and the tray panel set `body`; a window title in the title bar is `body` at 600, with a path beside it regular and muted. The docs header's brand is `lead` at 600. Which-key sets `small` on itself, its table name strong `small`, and `caption` for block titles, the repeat mark and its key caps in the code face. Settings: the page heading is `title`, group headers `body` at 600 (so a disclosure's chevron box is 18 tall), row titles `body`, descriptions `small`; the about page's name is `title`, its tagline `small`, its values `caption` in the code face. The picker's rows are `small`, its empty label `caption`, its footer `micro`. The color picker's label is `caption`, the touch trigger's hex `mono`. Appearance: slider values `small`, tile labels `caption`, and the theme file description `small`. Compact and touch: large titles `touch-title`; the HUD strong `touch-body`; the folding title `touch-body` at 600; pill titles and menu chips strong `touch-small`, pill meta `small`, the mini pill strong `body`; key rows `touch-small`; the touch which-key list `touch-body`, its caps `touch-small` in the code face, its group headers strong `body`; popover keys `touch-body`. Sheets: titles `display`, row labels `touch-body`, details `touch-small`. The code editor sets `mono` on itself (13 on 18) and draws line numbers at the `caption` size on the code line. The HTML versions read the `--penna-text-*` variables instead of copying sizes.
+Component text: list and tree rows `lead`, centered in the row height (which follows density and the rem), their details `small`; sidebar headings strong `small`, under the `body` rows they head; menu rows `small` with 12 icons, and `body` with 14 icons on a 44 row under a coarse pointer; their shortcuts `small`; menu section labels `caption`. Controls take the text of their size from `Size::control_text()`, the Text column of the control ladder: buttons, fields, selects and segmented controls set it once on the control and their label, icon and children inherit it, so a caller's weight (a selected sidebar row's 500) still wins. A field's caret, selection and rows follow its line (18 at `body`). Badges are strong `caption` (`micro` at the `xs` and `sm` rungs), keycaps `caption` (`micro`), the stepped slider `small` (`caption` at `xs` and `sm`), and the touch slider's value `touch-small` muted. Surfaces (dialogs, alerts, notifications, callouts, notices, popovers) set `body` on the surface, before the caller's own style, so content with no style of its own is 13 on 18; their titles are `body` at the heading weight, 600, and their descriptions and messages `small`; a stacked notice's title is `lead` at 600. An empty state sets `small` on itself, since its message is its bare content, and its title is `body` at 600. A marker beside a first line (a notification, callout or notice icon) sits in a box as tall as that line: 18 beside a `body` title, 20 beside a stacked notice's `lead` title, 16 beside a message alone. Tooltips are `small`. Chrome: the title bar's content area and the tray panel set `body`; a window title in the title bar is `body` at 600, with a path beside it regular and muted. The docs header's brand is `lead` at 600. Which-key sets `small` on itself, its table name strong `small`, and `caption` for block titles, the repeat mark and its key caps in the code face. Settings: the page heading is `title`, group headers `body` at 600 (so a disclosure's chevron box is 18 tall), row titles `body`, descriptions `small`; the about page's name is `title`, its tagline `small`, its values `caption` in the code face. The picker's rows are `small`, its empty label `caption`, its footer `micro`. The color picker's label is `caption`, the touch trigger's hex `mono`. Appearance: slider values `small`, tile labels `caption`, and the theme file description `small`. Compact and touch: large titles `touch-title`; the HUD strong `touch-body`; the folding title `touch-body` at 600; pill titles and menu chips strong `touch-small`, pill meta `small`, the mini pill strong `body`; key rows `touch-small`; the touch which-key list `touch-body`, its caps `touch-small` in the code face, its group headers strong `body`; popover keys `touch-body`. Sheets: titles `display`, row labels `touch-body`, details `touch-small`. The code editor sets `mono` on itself (13 on 18) and draws line numbers at the `caption` size on the code line. The HTML versions read the `--penna-text-*` variables instead of copying sizes.
 
 Code takes the size and line of the text around it, in the code face: `mono` in the interface, `read-body` size in reading text. ala can't size one run differently inside a line.
 
@@ -192,7 +194,7 @@ A window has two planes. Chrome (the sidebar, the title bar and the gaps between
 
 Highlight: what is picked or in focus is a wash of the ink, and a primary action a solid fill of it, whatever the tint. What is on (a switch, a checked box, a slider's value) takes `accent`.
 
-Contrast (WCAG 2, built in step 8): in light and dark, for every tint, accent and `neutral` the knobs allow, muted text, accent, success, warning and danger as text reach 4.5:1 on `bg`, and so does the text on a solid fill of `primary` and the status colors. The muted mix is 0.30, as above. Light variants darken their accent and status colors until near-white text on them reads at 4.5:1, which also makes them read as text. Text on a solid status fill takes whichever of near-white or near-black gives more contrast, so dark variants put near-black labels on their mid-tone status fills. An accent fill holds marks, not text (a knob, a check), so its mark is near-white whenever that reaches 3:1, the floor for marks, and near-black only on an accent too pale for it; the named accents are vivid and all hold near-white in both modes. `interface_theme`'s tests assert all of it. `fg-faint` stays under 4.5 on purpose: placeholders and disabled text only.
+Contrast (WCAG 2): in light and dark, for every tint, accent and `neutral` the knobs allow, muted text, accent, success, warning and danger as text reach 4.5:1 on `bg`, and so does the text on a solid fill of `primary` and the status colors. The muted mix is 0.30, as above. Light variants darken their accent and status colors until near-white text on them reads at 4.5:1, which also makes them read as text. Text on a solid status fill takes whichever of near-white or near-black gives more contrast, so dark variants put near-black labels on their mid-tone status fills. An accent fill holds marks, not text (a knob, a check), so its mark is near-white whenever that reaches 3:1, the floor for marks, and near-black only on an accent too pale for it; the named accents are vivid and all hold near-white in both modes. `interface_theme`'s tests assert all of it. `fg-faint` stays under 4.5 on purpose: placeholders and disabled text only.
 
 Base colors from a theme (`colors`) and a person's own accent color are fitted to these rules, since nothing proves them in advance. An accent or status color that reads under 4.5:1 as text on `bg` moves in OKLCH lightness away from `bg`, keeping its hue and as much chroma as the screen can show, until it reaches 4.5:1; on the table's `bg` the table's colors and the named accents never move. `fg` that reads under 7:1 on `bg` moves the same way until it reaches 7:1, the floor the theme files meet: a theme brought from elsewhere (a terminal's colors) often sets its text for code at a size and weight where 5:1 reads, and interface text at 12 and 13 needs more; on the table's `bg` the table's `fg` never moves. The muted mix is the largest weight up to 0.30 that keeps `fg-muted` at 4.5:1 on `bg` (0.30 for the table's colors), so a dim `fg` gets a lighter mix.
 
@@ -350,7 +352,7 @@ How the knobs are spelled and decided:
 - `glass` as an object is a material: `light` and `dark` each name the fields that differ from `liquid` in that mode; an object with neither applies to both modes. Every material's tint rises to the lowest opacity that keeps `fg` at 4.5:1 over a black backdrop under dark text and a white one under light text, blended in sRGB and ignoring blur: 0.596 in light and 0.705 in dark with the default colors, so both looks keep their own tint, 0.8 and 0.75.
 - `mode` other than `follow` beats the person's Mode.
 - `colors` is `{ "light": { ... }, "dark": { ... } }`, each with any of `bg`, `fg`, `success`, `warning` and `danger` as hex colors: `{ "dark": { "bg": "#131313", "fg": "#dddddd", "danger": "#e7988a" } }`. A field left out, or a mode left out, takes the Color table's value. A neutral moves them the way it moves the table, so the default neutral leaves them exact. They are fitted (Color) after the neutral and the tint. A status color brought this way still means its status: whoever fills it keeps it red, green and amber.
-- Unknown keys are ignored, so a file from before step 10 loads as the default look under its own name.
+- Unknown keys are ignored, so older theme files can still supply the settings the current format recognizes.
 - Increase contrast (contrast 1 to 2) scales the surface steps, fills, washes and `divider` up by the contrast and the muted and faint mixes down by it, so surfaces stand further apart and secondary text reads closer to `fg`. It adds no edge to any kind.
 - Keyboard focus changes no fill but a field's; everything else shows the ring.
 - Rings on a selected pane, card or tile, and a row's bar mark, take the highlight color, not `accent`.
@@ -360,7 +362,7 @@ How the knobs are spelled and decided:
 - Muted, faint and tone ink are worked out for the ground under the text, natively and in HTML, where each ground scope (`data-ground`, `data-on`) carries the inks that differ from the window's: `--penna-muted`, `--penna-faint` and `--penna-<tone>-ink`, as values. Natively they mix the ink toward the ground's fill in OKLab rather than fade it, so the tokens write the mixed color; on a see-through window a ground whose fill lets the window through takes the ink at a share instead (Color), worked out against that fill over the brightest backdrop. Cards, panels and floating grounds differ in muted and faint only; tone inks follow the ground's ink, which only a solid selection changes.
 - Row inset (6), outline width (1) and highlight strength (0.8 of the wash) are fixed.
 
-Status: built (steps 10, 12, 13, 14, 16, 17, 18, 19 and 20). Theme files are knobs only, the kinds and the built-in role patches draw the table above, and a person sets the knobs themselves over the platform's. The storybook's theme creator edits these knobs and exports a theme file, the docs Look page shows their range live, and the parity baselines hold the one look. Step 12 closed the last differences between native and HTML but one: a soft or prominent button set straight on a solid selection keeps its window paint in HTML, and rows hold none that way. What else remains is raster: text, and glass blur at its edges.
+Status: built. Theme files are knobs only, the kinds and the built-in role patches draw the table above, and a person sets the knobs themselves over the platform's. The storybook's theme creator edits these knobs and exports a theme file, the docs Look page shows their range live, and the parity baselines hold the one look. A soft or prominent button set straight on a solid selection keeps its window paint in HTML, and rows hold none that way. What else remains is raster: text, and glass blur at its edges.
 
 ## Focus and keys
 
@@ -612,7 +614,7 @@ Phone (Phone, rules 2 and 3):
 
 HTML: `.penna-button` with `data-penna` (the recipe: `button`, `button.quiet` for ghost, `button.outline`), `data-tone`, `data-prominent` (solid), `data-size` (`xsmall` to `touch`, and `touch-large`), `data-state="current"` (selected), `data-variant` (`link`, `text`), `disabled`, `data-loading`; the label is `.penna-label`, the icon `<i data-icon>`, and a button with a caret takes `data-caret` and holds a `.penna-caret`. A button set inside a tab or row takes `data-inside` with `--penna-inside-rows` set to the container's height, and `kit.js` rounds it concentric.
 
-Status: matches, Phone included (`Size::TouchLarge`; the 44 icon button is `compact_bar_button`, `src/blocks/compact/bar.rs:224`). zz's phone screens don't ask for the touch rungs yet (Work order, step 21).
+Status: matches, including phone. `compact_bar_button` draws the 44 icon button. Zebrilus uses `Size::TouchLarge` for the main actions on its phone onboarding and browser pages.
 
 ### Badge
 
@@ -2440,34 +2442,3 @@ Placement: in a chat, inside a `card.figure` with no inset, as wide as the reply
 Phone (`set_touch`, Phone rules 2 and 6): text is `touch-body`, captions, table headers and mono `touch-small`, a heading `touch-body` at 600. Buttons are `control-touch` 44 and share their row's width, none narrower than 120, so two sit side by side and a third wraps. Inputs and selects are `control-touch-lg` 56 and as wide as the block. A segmented control is `control-touch` and full width. A grid has at most two columns. A stat's value stays `title`.
 
 Status: built natively, with the `ui-blocks` story (every component, held, chart, phone, list template, compact form, problems) and docs page (`ui-block.md`). zz draws it in agent chats on the desktop and the thin clients. Not built: full HTML/JS twin; tone bound to data; checks on a field's value.
-
-## Work order
-
-| Step | What | Visible change | Status |
-|---|---|---|---|
-| 1 | Token names in Rust and CSS: `Space` named by pixels with gap and inset constants; space, gap, inset and text style CSS variables | none | built |
-| 2 | Reading text: `TextView` and `text.css` on the reading ladder and rhythm | documents and chat get smaller, tighter text | built |
-| 3 | Text styles: every component sets a full text style on its text, native and HTML, one family at a time: rows, lists and menus first, then controls, surfaces, chrome and the editor blocks, with the touch ladder | per family: rows that grew from a 1.618 line return to their row height | built |
-| 4 | Root text style: `Root` and `penna.css` set `body` | app text with no style goes from 16 on 26 to 13 on 18; penna itself doesn't move | built |
-| 5 | Layout primitives, native and DOM, with stories | none by themselves | built |
-| 6 | Components onto the space tokens, one family at a time, starting with Appearance (its 11 and 14 insets); the primitives stay for app layouts and new code | small spacing moves, reviewed per family | built |
-| 7 | Control ladder: `control-xs`, `-lg`, `-xl`, `-touch`, rows on `control-md`, tab heights on the ladder | menu rows grow 2px, tabs move | built |
-| 8 | Color: contrast fixes across the six theme variants | flagged pairs darken or lighten | built |
-| 9 | Density setting | new option | built |
-| 10 | One look: the default theme becomes the look above, theme files shrink to knobs, `macos` and `yaru` become presets, role overrides go, and the kit draws variants from their kind | every screen: fewer edges and shadows, a warm ground, 12 corners | built |
-| 11 | Every component matches its section: bars and cards set their own size and inset, the HTML twins take their roles, hover and pressed on switches and segmented controls, a lifted tile while dragged, no free separator color, 14 icons when no size is given | bars move to the pane header height, unsized icons grow 1px beside `body` | built |
-| 12 | The Look's last native and HTML differences: toned floating chips opaque, presses replacing hovers, glass over stacked dialogs, label inks per ground in HTML, selected-row content in the selected ink, a dragged tile one fill step up | toned pane chips turn opaque, dragged tiles read in dark, chips on picked rows turn to the row's ink | built |
-| 13 | Glass past floating surfaces: chrome items select as glass, panes with gaps take the material's rim and light, and buttons over the content are glass; where glass is off each keeps the look it had | selected sidebar rows, sidebar entries and window and page tabs turn to glass pills; gapped panes gain a lit rim; jump to latest turns to glass | built |
-| 14 | Knobs, no presets: Appearance drops the theme picker and saved themes, gains Controls, Glass and a theme file menu, and the look starts from the platform's knobs | the Theme row goes; Look holds every knob; a pasted theme file sets them | built |
-| 15 | Glass that reads on a flat ground: a chrome selection's tint matches the highlight it replaces, a material with no bezel draws no glint natively, and a gapped pane with no rim takes the `divider` hairline | `frosted` selections read like the highlight with no stray rim; gapped panes keep their edge with glass `none` or `frosted` | built |
-| 16 | One glass: `frosted` is gone and Glass is a switch; on, it draws `liquid` on every platform, and a theme file's own material fills in over `liquid` | the Glass row turns to a switch; Linux, Windows and the web draw `liquid` where they drew `frosted` | built |
-| 17 | Plain knobs: Corner radius in percent on a square curve with no pill at its top, Increase contrast a slider that adds no edges, Motion in three steps, no Theme file row, and the Advanced fold opened into Size and Accessibility | the radius slider reads 69% by default; controls lose their hairline under contrast; Reduce motion and Animation speed become one Motion row | built |
-| 18 | A see-through window reads like an opaque one: the theme carries the window's opacity, so cards and bars on it take their step as a wash and stay a step above it, and `divider` drops to 8% | settings cards under window blur read a step above the page instead of darker than it; every rule is lighter | built |
-| 19 | PiPs follow Glass: a PiP is glass when glass is on and its pane's ground, opaque, under the `divider` hairline when it is off | PiPs lose their frosted blur with glass off and gain the pane's hairline | built |
-| 20 | One corner rule: controls round to a share of their height, containers keep `radius`, nested corners are concentric on drawn corners, and smoothing no longer changes how round a corner looks | controls on macOS (`smoothing` 4) read as round as their radius says instead of about half; rows, sidebar entries, tabs and the segmented pill match at every Corner radius; zz's flat sidebar entries follow the knob instead of a fixed 24 | built |
-| 21 | Phone components: the `control-touch-lg` rung, phone buttons and fields on the touch rungs, touch rows outside sheets, phone tile states and window content, press and hold, the action bar, the zoom card, a 44 sheet close and the phone empty state | phone buttons grow from about 32 to 44 and 56, tiles lose their buttons, text in tiles grows to 17 and 15 | in progress: the 56 rung, the 56 button and field, touch rows, the row group, the section header and the phone container corner built in penna; the rest, and zz's screens on them, not built |
-| 22 | Inside a pane: the pill's tile words and pane menu, the keyboard rule, the confirm and rename modals, the chat on a phone (composer row, plus sheet, ask card, queued row, touch transcript rows, hold a message), the 44 key row with pinned ends, the stack menu for the pill and the key row with hold, slide and release, and the browser's pill stack, address field, progress line and tabs sheet | the phone chat loses its chips, key caps and 24 buttons; terminal keys grow to 44 and the arrow pad stays in view; the pill menu's chips grow to 52, the chord card turns into chips, and holding the pill opens its menu; the phone browser loses its top bar | built, but for address suggestions |
-| 23 | Glass looks: Glass stays on or off, with one look for light and one for dark that holds the three legibility rules over black and white backdrops; Frost goes | the Frost slider goes; light glass turns much lighter and calmer, dark glass dims and caps the backdrop | built |
-| 24 | UI blocks: a surface that draws a spec with kit components and owns its layout, a held state, a phone look, and a chart component with fixed series colors | agents' replies can hold stats, forms and charts; nothing else moves | built natively; full HTML/JS twin not built |
-
-Each step lands in penna with its stories, scores parity, rebaselines only what the step meant to move, and is pulled into zz and nidus.

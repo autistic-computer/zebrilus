@@ -10,7 +10,7 @@ upstream fix.
 
 penna is the only place UI chrome is defined: tokens, surface roles, the look with its knobs, and components.
 Read `knowledge/designs/foundations.md` before any UI work: it is the spec for every value, name
-and rule (space, type, sizes, color, layout) and the order of work bringing penna onto it. Read
+and rule (space, type, sizes, color, layout). Its component sections track implementation gaps. Read
 `knowledge/designs/kit.md` before adding a component or a role. Two rules from it:
 
 - A component is in the kit when the storybook shows every state of it and it has been looked at
@@ -29,13 +29,7 @@ and rule (space, type, sizes, color, layout) and the order of work bringing penn
 - `blocks/<name>/`: a piece of UI that owns the layout and state of several components.
   When a piece owns a layout of other penna components, put it here. Appearance is a block.
 
-Components: badge, bar, button, card, chart, check, chip, field, icon, input, kbd, label, list, menu,
-panel, plate (crate-private), popover, progress, row, scroll, segmented, select, separator, slider,
-spinner, switch, tab, text, tile, tooltip, tree, well.
-
-Blocks: a2ui, appearance, chat, code_editor (editor feature), color_picker, compact, dialog, dock,
-docs, feedback, inspector, notice, notification, palette, picker, settings, sheet, shell, sidebar,
-steps, title_bar, touch, tray (tray feature), which_key.
+The module lists in `src/components/mod.rs` and `src/blocks/mod.rs` show the current catalog and feature gates.
 
 Public module paths follow the tiers: `penna::components::button`,
 `penna::blocks::settings`, `penna::blocks::appearance` and
