@@ -614,6 +614,7 @@ mod keychain {
     pub(super) const PARKED_SERVICE: &str = "zz-agent-login";
     const SECURITY: &str = "/usr/bin/security";
     const NOT_FOUND: i32 = 44;
+    const TYPED_LINE_LIMIT: usize = 4094;
 
     pub(super) fn user() -> io::Result<String> {
         std::env::var("USER")
@@ -656,32 +657,45 @@ mod keychain {
             ));
         }
         let hex = super::hex(login.bytes());
-        let mut child = Command::new(SECURITY)
-            .arg("-i")
-            .stdin(Stdio::piped())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn_unmasked()?;
-        {
-            let mut input = child
-                .stdin
-                .take()
-                .ok_or_else(|| io::Error::other("security has no stdin"))?;
-            writeln!(
-                input,
-                "add-generic-password -U -a \"{account}\" -s \"{service}\" -X \"{hex}\""
-            )?;
-        }
-        let status = child.wait()?;
+        let status = if let Some(line) = typed_line(service, account, &hex) {
+            let mut child = Command::new(SECURITY)
+                .arg("-i")
+                .stdin(Stdio::piped())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn_unmasked()?;
+            {
+                let mut input = child
+                    .stdin
+                    .take()
+                    .ok_or_else(|| io::Error::other("security has no stdin"))?;
+                writeln!(input, "{line}")?;
+            }
+            child.wait()?
+        } else {
+            Command::new(SECURITY)
+                .args(["add-generic-password", "-U", "-a", account, "-s", service])
+                .args(["-X", &hex])
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status_unmasked()?
+        };
         if !status.success() {
             return Err(io::Error::other(format!(
-                "security -i exited with {status}"
+                "security add-generic-password exited with {status}"
             )));
         }
         match read(service, account)? {
             Some(written) if written == *login => Ok(()),
             _ => Err(io::Error::other("the Keychain did not keep the login")),
         }
+    }
+
+    pub(super) fn typed_line(service: &str, account: &str, hex: &str) -> Option<String> {
+        let line =
+            format!("add-generic-password -U -a \"{account}\" -s \"{service}\" -X \"{hex}\"");
+        (line.len() <= TYPED_LINE_LIMIT).then_some(line)
     }
 
     pub(super) fn remove(service: &str, account: &str) -> io::Result<()> {
@@ -826,5 +840,13 @@ mod tests {
             holding(&[("native", "home"), ("a1", "work, again")])
         );
         assert_eq!(logins.slots.len(), 2);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_login_too_long_for_one_typed_line_goes_in_as_arguments() {
+        let fits = keychain::typed_line("s", "ab", &"0".repeat(4050));
+        assert_eq!(fits.map(|line| line.len()), Some(4094));
+        assert_eq!(keychain::typed_line("s", "ab", &"0".repeat(4052)), None);
     }
 }

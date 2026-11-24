@@ -29,7 +29,8 @@ email, and zz showed the second account's name over the first one's usage.
 - Native stores: Claude Code on macOS is the Keychain item `Claude Code-credentials` (with
   `-<first 8 hex of sha256 of CLAUDE_CONFIG_DIR>` when the daemon has that variable), account the
   user name, written the way the CLI writes it (`security -i` with `add-generic-password -U -a .. -s
-  .. -X <hex>` on stdin, so the secret never reaches an argument list). Claude Code on Linux is
+  .. -X <hex>` on stdin, so the secret never reaches an argument list; a line over 4094 bytes, more
+  than `security -i` reads at once, goes in as arguments). Claude Code on Linux is
   `<config>/.credentials.json`. Codex is `<CODEX_HOME or ~/.codex>/auth.json` (the file store;
   a keyring store is refused).
 - Parked store: macOS Keychain items of service `zz-agent-login`, account

@@ -321,8 +321,10 @@ login.
 - **Parked logins.** macOS: Keychain items of service `zz-agent-login`, account
   `<data dir>|<provider>|<slot>`; Linux: `<data>/zz/accounts/parked/<provider>/<slot>`, 0600.
   `/usr/bin/security` reads them with `find-generic-password -w` and writes them with
-  `add-generic-password -U ... -X <hex>` on the stdin of `security -i`, so a login never reaches an
-  argument list. Every write is read back. `<data>` is `~/Library/Application Support` on macOS and
+  `add-generic-password -U ... -X <hex>` on the stdin of `security -i`, so a login that fits one
+  line never reaches an argument list. `security -i` reads 4095 bytes per line and stores a longer
+  login cut short, so a line over 4094 bytes (a login over about 2 KB, which a Claude Code login
+  holding MCP server tokens is) goes in as arguments instead. Every write is read back. `<data>` is `~/Library/Application Support` on macOS and
   `$XDG_DATA_HOME` or `~/.local/share` on Linux, `zz-dev` for dev builds.
 - **The record.** `<data>/zz/accounts/logins.json` (0600, no secret): per provider the active slot
   and each slot's email, organization and plan, read when the slot was signed in or adopted.
