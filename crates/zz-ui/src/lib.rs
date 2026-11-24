@@ -1,10 +1,12 @@
 pub mod tmux_style;
 
+#[cfg(feature = "agent")]
+pub(crate) use penna::components::text;
 pub(crate) use penna::{
     blocks::feedback, blocks::notification, blocks::picker, blocks::sidebar, blocks::touch,
     components::badge, components::button, components::icon, components::input, components::kbd,
     components::list, components::menu, components::scroll, components::separator,
-    components::spinner, components::text, components::tooltip, foundation::motion,
+    components::spinner, components::tooltip, foundation::motion,
 };
 
 pub(crate) use penna::{
