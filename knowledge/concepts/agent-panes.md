@@ -121,6 +121,12 @@ Claude Code's local named-terminal integration is described in [named terminal p
 
 ### Chats that open other chats
 
+A chat an agent opens is for work the user watches or steers: a task they asked it to
+hand off, a fork of a conversation, a task for another machine. The startup context and
+the `zz tools` guide tell agents to keep background work of their own (searches, reading,
+split-up edits) in their own subagents. See `WORKSPACE_CONTEXT` in
+`crates/zz-daemon/src/daemon.rs`.
+
 The daemon records a chat's origin, attributes messages to the sending pane
 and delivers child replies to the calling chat. Child chats automatically approve tool permissions unless `agent-auto-approve`
 is `off`. Local child questions and outstanding permissions can reach the caller

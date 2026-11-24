@@ -65,8 +65,9 @@ clutters someone else's.
   (a server, a watcher, a log) is a small split,
   `zz split-window -d -v -l 6 -t %3 'COMMAND'`, or a background task of your own
   when nobody needs to watch it. Do not open a window for either.
-- A chat you hand part of your task to is a float in your window, which
-  `new-pane --kind agent` gives you.
+- A chat you open for the user (a hand-off, a fork, work they watch) is a float
+  in your window, which `new-pane --kind agent` gives you. Background work of
+  your own is not a chat: see Agents.
 - Work that is not part of the window you would put it in gets a session of its
   own, named for the task: `zz new-session -d -P -F '#{pane_id}' -s TASK -c DIR`
   prints its first pane. Never add a pane to a window that is open for something
@@ -151,6 +152,8 @@ Commands that set an explicit exit code keep that code.
 ## Agents
 
 Claude Code, Codex, Antigravity and Grok run two ways in a pane, and a pane flips between them on the same session. Cursor runs as a chat only (`agent cursor`): its CLI and its chats keep separate conversations, so it does not flip. In a terminal pane the CLI runs as its own TUI, started like any program (`zz split-window -h claude`). In an agent pane the daemon runs the CLI headless and the clients draw the conversation as a chat: `zz select-pane-kind -t %N [-c DIR] [--resume ID] [--model M] [--effort E] [--account ID] agent claude|codex|agy|grok|cursor` turns a picker or a terminal into one.
+
+A chat is a pane in the user's sidebar, with its own transcript, model and approvals, and it stays there until the user closes it. Open one for work the user watches or steers: a task they asked you to hand to another agent, work they want to see or answer, a fork of a conversation, a task for another machine. Do not open chats as workers for your own task (searches, reading, edits you split up and collect): use your own subagents for that, or do the work yourself.
 
 ### `zz new-pane [-d] [-P -F FORMAT] [-c DIR] [-t TARGET] --kind agent claude|codex|agy|grok|cursor [--model M] [--effort E] [--account ID] [--resume ID] [BRIEF]`
 
