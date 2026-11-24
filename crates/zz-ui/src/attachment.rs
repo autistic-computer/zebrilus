@@ -1,10 +1,13 @@
-use std::{borrow::Cow, io::Cursor, sync::Arc};
+use std::{borrow::Cow, io::Cursor, path::Path, sync::Arc};
 
 use ala::{
     App, Image, ImageFormat, ImageSource, ObjectFit, RenderImage, Window, div, img, prelude::*, px,
 };
 
-use crate::WindowExt as _;
+use crate::{
+    WindowExt as _,
+    target::{TargetHost, path_reference},
+};
 
 const ATTACHMENT_PREVIEW_WIDTH: f32 = 880.0;
 const ATTACHMENT_PREVIEW_HEIGHT: f32 = 560.0;
@@ -114,6 +117,53 @@ const fn decoder_format(format: ImageFormat) -> Option<image::ImageFormat> {
     })
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct Recipient<'a> {
+    pub host: &'a TargetHost,
+    pub local: bool,
+    pub takes_images: bool,
+    pub home: Option<&'a str>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Arrival {
+    Attach(ImageFormat),
+    Mention(String),
+    Refuse(String),
+}
+
+#[must_use]
+pub fn arrival(path: &Path, folder: bool, chat: Recipient) -> Arrival {
+    let image = image_format(path).filter(|_| !folder && chat.takes_images);
+    if let Some(format) = image {
+        return Arrival::Attach(format);
+    }
+    if chat.local {
+        return Arrival::Mention(path_reference(chat.host, path, chat.home, folder));
+    }
+    let name = path
+        .file_name()
+        .map_or_else(|| path.to_string_lossy(), |name| name.to_string_lossy());
+    Arrival::Refuse(format!(
+        "{name} is on this machine; this chat runs on {}",
+        chat.host.name
+    ))
+}
+
+fn image_format(path: &Path) -> Option<ImageFormat> {
+    Some(match image::ImageFormat::from_path(path).ok()? {
+        image::ImageFormat::Png => ImageFormat::Png,
+        image::ImageFormat::Jpeg => ImageFormat::Jpeg,
+        image::ImageFormat::WebP => ImageFormat::Webp,
+        image::ImageFormat::Gif => ImageFormat::Gif,
+        image::ImageFormat::Bmp => ImageFormat::Bmp,
+        image::ImageFormat::Tiff => ImageFormat::Tiff,
+        image::ImageFormat::Ico => ImageFormat::Ico,
+        image::ImageFormat::Pnm => ImageFormat::Pnm,
+        _ => return None,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -200,5 +250,63 @@ mod tests {
     fn svg_is_refused_with_a_reason() {
         let pasted = Image::from_bytes(ImageFormat::Svg, b"<svg/>".to_vec());
         assert!(normalize(&pasted).is_err());
+    }
+
+    #[test]
+    fn a_file_from_outside_attaches_mentions_or_refuses() {
+        use crate::{
+            command::PaletteHostId,
+            target::{RefTarget, resolve_target},
+        };
+        use penna::blocks::palette::PaletteStatus;
+
+        let host = TargetHost {
+            id: PaletteHostId(0),
+            name: "macbook".to_owned(),
+            status: PaletteStatus::Online,
+            here: true,
+            sessions: Vec::new(),
+        };
+        let chat = |local, takes_images| Recipient {
+            host: &host,
+            local,
+            takes_images,
+            home: Some("/Users/me"),
+        };
+        let shot = Path::new("/Users/me/Desktop/shot.png");
+        let movie = Path::new("/Users/me/Desktop/Screen Recording 2026-11-23 at 20.47.02.mov");
+        let reference = "@macbook:~/Desktop/Screen\\ Recording\\ 2026-11-23\\ at\\ 20.47.02.mov";
+
+        assert_eq!(
+            arrival(shot, false, chat(true, true)),
+            Arrival::Attach(ImageFormat::Png)
+        );
+        assert_eq!(
+            arrival(shot, false, chat(true, false)),
+            Arrival::Mention("@macbook:~/Desktop/shot.png".to_owned())
+        );
+        assert_eq!(
+            arrival(movie, false, chat(true, true)),
+            Arrival::Mention(reference.to_owned())
+        );
+        assert_eq!(
+            resolve_target(&reference[1..], std::slice::from_ref(&host))
+                .map(|target| target.target),
+            Some(RefTarget::Path {
+                path: "~/Desktop/Screen Recording 2026-11-23 at 20.47.02.mov".to_owned(),
+                line: None,
+            })
+        );
+        assert_eq!(
+            arrival(movie, false, chat(false, true)),
+            Arrival::Refuse(
+                "Screen Recording 2026-11-23 at 20.47.02.mov is on this machine; this chat runs on macbook"
+                    .to_owned()
+            )
+        );
+        assert_eq!(
+            arrival(Path::new("/srv/build logs"), true, chat(true, true)),
+            Arrival::Mention("@macbook:/srv/build\\ logs/".to_owned())
+        );
     }
 }

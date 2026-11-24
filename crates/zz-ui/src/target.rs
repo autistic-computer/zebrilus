@@ -1,6 +1,7 @@
 use std::{
     cmp::Reverse,
     ops::Range,
+    path::Path,
     rc::Rc,
     sync::{
         Arc,
@@ -43,11 +44,11 @@ use crate::{
     command::{CommandPaletteView, PaletteHostId, PaletteTarget, palette_recents, record_recent},
     files::{
         FileRow, GitMarks, Listing, ListingUpdate, Recency, file_rows, mark_letter, plain_path,
-        recency, scored_rows,
+        recency, scored_rows, start_dir,
     },
     h_flex,
     input::{Backspace, Enter, Escape, IndentInline, InputState, MoveDown, MoveUp, OutdentInline},
-    mention::{Mentions, ref_highlight},
+    mention::{Mentions, ref_highlight, starts_ref},
 };
 
 pub const TARGET_MAX_ROWS: usize = 200;
@@ -388,6 +389,29 @@ pub fn escape(name: &str) -> String {
         escaped.push(character);
     }
     escaped
+}
+
+#[must_use]
+pub fn path_reference(host: &TargetHost, path: &Path, home: Option<&str>, folder: bool) -> String {
+    let parent = path
+        .parent()
+        .map(|parent| parent.to_string_lossy())
+        .filter(|parent| parent.starts_with('/'));
+    let slash = if folder { "/" } else { "" };
+    let rest = match (parent, path.file_name()) {
+        (Some(parent), Some(name)) => format!(
+            "{}{}{slash}",
+            escape(&start_dir(Some(&parent), home)),
+            escape(&name.to_string_lossy())
+        ),
+        _ => escape(&path.to_string_lossy()),
+    };
+    let (_, token) = Place {
+        host,
+        written: true,
+    }
+    .target(&rest);
+    format!("@{token}")
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -2398,6 +2422,48 @@ impl TargetPicker {
         };
         self.replace(token.range, text, window, cx);
         true
+    }
+
+    #[must_use]
+    pub fn here(&self, cx: &App) -> Option<TargetHost> {
+        self.backend.hosts(cx).into_iter().find(|host| host.here)
+    }
+
+    pub fn insert_references(
+        &mut self,
+        references: &[String],
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if references.is_empty() {
+            return;
+        }
+        self.sync(cx);
+        let hosts = self.backend.hosts(cx);
+        let range = self.composer.read(cx).selected_range();
+        let value = self.composer.read(cx).value().to_string();
+        let mut text = String::new();
+        let mut place = range.clone();
+        if !starts_ref(&value, range.start) {
+            text.push(' ');
+            self.mentions.follow(&format!(
+                "{} {}",
+                &value[..range.start],
+                &value[range.end..]
+            ));
+            place = range.start + 1..range.start + 1;
+        }
+        let mut at = place.start;
+        for reference in references {
+            let body = reference.strip_prefix('@').unwrap_or(reference);
+            let label =
+                resolve_target(body, &hosts).map_or_else(|| body.to_owned(), |target| target.label);
+            let placed = self.mentions.place(place, reference, &label, " ");
+            at += placed.len();
+            place = at..at;
+            text.push_str(&placed);
+        }
+        self.replace(range, text, window, cx);
     }
 
     pub fn copy(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {

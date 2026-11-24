@@ -919,10 +919,11 @@ end no turn.
   Copy and Fork, and preview cards. A send the agent cannot take says why above the composer, in
   the shared words of `zz_client::agent_lens` (`prompt_not_ready`, `AGENT_QUEUE_FULL` at
   `MAX_AGENT_QUEUED_PROMPTS`, `AGENT_REFUSES_IMAGES` when the driver's `ready` capabilities lack
-  `images`), and an empty chat reads Resuming the agent's session while a chat reopens and
-  Cancelling the current turn after Stop (`agent_empty` with `LensTranscript::settling`, read
-  from the stream's `sessionReset` `restoring` flag). A pane whose driver's `ready` capabilities
-  set `watch` shows the chat with no composer, only what sits above it (queue, plan, errors), and
+  `images`, though an image file dropped or pasted on the desktop becomes a mention on a chat
+  that runs on this machine, see [files from outside](#in-the-composer)), and an empty chat
+  reads Resuming the agent's session while a chat reopens and Cancelling the current turn after
+  Stop (`agent_empty` with `LensTranscript::settling`, read from the stream's `sessionReset`
+  `restoring` flag). A pane whose driver's `ready` capabilities set `watch` shows the chat with no composer, only what sits above it (queue, plan, errors), and
   an empty chat with the welcome alone, no folder button or Resume, on both
   (`zz_ui::agent::controls::watch_composer`). On iPhone the plan tray is a whole-row button over
   the composer that unfolds the plan above it, scrolling once it passes half the space between
@@ -1154,6 +1155,17 @@ calls:
   a paste) gets names for every reference that resolves; one that resolves to nothing stays as
   written. Undoing that naming brings the raw text back and leaves it raw. There is no draft
   saving or prompt history in the composer for the names to pass through.
+- **Files from outside (desktop).** Files dropped anywhere on the pane, or pasted into the
+  composer after a copy in the file manager, follow one rule per file, in order
+  (`zz_ui::attachment::arrival`). An image `normalize` can read attaches like a pasted image when
+  the agent takes images. Anything else, a folder, or an image the agent does not take becomes
+  the mention the `@` menu writes for that path (`target::path_reference`: home as `~`, spaces
+  escaped, `@macbook:~/Desktop/Screen\ Recording.mov`), placed at the caret with a space after
+  it, when the chat runs on this machine. On another machine nothing is inserted and the error
+  line reads `NAME is on this machine; this chat runs on HOST`. A drop focuses the composer. The
+  paths win over the file name the clipboard carries with them: the composer asks penna's input
+  for them with `InputState::paste_paths(true)` and gets `InputEvent::PastePaths`; inputs that
+  do not ask paste the name as before.
 
 # How the chat reads
 
