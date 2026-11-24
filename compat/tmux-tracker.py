@@ -795,47 +795,18 @@ def md_cell(value):
 
 def counts(values, order):
     counted = Counter(values)
-    return ", ".join(f"{name}: {counted[name]}" for name in order if counted[name])
+    return ", ".join(f"{counted[name]} {name}" for name in order)
 
 
 def render_report(manifest, oracle):
     gaps = manifest["gaps"]
     priorities = ["now", "next", "later", "none"]
-    ease_order = {name: index for index, name in enumerate(["easy", "medium", "hard", "hardest", "none"])}
-    item_counts = Counter(item.split(":", 1)[0] for gap in gaps for item in gap["items"])
-    item_order = [
-        "command",
-        "flag",
-        "flag-arity",
-        "positional-min",
-        "positional-max",
-        "args-parse",
-        "extension-flag",
-        "native-command",
-        "native-alias",
-        "option",
-        "option-scope",
-        "option-default",
-        "format",
-        "context-format",
-        "native-context-format",
-        "hook",
-        "native-hook",
-        "key",
-        "binding",
-        "native-key",
-        "semantic",
-        "presentation",
-        "protocol",
-    ]
-    command_items = item_counts["command"]
-    flag_arities = Counter(
-        arity for command in oracle["commands"] for arity in command["flags"].values()
+    ease_order = ["easy", "medium", "hard", "hardest", "none"]
+    outstanding = sorted(
+        (gap for gap in gaps if gap["status"] != "accepted"),
+        key=lambda gap: (priorities.index(gap["priority"]), ease_order.index(gap["ease"]), gap["id"]),
     )
-    literal_context_count = sum(
-        len(scope["names"]) for scope in oracle["format_contexts"]["literal_scopes"]
-    )
-    derived_context_count = len(oracle["format_contexts"]["derived_families"])
+    items = Counter(item.split(":", 1)[0] for gap in gaps for item in gap["items"])
     lines = [
         "---",
         "type: Reference",
@@ -846,180 +817,121 @@ def render_report(manifest, oracle):
         f"timestamp: {manifest['updated_on']}T00:00:00-03:00",
         "---",
         "",
-        "# Overview",
+        "# tmux compatibility gaps",
         "",
-        "> `compat/tmux-tracker.py write-report` generates this file. Edit the registry instead.",
+        f"**{counts((g['status'] for g in gaps), ['open', 'blocked', 'accepted'])}** "
+        f"across {len(gaps)} groups and {sum(items.values())} classified items. "
+        f"{sum(len(g['items']) for g in outstanding)} items remain open or blocked. "
+        f"[Closed history](#closed-history) covers {len(manifest['closed'])} earlier groups.",
         "",
-        "`compat/tmux-gaps.json` owns the backlog. The compatibility gate checks IDs, decisions,",
-        "dependencies, evidence paths, known scenarios, and the source-backed inventories described",
-        "below.",
+        f"Decisions ({counts((g['decision'] for g in gaps), ['adopt', 'native', 'park', 'never'])}). "
+        f"Priorities ({counts((g['priority'] for g in gaps), priorities)}).",
         "",
-        f"Pinned tmux commit: `{manifest['pin']}`.",
+        "The [gap registry](../../compat/tmux-gaps.json) holds the decision, rationale and evidence for each ID. "
+        "Look up any current or closed group from the repository root.",
         "",
-        f"Tracked gap groups: **{len(gaps)}**. Classified items: **{sum(item_counts.values())}**.",
+        "```sh",
+        "jq --arg id 'desktop.overlay-consumers' '(.gaps[], .closed[]) | select(.id == $id)' compat/tmux-gaps.json",
+        "```",
         "",
-        f"- Status: {counts((gap['status'] for gap in gaps), ['open', 'blocked', 'accepted'])}.",
-        f"- Decision: {counts((gap['decision'] for gap in gaps), ['adopt', 'native', 'park', 'never'])}.",
-        f"- Priority: {counts((gap['priority'] for gap in gaps), priorities)}.",
-        f"- Closed history entries: {len(manifest['closed'])}.",
-        f"- Surface: {counts((item.split(':', 1)[0] for gap in gaps for item in gap['items']), item_order)}.",
+        "## Open and blocked work",
         "",
+    ]
+    if not outstanding:
+        lines.extend(["No open or blocked groups.", ""])
+    for gap in outstanding:
+        lines.extend([
+            f"### `{gap['id']}`: {gap['title']}",
+            "",
+            f"**{gap['status']} · {gap['decision']} · {gap['priority']}**. "
+            f"Owner `{gap['owner']}`, effort `{gap['ease']}`, impact {', '.join(gap['impact'])}.",
+            "",
+            "**Tracked items** " + ", ".join(f"`{item}`" for item in gap["items"]),
+        ])
+        if gap["depends_on"]:
+            lines.extend(["", "Depends on " + ", ".join(f"`{dep}`" for dep in gap["depends_on"]) + "."])
+        lines.extend(["", "**Acceptance criteria**", ""])
+        lines.extend(f"- {criterion}" for criterion in gap["acceptance"])
+        lines.append("")
+
+    commands = oracle["commands"]
+    arities = Counter(arity for command in commands for arity in command["flags"].values())
+    contexts = oracle["format_contexts"]
+    scopes = contexts["literal_scopes"]
+    bindings = oracle["key_bindings"]
+    lines.extend([
         "## Measured surface",
         "",
-        f"The pinned oracle contains {len(oracle['commands'])} commands, "
-        f"{sum(len(command['aliases']) for command in oracle['commands'])} aliases, "
-        f"{sum(flag_arities.values())} command-flag shapes "
-        f"({flag_arities['none']} valueless, {flag_arities['required']} required-value, "
-        f"{flag_arities['optional']} optional-value), positional minimum and maximum bounds, "
-        f"{len(oracle['options'])} options, {len(oracle['formats'])} global formats, "
-        f"{literal_context_count} scoped literal context pairs across "
-        f"{len(oracle['format_contexts']['literal_scopes'])} source producers, "
-        f"{derived_context_count} derived context families, "
-        f"{len(oracle['format_modifiers'])} format modifiers, "
-        f"{len(oracle['hooks'])} hooks, and {len(oracle['key_bindings'])} default bindings across "
-        f"{len({binding['table'] for binding in oracle['key_bindings']})} tables. zz has catalog "
-        f"entries for {len(oracle['commands']) - command_items} of those commands. The registry "
-        f"classifies {item_counts['flag']} catalogued-unsupported upstream flag pairs, "
-        f"{item_counts['flag-arity']} implemented flag-arity mismatches, "
-        f"{item_counts['positional-min']} positional-minimum mismatches, "
-        f"{item_counts['positional-max']} positional-maximum mismatches, "
-        f"{len(oracle['args_parse'])} callback-bearing commands across "
-        f"{len(set(oracle['args_parse'].values()))} effective `args_parse` rules, "
-        f"{item_counts['args-parse']} implemented commands without verified callback behavior, "
-        f"{item_counts['extension-flag']} zz-only flags on tmux command names, "
-        f"{item_counts['native-command']} native command names, "
-        f"{item_counts['option']} options absent from `BEHAVES`, "
-        f"{item_counts['format']} known limited formats, "
-        f"{item_counts['context-format']} scoped context-format gaps, "
-        f"{item_counts['native-context-format']} accepted-native context-format names, "
-        f"{item_counts['option-scope']} option scope mismatches, "
-        f"{item_counts['option-default']} option default mismatches, "
-        f"{item_counts['hook']} currently documented hook-producer gaps, "
-        f"{item_counts['native-hook']} zz-only hook names, "
-        f"{item_counts['key']} omitted default keys, "
-        f"{item_counts['binding']} divergent shared default bindings, "
-        f"{item_counts['native-key']} zz-only default keys.",
+        f"The [oracle](../../compat/tmux-oracle.json) inventories {oracle['version']} at `{manifest['pin']}`. "
+        "The registry classifies differences found by the compatibility gate.",
+        "",
+        "| Surface | Pinned inventory | Registry counts |",
+        "| --- | --- | --- |",
+        f"| Commands | {len(commands)} commands, {sum(len(c['aliases']) for c in commands)} aliases "
+        f"| {len(commands) - items['command']} commands catalogued, {items['native-command']} zz-only commands |",
+        f"| Flags | {sum(arities.values())} shapes ({arities['none']} valueless, {arities['required']} required-value, "
+        f"{arities['optional']} optional-value) | {items['flag']} unsupported flags, {items['flag-arity']} arity mismatches, "
+        f"{items['extension-flag']} zz-only flags |",
+        f"| Arguments | Positional bounds, {len(oracle['args_parse'])} callback-bearing commands, "
+        f"{len(set(oracle['args_parse'].values()))} effective `args_parse` rules "
+        f"| {items['positional-min']} minimum and {items['positional-max']} maximum mismatches, "
+        f"{items['args-parse']} implemented commands missing callback verification |",
+        f"| Options | {len(oracle['options'])} options | {items['option']} absent from `BEHAVES`, "
+        f"{items['option-scope']} scope and {items['option-default']} default mismatches |",
+        f"| Formats | {len(oracle['formats'])} global formats, {len(oracle['format_modifiers'])} modifiers, "
+        f"{sum(len(s['names']) for s in scopes)} literal pairs across {len(scopes)} producers, "
+        f"{len(contexts['derived_families'])} derived families | {items['format']} limited formats, "
+        f"{items['context-format']} scoped gaps, {items['native-context-format']} accepted native context names |",
+        f"| Hooks | {len(oracle['hooks'])} hooks | {items['hook']} producer gaps, {items['native-hook']} zz-only hooks |",
+        f"| Keys | {len(bindings)} default bindings across {len({b['table'] for b in bindings})} tables "
+        f"| {items['key']} omitted keys, {items['binding']} divergent shared bindings, {items['native-key']} zz-only keys |",
+        "",
+        "**Items by registry prefix** " + ", ".join(f"`{kind}` {items[kind]}" for kind in sorted(items)),
         "",
         "## Enforcement boundary",
         "",
-        "The gate reconciles command names, aliases, flag arities, positional bounds, custom",
-        "`args_parse` rules, option names, scopes and defaults, global formats, scoped and derived",
-        "context producers, event payload keys, format modifiers, hook names,",
-        "and default key presence against the clean pinned tmux source and binary. It also reconciles",
-        "options absent from `BEHAVES`, constant-backed formats against the live registry, omitted",
-        "and zz-only default keys against zz's key tables, rendered commands plus repeat bits for",
-        "shared default bindings, the native roster against catalog minus oracle, every pinned",
-        "canonical prefix against the resolver, and known scenarios against exact tuples.",
+        "The gate checks catalog entries, resolver prefixes, format and hook inventories, default binding commands "
+        "and repeat bits, and the expected difference counts below. Runtime parsing, format values, hook delivery "
+        "and key behavior need differential scenarios, attached-client fixtures, unit tests or GUI checks. "
+        "The [stored run](../../compat/results/summary.md) records the measured results.",
         "",
-        "These structural checks cannot prove that runtime parsing applies each inventoried `args_parse`",
-        "rule, context-format value correctness, nonconstant format correctness, or whether a hook fires,",
-        "or that a structurally matching binding behaves identically at runtime. Differential scenarios,",
-        "attached-client fixtures, unit tests, and manual GUI checks supply that behavioral evidence. The",
-        "tracker keeps the remaining semantic discovery work explicit instead of treating matching",
-        "structure as proof.",
+        "## Accepted divergences",
         "",
-    ]
-    for priority in priorities:
-        selected = [gap for gap in gaps if gap["priority"] == priority]
-        if not selected:
-            continue
-        selected.sort(key=lambda gap: (ease_order[gap["ease"]], gap["id"]))
-        lines.extend(
-            [
-                f"## {priority.title()}",
-                "",
-                "| ID | Gap | Decision | Status | Ease | Owner | Impact | Depends on |",
-                "| --- | --- | --- | --- | --- | --- | --- | --- |",
-            ]
-        )
-        for gap in selected:
-            lines.append(
-                "| "
-                + " | ".join(
-                    md_cell(value)
-                    for value in (
-                        f"`{gap['id']}`",
-                        gap["title"],
-                        gap["decision"],
-                        gap["status"],
-                        gap["ease"],
-                        gap["owner"],
-                        ", ".join(gap["impact"]),
-                        ", ".join(gap["depends_on"]) or "none",
-                    )
-                )
-                + " |"
-            )
-        lines.append("")
-    lines.extend(["## Gap details", ""])
-    for gap in sorted(gaps, key=lambda gap: gap["id"]):
-        lines.extend(
-            [
-                f"### `{gap['id']}`: {gap['title']}",
-                "",
-                gap["reason"],
-                "",
-                f"- Decision: `{gap['decision']}`",
-                f"- Status: `{gap['status']}`",
-                f"- Priority and ease: `{gap['priority']}` / `{gap['ease']}`",
-                f"- Owner: `{gap['owner']}`",
-                f"- User impact: {', '.join(gap['impact'])}",
-                f"- Items: {', '.join(f'`{item}`' for item in gap['items'])}",
-                f"- Depends on: {', '.join(f'`{item}`' for item in gap['depends_on']) or 'none'}",
-                "- Evidence:",
-            ]
-        )
-        lines.extend(f"  - `{item}`" for item in gap["evidence"])
-        if not gap["evidence"]:
-            lines.append("  - none")
-        lines.append("- Acceptance:")
-        lines.extend(f"  - `{item}`" for item in gap["acceptance"])
-        if not gap["acceptance"]:
-            lines.append("  - none")
-        lines.append("")
-    lines.extend(
-        [
-            "## Known differential scenarios",
-            "",
-            "| Scenario | Gap | TOPO | GEO | FMT | OUT | WARN |",
-            "| --- | --- | ---: | ---: | ---: | ---: | ---: |",
-        ]
-    )
-    for differential in sorted(manifest["known_differentials"], key=lambda item: item["scenario"]):
-        lines.append(
-            "| "
-            + " | ".join(
-                md_cell(differential[field])
-                for field in ("scenario", "gap", "topo", "geo", "fmt", "out", "warn")
-            )
-            + " |"
-        )
-    lines.append("")
-    lines.extend(["## Closed history", ""])
-    if manifest["closed"]:
-        lines.extend(
-            [
-                "| ID | Closed | Resolution | Evidence |",
-                "| --- | --- | --- | --- |",
-            ]
-        )
-        for entry in manifest["closed"]:
-            lines.append(
-                "| "
-                + " | ".join(
-                    md_cell(value)
-                    for value in (
-                        f"`{entry['id']}`",
-                        entry["closed_on"],
-                        entry["resolution"],
-                        ", ".join(f"`{item}`" for item in entry["evidence"]),
-                    )
-                )
-                + " |"
-            )
-    else:
-        lines.append("No live tracker gap has closed since the canonical ledger began.")
-    lines.append("")
+        "Each row records a decision to keep a difference from the pin.",
+        "",
+        "| ID | Decision | Group | Items |",
+        "| --- | --- | --- | ---: |",
+    ])
+    for gap in gaps:
+        if gap["status"] == "accepted":
+            lines.append(f"| `{gap['id']}` | {gap['decision']} | {md_cell(gap['title'])} | {len(gap['items'])} |")
+    differentials = manifest["known_differentials"]
+    lines.extend([
+        "",
+        "## Known differential scenarios",
+        "",
+        f"The registry gives expected counts for {len(differentials)} scenarios.",
+        "",
+        "| Scenario | Gap | TOPO | GEO | FMT | OUT | WARN |",
+        "| --- | --- | ---: | ---: | ---: | ---: | ---: |",
+    ])
+    for differential in differentials:
+        values = (differential[field] for field in ("scenario", "gap", "topo", "geo", "fmt", "out", "warn"))
+        lines.append("| " + " | ".join(md_cell(value) for value in values) + " |")
+    lines.extend([
+        "",
+        "## Closed history",
+        "",
+        f"The [registry](../../compat/tmux-gaps.json) retains the resolution and evidence for all "
+        f"{len(manifest['closed'])} closed groups. This command lists them by ID with the date and title.",
+        "",
+        "```sh",
+        "jq -r '.closed[] | [.closed_on, .id, .title] | @tsv' compat/tmux-gaps.json",
+        "```",
+        "",
+        "Regenerate this page with `python3 compat/tmux-tracker.py write-report`.",
+        "",
+    ])
     return "\n".join(lines)
 
 

@@ -336,6 +336,7 @@
         "native-command:capture-browser",
         "native-command:capture-simulator",
         "native-command:choose-path",
+        "native-command:copy-file",
         "native-command:copy-mode-search-prompt",
         "native-command:debug-marker",
         "native-command:events",
@@ -346,8 +347,10 @@
         "native-command:import-tmux-config",
         "native-command:inspect",
         "native-command:list-hosts",
+        "native-command:load-browser-url",
         "native-command:press-simulator",
         "native-command:providers",
+        "native-command:read-file",
         "native-command:reload-config",
         "native-command:restart-server",
         "native-command:run-pane",
@@ -369,7 +372,8 @@
         "native-command:update",
         "native-command:update-server",
         "native-command:view-pane",
-        "native-command:wait-pane"
+        "native-command:wait-pane",
+        "native-command:write-file"
       ],
       "evidence": [
         "resource:crates/zz-protocol/src/catalog.rs",
