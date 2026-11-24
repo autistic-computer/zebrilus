@@ -54,6 +54,26 @@ Pane options need `-p`: `zz set-option -p -t %3 @name reviewer`.
 when unknown; terminal panes report it from OSC 133 marks.
 `#{@name}` reads a user option from pane, window, session, then global scope.
 
+## Placement
+
+A pane goes where its work belongs. The user reads sessions, windows and panes as
+a tree of what is going on, so a pane in the wrong place hides your work or
+clutters someone else's.
+
+- What serves your own task stays in your own window. A page or a preview goes
+  beside you: `zz split-window -d -h -t %3 --kind browser URL`. A helper terminal
+  (a server, a watcher, a log) is a small split,
+  `zz split-window -d -v -l 6 -t %3 'COMMAND'`, or a background task of your own
+  when nobody needs to watch it. Do not open a window for either.
+- A chat you hand part of your task to is a float in your window, which
+  `new-pane --kind agent` gives you.
+- Work that is not part of the window you would put it in gets a session of its
+  own, named for the task: `zz new-session -d -P -F '#{pane_id}' -s TASK -c DIR`
+  prints its first pane. Never add a pane to a window that is open for something
+  else, on this machine or another.
+- A pane that landed in the wrong place moves with
+  `zz join-pane -d -h -s %7 -t %3`, running program and all.
+
 ## Remote hosts
 
 `zz list-hosts` lists the machines in `zz/config` with their state and version.
@@ -64,7 +84,13 @@ when unknown; terminal panes report it from OSC 133 marks.
 yours there: pass `-t %N` from `list-panes -a` or your own
 `new-window -d -P -F '#{pane_id}'` (`new-session -d -P -F '#{pane_id}'` on a host
 with no session); a verb that acts on a pane, window or session exits 2 without
-`-t`, and a move or swap without `-s`. `zz --host NAME run-shell 'COMMAND'` runs a
+`-t`, and a move or swap without `-s`. A pane from `list-panes -a` is a target for
+acting on that pane, not a place to start new work: a task you start on a host
+gets a session of its own. `zz --host NAME new-session -d -P -F '#{pane_id}' -s TASK -c DIR`
+prints a terminal `%N`,
+`zz --host NAME split-window -d -t %N -c DIR --kind agent claude 'BRIEF'` opens the
+chat beside it, and `zz --host NAME kill-pane -t %N` closes the terminal, which
+leaves the chat alone in its session. `zz --host NAME run-shell 'COMMAND'` runs a
 command line there with no pane, prints its output and exits with its status.
 Hints and errors that come back from a host name their commands with
 `--host NAME` already: run them as printed. Paths and pane environments are that
