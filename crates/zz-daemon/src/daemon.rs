@@ -30657,6 +30657,15 @@ impl Shared {
                 )))
             })?
         };
+        let asked = self
+            .inner
+            .lock()
+            .client(client)
+            .and_then(|client| client.name.clone())
+            .map_or_else(
+                || "the zz window".to_owned(),
+                |name| format!("the zz window on {name}"),
+            );
         let (wait, reply) =
             agent_waits::reply::<Result<String, String>>(self, None, move |shared, outcome| {
                 shared.inner.lock().pending_gui_requests.remove(&request_id);
@@ -30669,7 +30678,7 @@ impl Shared {
                         Err(ServerError::InvalidCommand(message).into())
                     }
                     _ => Err(ServerError::Internal(format!(
-                        "the zz window did not answer within {} seconds",
+                        "{asked} did not answer within {} seconds",
                         GUI_REQUEST_TIMEOUT.as_secs()
                     ))
                     .into()),
