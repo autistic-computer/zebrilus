@@ -12469,7 +12469,7 @@ impl Shared {
                     } => Some(*pane),
                     _ => None,
                 });
-                self.open_created_chat(client, context, command_name, created, agent_briefs);
+                self.open_created_chat(client, kind, context, command_name, created, agent_briefs);
             }
             self.close_orphaned_chats(&removed_panes);
         }
@@ -17344,7 +17344,7 @@ impl Shared {
         };
         #[cfg(feature = "agent")]
         let payload = if agent_pane && !parsed.wait_only() {
-            self.sent_message(client, context, caller, payload)
+            self.sent_message(client, kind, context, caller, payload)
         } else {
             payload
         };
@@ -33957,12 +33957,15 @@ impl Shared {
     fn sent_message(
         &self,
         client: ClientId,
+        kind: ClientKind,
         context: &ExecutionContext,
         caller: Option<PaneId>,
         text: String,
     ) -> String {
         use zz_protocol::agent_mention::{SENDER_VARIABLE, Sender, SentMessage, read_sender_fact};
-        if SentMessage::parse(&text).is_some_and(|message| message.host.is_some()) {
+        if kind == ClientKind::Interactive
+            || SentMessage::parse(&text).is_some_and(|message| message.host.is_some())
+        {
             return text;
         }
         let (sender, host) = if let Some(pane) = caller {
@@ -34140,6 +34143,7 @@ impl Shared {
     fn open_created_chat(
         self: &Arc<Self>,
         client: ClientId,
+        kind: ClientKind,
         context: &ExecutionContext,
         verb: &str,
         created: Option<PaneId>,
@@ -34166,7 +34170,7 @@ impl Shared {
                     pane,
                     AgentPrompt {
                         owner: ClientInstanceId(u64::MAX),
-                        text,
+                        text: self.sent_message(client, kind, context, caller, text),
                         images: Vec::new(),
                     },
                     waiter,
@@ -125788,6 +125792,24 @@ bind - split-window -v -c "#{pane_current_path}"
         }
 
         #[test]
+        fn a_send_from_the_apps_own_ui_keeps_the_users_words() {
+            let workspace = workspace(Behavior::Chunk);
+            workspace
+                .shared
+                .execute(
+                    workspace.client,
+                    ClientKind::Interactive,
+                    &mut ExecutionContext::default(),
+                    &CommandInvocation::new("agent-send", ["-t", "%1", "hi"]),
+                )
+                .expect("a send bound to a key");
+            wait_until("the prompt in the chat", || {
+                !received(&workspace, workspace.agent).is_empty()
+            });
+            assert_eq!(received(&workspace, workspace.agent), ["hi"]);
+        }
+
+        #[test]
         fn a_send_relayed_to_another_daemon_brings_its_reply_back_to_the_calling_chat() {
             use super::super::agent_relay::{Gate, Relay};
 
@@ -126150,7 +126172,7 @@ bind - split-window -v -c "#{pane_current_path}"
                     entry("%2", &finished, None),
                     entry(
                         "%3",
-                        "@+claude look at it",
+                        "[zz] %1 (codex) sent this, not the user:\n@+claude look at it",
                         Some(
                             "%1 (codex) opened this chat. Your final message is sent to it as your reply, so finish with the answer. You cannot open other agents or message %1; if you need something, say so in your reply. If a command fails with \"Operation not permitted\", rerun it with escalated permissions even if your brief says to stop on failure; the approval is answered for you."
                         ),
