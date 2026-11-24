@@ -605,8 +605,8 @@ fn main_row(
                             .h(px(TITLE_LINE))
                             .gap(px(TITLE_TRAILING_GAP))
                             .child(label)
-                            .children(busy)
-                            .children(chevron),
+                            .children(chevron)
+                            .children(busy),
                     )
                     .child(
                         h_flex()
