@@ -415,6 +415,7 @@ pub(crate) struct BrowserView {
     page_zoom_percent: u16,
     title: String,
     loading: bool,
+    loads: u64,
     loading_progress: Option<f32>,
     status_message: Option<SharedString>,
     find_input: Entity<InputState>,
@@ -799,6 +800,7 @@ impl BrowserView {
             page_zoom_percent: 100,
             title: "Browser".to_owned(),
             loading: false,
+            loads: 0,
             loading_progress: None,
             status_message: None,
             find_input,
@@ -1370,6 +1372,7 @@ impl BrowserView {
                     ..
                 } => {
                     self.loading = *loading;
+                    self.publish_loading(cx);
                     self.can_go_back = *can_go_back;
                     self.can_go_forward = *can_go_forward;
                     self.address.update(cx, |address, cx| {
@@ -2619,6 +2622,22 @@ impl BrowserView {
         self.tabs.insert(to, entry);
         self.publish_tabs(cx);
         cx.notify();
+    }
+
+    fn publish_loading(&mut self, cx: &mut Context<Self>) {
+        let pane = self.pane.to_string();
+        let mux = self.mux.read(cx);
+        let set = |name: &str, value: String| {
+            mux.execute(CommandInvocation::new(
+                "set-option",
+                ["-p", "-t", pane.as_str(), name, value.as_str()],
+            ));
+        };
+        if !self.loading {
+            self.loads = self.loads.wrapping_add(1);
+            set("@browser_loaded", self.loads.to_string());
+        }
+        set("@browser_loading", u8::from(self.loading).to_string());
     }
 
     fn publish_tabs(&mut self, cx: &mut Context<Self>) {

@@ -12,6 +12,7 @@ fn terminal_read_command(name: &str) -> bool {
             | "agent-send"
             | "agent-respond"
             | "capture-browser"
+            | "load-browser-url"
     )
 }
 

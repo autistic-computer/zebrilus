@@ -5,6 +5,7 @@ mod catalog;
 pub mod chat;
 mod control;
 mod exec;
+pub mod file_hex;
 mod framing;
 pub mod gateway;
 mod id;

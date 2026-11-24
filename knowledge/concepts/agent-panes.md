@@ -128,7 +128,9 @@ HOST`) for a sender on another machine. `Shared::sent_message` writes it from th
 client's origin pane, or for a remote client the `ZZ_SENDER` fact its CLI put in the command's
 environment; a text that already names a machine, which is what the relay sends, is kept as is.
 The clients fold a user item that parses as one into a `PeerMessage::Sent` note and draw it as a
-"Message from" row with the sender's chip, not as the user's bubble.
+"Message from" row with the sender's chip, not as the user's bubble. A brief given to `new-pane`
+gets the same line. A send or a brief from an interactive client (a key binding or the command
+prompt in the app) is the user's own and gets none.
 
 **Reopening a child.** A child chat is its session, not its pane. For every chat a chat opens,
 the daemon keeps a `ChildRecord` under the opener's provider and session

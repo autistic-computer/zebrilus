@@ -79,6 +79,13 @@ machine runs, and `zz build-info` prints this build's version and wire floors.
 A tailnet host gets `zz update-server` and `zz restart-server` from it, sent to
 its daemon.
 
+`zz copy-file [HOST:]SOURCE [HOST:]DESTINATION` copies one file to a host, from a host or
+between two hosts, and prints the destination and its size. A path on a host is absolute or
+starts with `~/`; a destination that is a folder here, or ends with `/` there, keeps the
+file's name. It copies files only: pack a folder first, as in
+`zz --host NAME run-shell 'tar czf /tmp/x.tgz -C ~/dir .'`, then `zz copy-file NAME:/tmp/x.tgz .`.
+Each host needs `read-file`, so update an older one first.
+
 ## CLI contract
 
 The `--help` flag alone, or the `help` verb, prints the command catalog. Use

@@ -13,6 +13,7 @@ use zz_daemon::{CommandStdinSink, append_stdin_payload};
 mod agent_hooks;
 mod agent_login;
 mod control_mode;
+mod copy_file;
 pub mod diagnostics;
 mod events;
 mod fleet;
@@ -1054,6 +1055,28 @@ fn run_command_mode(
                 }
             },
         );
+    }
+
+    if command == "copy-file" {
+        let words = invocation
+            .args
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<String>>();
+        return Some(match copy_file::run(&words) {
+            Ok(output) => {
+                println!("{output}");
+                ExitCode::SUCCESS
+            }
+            Err(error) => {
+                eprintln!("copy-file: {error}");
+                exit_code_for(if error.starts_with("usage:") {
+                    CliFailure::Usage
+                } else {
+                    CliFailure::Runtime
+                })
+            }
+        });
     }
 
     if command == "fleet" {

@@ -4792,6 +4792,7 @@ const INSPECT_VERBS: &[(&str, &[&str])] = &[
         "browser",
         &[
             "set-browser-url",
+            "load-browser-url",
             "set-browser-profile",
             "capture-browser",
             "html",
@@ -4866,6 +4867,9 @@ enum DaemonCommandDispatch {
     WaitPane,
     RunPane,
     CaptureBrowser,
+    LoadBrowserUrl,
+    ReadFile,
+    WriteFile,
     Simulator,
     Html,
     DebugMarker,
@@ -4910,6 +4914,7 @@ const DAEMON_COMMAND_DISPATCHES: &[(&str, DaemonCommandDispatch)] = &[
     ("wait-pane", DaemonCommandDispatch::WaitPane),
     ("run-pane", DaemonCommandDispatch::RunPane),
     ("capture-browser", DaemonCommandDispatch::CaptureBrowser),
+    ("load-browser-url", DaemonCommandDispatch::LoadBrowserUrl),
     ("capture-simulator", DaemonCommandDispatch::Simulator),
     ("tap-simulator", DaemonCommandDispatch::Simulator),
     ("swipe-simulator", DaemonCommandDispatch::Simulator),
@@ -4919,6 +4924,9 @@ const DAEMON_COMMAND_DISPATCHES: &[(&str, DaemonCommandDispatch)] = &[
     ("debug-marker", DaemonCommandDispatch::DebugMarker),
     ("tools", DaemonCommandDispatch::Tools),
     ("fleet", DaemonCommandDispatch::LocalCli),
+    ("copy-file", DaemonCommandDispatch::LocalCli),
+    ("read-file", DaemonCommandDispatch::ReadFile),
+    ("write-file", DaemonCommandDispatch::WriteFile),
     ("list-hosts", DaemonCommandDispatch::LocalCli),
     ("update", DaemonCommandDispatch::LocalCli),
     ("build-info", DaemonCommandDispatch::LocalCli),
@@ -8809,6 +8817,11 @@ impl Shared {
                     DaemonCommandDispatch::CaptureBrowser => {
                         self.capture_browser(context, &command.args)
                     }
+                    DaemonCommandDispatch::LoadBrowserUrl => {
+                        self.load_browser_url(context, &command.args)
+                    }
+                    DaemonCommandDispatch::ReadFile => Self::read_file(&command.args),
+                    DaemonCommandDispatch::WriteFile => Self::write_file(&command.args),
                     DaemonCommandDispatch::Simulator => {
                         self.simulator_command(context, canonical, &command.args)
                     }
@@ -18291,6 +18304,130 @@ impl Shared {
                 finish(shared, pane, capture, captured.last_command_status())
             },
         );
+        wait.finish(self, Execution::default())
+    }
+
+    fn read_file(args: &[RawText]) -> Result<Execution, DaemonError> {
+        use std::io::{Read as _, Seek as _};
+        let usage =
+            || ServerError::CommandParse("usage: read-file [-s OFFSET] [-n BYTES] PATH".to_owned());
+        let number = |value: &str| value.parse::<u64>().map_err(|_| usage());
+        let (mut offset, mut length, mut path) = (0, FILE_CHUNK_BYTES, None);
+        let mut index = 0;
+        while let Some(argument) = args.get(index) {
+            if let Some(value) = option_value("read-file", args, index, &["-s"])? {
+                offset = number(&value.value)?;
+                index += value.consumed;
+            } else if let Some(value) = option_value("read-file", args, index, &["-n"])? {
+                length = number(&value.value)?.min(FILE_CHUNK_BYTES);
+                index += value.consumed;
+            } else if path.is_none() {
+                path = Some(file_path("read-file", argument.as_str())?);
+                index += 1;
+            } else {
+                return Err(usage().into());
+            }
+        }
+        let path = path.ok_or_else(usage)?;
+        let failed = |error: std::io::Error| {
+            ServerError::InvalidCommand(format!("read-file: {}: {error}", path.display()))
+        };
+        let mut file = std::fs::File::open(&path).map_err(failed)?;
+        if !file.metadata().map_err(failed)?.is_file() {
+            return Err(ServerError::InvalidCommand(format!(
+                "read-file: {} is not a file",
+                path.display()
+            ))
+            .into());
+        }
+        file.seek(std::io::SeekFrom::Start(offset))
+            .map_err(failed)?;
+        let mut bytes = Vec::new();
+        file.take(length).read_to_end(&mut bytes).map_err(failed)?;
+        Ok(Execution {
+            output: zz_protocol::file_hex::encode(&bytes).into(),
+            effects: Vec::new(),
+        })
+    }
+
+    fn write_file(args: &[RawText]) -> Result<Execution, DaemonError> {
+        use std::io::Write as _;
+        let usage = || ServerError::CommandParse("usage: write-file [-a] PATH HEX".to_owned());
+        let (append, rest) = match args {
+            [flag, rest @ ..] if flag == "-a" => (true, rest),
+            rest => (false, rest),
+        };
+        let [path, hex] = rest else {
+            return Err(usage().into());
+        };
+        let path = file_path("write-file", path.as_str())?;
+        let bytes = zz_protocol::file_hex::decode(hex.as_str()).ok_or_else(usage)?;
+        let failed = |error: std::io::Error| {
+            ServerError::InvalidCommand(format!("write-file: {}: {error}", path.display()))
+        };
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .append(append)
+            .truncate(!append)
+            .open(&path)
+            .map_err(failed)?;
+        file.write_all(&bytes).map_err(failed)?;
+        Ok(Execution::default())
+    }
+
+    fn load_browser_url(
+        self: &Arc<Self>,
+        context: &ExecutionContext,
+        args: &[RawText],
+    ) -> Result<Execution, DaemonError> {
+        let parsed = parse_load_browser_url_args(args)?;
+        let (pane, before) = {
+            let mut inner = self.inner.lock();
+            let pane = inner.engine.resolve_pane(
+                parsed.target.as_deref(),
+                context.window,
+                context.pane,
+            )?;
+            let before = BrowserLoad::read(&inner, pane).map_or(0, |load| load.finished);
+            inner.engine.state.update_browser_url(pane, parsed.url)?;
+            (pane, before)
+        };
+        self.publish_snapshot();
+        let (wait, reply) =
+            agent_waits::reply::<Result<(), DaemonError>>(self, None, move |_, outcome| {
+                match outcome {
+                    terminal_requests::ReplyOutcome::Ready(Ok(())) => Ok(Execution::default()),
+                    terminal_requests::ReplyOutcome::Ready(Err(error)) => Err(error),
+                    _ => Err(ServerError::Internal(format!(
+                        "load-browser-url: the wait on {pane} was dropped"
+                    ))
+                    .into()),
+                }
+            });
+        let shared = Arc::downgrade(self);
+        let timeout = parsed.timeout.unwrap_or(BROWSER_LOAD_TIMEOUT);
+        thread::Builder::new()
+            .name("zz-browser-load".to_owned())
+            .spawn(move || {
+                let started = Instant::now();
+                loop {
+                    let Some(shared) = shared.upgrade() else {
+                        return;
+                    };
+                    let load = BrowserLoad::read(&shared.inner.lock(), pane);
+                    drop(shared);
+                    if let Some(result) =
+                        load_outcome(pane, load, before, started.elapsed(), timeout)
+                    {
+                        reply.try_send(result);
+                        return;
+                    }
+                    thread::sleep(BROWSER_LOAD_POLL);
+                }
+            })
+            .map_err(|error| DaemonError::Thread(error.to_string()))?;
+        self.report_command_queue_park();
         wait.finish(self, Execution::default())
     }
 
@@ -53342,6 +53479,127 @@ fn parse_agent_send_args(args: &[RawText]) -> Result<ParsedAgentSend, ServerErro
     Ok(parsed)
 }
 
+const FILE_CHUNK_BYTES: u64 = zz_protocol::file_hex::CHUNK_BYTES as u64;
+
+fn file_path(verb: &str, path: &str) -> Result<PathBuf, ServerError> {
+    let expanded = expand_path(path);
+    if expanded.is_absolute() {
+        Ok(expanded)
+    } else {
+        Err(ServerError::InvalidCommand(format!(
+            "{verb}: {path} must be an absolute path or start with ~/"
+        )))
+    }
+}
+
+const BROWSER_LOAD_TIMEOUT: Duration = Duration::from_secs(30);
+const BROWSER_LOAD_GRACE: Duration = Duration::from_millis(1500);
+const BROWSER_LOAD_POLL: Duration = Duration::from_millis(50);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct BrowserLoad {
+    reported: bool,
+    loading: bool,
+    finished: u64,
+}
+
+impl BrowserLoad {
+    fn read(inner: &ServerState, pane: PaneId) -> Option<Self> {
+        let browser = matches!(
+            inner.engine.state.pane(pane).map(|pane| &pane.kind),
+            Some(PaneKind::Browser(_))
+        );
+        let loading = inner.engine.pane_user_option(pane, "@browser_loading");
+        browser.then(|| Self {
+            reported: loading.is_some(),
+            loading: loading == Some("1"),
+            finished: inner
+                .engine
+                .pane_user_option(pane, "@browser_loaded")
+                .and_then(|count| count.parse().ok())
+                .unwrap_or(0),
+        })
+    }
+}
+
+fn load_outcome(
+    pane: PaneId,
+    load: Option<BrowserLoad>,
+    before: u64,
+    waited: Duration,
+    timeout: Duration,
+) -> Option<Result<(), DaemonError>> {
+    let Some(load) = load else {
+        return Some(Err(ServerError::InvalidCommand(format!(
+            "{pane} is no longer a browser pane"
+        ))
+        .into()));
+    };
+    if !load.loading && (load.finished != before || waited >= BROWSER_LOAD_GRACE) {
+        return Some(if load.reported {
+            Ok(())
+        } else {
+            Err(ServerError::InvalidCommand(format!(
+                "{pane} went to the page, but no window reported its load: open its session in \
+                 a zz app that is up to date"
+            ))
+            .into())
+        });
+    }
+    (!timeout.is_zero() && waited >= timeout).then(|| {
+        Err(DaemonError::CommandExit {
+            output: format!(
+                "load-browser-url: {pane} was still loading after {} seconds\n",
+                timeout.as_secs_f32()
+            )
+            .into(),
+            exit_code: 124,
+        })
+    })
+}
+
+#[derive(Debug)]
+struct ParsedLoadBrowserUrl {
+    target: Option<String>,
+    timeout: Option<Duration>,
+    url: String,
+}
+
+fn parse_load_browser_url_args(args: &[RawText]) -> Result<ParsedLoadBrowserUrl, ServerError> {
+    let usage = || {
+        ServerError::CommandParse("usage: load-browser-url [-t %N] [--timeout SECS] URL".to_owned())
+    };
+    let (mut target, mut timeout, mut url) = (None, None, None);
+    let mut index = 0;
+    while let Some(argument) = args.get(index) {
+        if let Some(value) = option_value("load-browser-url", args, index, &["-t"])? {
+            target = Some(value.value);
+            index += value.consumed;
+            continue;
+        }
+        if let Some(value) = option_value("load-browser-url", args, index, &["--timeout"])? {
+            timeout = Some(parse_pane_timeout("load-browser-url", &value.value)?);
+            index += value.consumed;
+            continue;
+        }
+        let rest = if argument == "--" {
+            &args[index + 1..]
+        } else {
+            &args[index..]
+        };
+        let [word] = rest else {
+            return Err(usage());
+        };
+        url = Some(word.to_string());
+        break;
+    }
+    Ok(ParsedLoadBrowserUrl {
+        target,
+        timeout,
+        url: url.ok_or_else(usage)?,
+    })
+}
+
 #[derive(Debug, Default)]
 struct ParsedCaptureBrowser {
     target: Option<String>,
@@ -53657,6 +53915,13 @@ machine runs, and `zz build-info` prints this build's version and wire floors.
 A tailnet host gets `zz update-server` and `zz restart-server` from it, sent to
 its daemon.
 
+`zz copy-file [HOST:]SOURCE [HOST:]DESTINATION` copies one file to a host, from a host or
+between two hosts, and prints the destination and its size. A path on a host is absolute or
+starts with `~/`; a destination that is a folder here, or ends with `/` there, keeps the
+file's name. It copies files only: pack a folder first, as in
+`zz --host NAME run-shell 'tar czf /tmp/x.tgz -C ~/dir .'`, then `zz copy-file NAME:/tmp/x.tgz .`.
+Each host needs `read-file`, so update an older one first.
+
 ## CLI contract
 
 The `--help` flag alone, or the `help` verb, prints the command catalog. Use
@@ -53889,6 +54154,16 @@ A browser pane renders only while a desktop app window shows its session. With n
 ### `zz set-browser-url -t %N URL`
 
 Navigate a browser pane. Print nothing on success. `#{browser_url}` reports the active tab's URL.
+It returns before the page loads.
+
+### `zz load-browser-url -t %N [--timeout SECS] URL`
+
+Navigate a browser pane and return once the page has loaded, so a `capture-browser` after it
+shows the new page. The window showing the pane reports the load: `#{@browser_loading}` is `1`
+while a page loads and `#{@browser_loaded}` counts the loads that finished. A navigation inside
+the page, which loads nothing, returns after 1.5 seconds. The timeout is 30 seconds by default
+and `0` waits forever; a page still loading then exits 124 and keeps loading. With no window on
+the pane's session, or an app that does not report loads, it sets the URL and fails.
 
 ### `zz html [--float] [--reply] [-t %N] PATH|-`
 
@@ -53907,8 +54182,8 @@ is read on that host; send a local page with `zz --host NAME html -t %N - < page
 Save the latest browser frame as a PNG and print its path. Use an absolute path on the daemon's
 host: the window showing the pane sends the picture and the daemon writes it there, wherever
 that window runs. A desktop app talking to an older daemon writes the file on its own machine
-instead. `set-browser-url` returns before the page loads, so a capture straight after it can show
-the old page: wait until `#{pane_title}` or `#{browser_url}` reads as the new page. On Linux, restart with `ZZ_BROWSER_SHARED_TEXTURE=0` if the GPU
+instead. A capture straight after `set-browser-url` can show the old page; navigate with
+`load-browser-url` to wait for the new one. On Linux, restart with `ZZ_BROWSER_SHARED_TEXTURE=0` if the GPU
 path reports that readback is unavailable.
 
 ### `zz capture-simulator -t %N -o /absolute/out.png`
@@ -53968,6 +54243,13 @@ agent-browser --cdp 9222 wait --load load
     WORKSPACE_TOOLS_ADVANCED = r##"## Advanced state
 
 Run `zz tools advanced` for state subscriptions and terminal-agent integration.
+
+### `zz read-file [-s OFFSET] [-n BYTES] PATH` and `zz write-file [-a] PATH HEX`
+
+The two steps `copy-file` is made of, on the daemon's host. `read-file` prints up to 262144
+bytes of a file from OFFSET as lowercase hex; fewer bytes than asked means the file ended.
+`write-file` replaces the file with the bytes HEX spells, or appends them with `-a`. PATH is
+absolute or starts with `~/`.
 
 ### State and waiting
 
@@ -86124,6 +86406,198 @@ set-option -g @alias-mixed-next yes
     }
 
     #[test]
+    fn a_file_written_in_two_steps_reads_back_the_same_bytes() {
+        let folder = tempfile::tempdir().expect("temporary folder");
+        let path = folder.path().join("frame.bin").display().to_string();
+        let words = |words: &[&str]| words.iter().copied().map(RawText::from).collect::<Vec<_>>();
+        let read = |words: &[RawText]| {
+            Shared::read_file(words)
+                .map(|execution| execution.output.to_string())
+                .map_err(|error| error.to_string())
+        };
+        Shared::write_file(&words(&[&path, "00ff10"])).expect("write");
+        Shared::write_file(&words(&["-a", &path, "0a"])).expect("append");
+        assert_eq!(std::fs::read(&path).expect("file"), [0, 255, 16, 10]);
+        assert_eq!(read(&words(&[&path])), Ok("00ff100a".to_owned()));
+        assert_eq!(
+            read(&words(&["-s", "1", "-n", "2", &path])),
+            Ok("ff10".to_owned())
+        );
+        assert_eq!(read(&words(&["-s", "9", &path])), Ok(String::new()));
+        Shared::write_file(&words(&[&path, ""])).expect("empty");
+        assert_eq!(std::fs::read(&path).expect("file"), [0_u8; 0]);
+        assert_eq!(
+            read(&words(&["frame.bin"])),
+            Err(
+                "mux command failed: invalid command: read-file: frame.bin must be an absolute path or start with ~/"
+                    .to_owned()
+            )
+        );
+        assert!(Shared::write_file(&words(&[&path, "0g"])).is_err());
+    }
+
+    #[test]
+    fn a_page_load_ends_when_the_window_reports_it_or_nothing_loads() {
+        let pane = PaneId(4);
+        let load = |reported, loading, finished| {
+            Some(BrowserLoad {
+                reported,
+                loading,
+                finished,
+            })
+        };
+        let outcome = |state, waited_ms| {
+            load_outcome(
+                pane,
+                state,
+                3,
+                Duration::from_millis(waited_ms),
+                Duration::from_secs(30),
+            )
+            .map(|result| result.map_err(|error| error.to_string()))
+        };
+        assert_eq!(outcome(load(true, true, 3), 100), None);
+        assert_eq!(outcome(load(true, false, 3), 100), None);
+        assert_eq!(outcome(load(true, false, 4), 100), Some(Ok(())));
+        assert_eq!(outcome(load(true, false, 3), 1500), Some(Ok(())));
+        assert_eq!(outcome(load(true, true, 3), 1500), None);
+        assert_eq!(
+            outcome(load(false, false, 0), 1500),
+            Some(Err(
+                "mux command failed: invalid command: %4 went to the page, but no window reported its load: open its session in a zz app that is up to date"
+                    .to_owned()
+            ))
+        );
+        assert_eq!(
+            outcome(None, 0),
+            Some(Err(
+                "mux command failed: invalid command: %4 is no longer a browser pane".to_owned()
+            ))
+        );
+        assert!(matches!(
+            load_outcome(
+                pane,
+                load(true, true, 3),
+                3,
+                Duration::from_secs(30),
+                Duration::from_secs(30)
+            ),
+            Some(Err(DaemonError::CommandExit { exit_code: 124, .. }))
+        ));
+        assert_eq!(
+            load_outcome(
+                pane,
+                load(true, true, 3),
+                3,
+                Duration::from_secs(90),
+                Duration::ZERO
+            )
+            .map(|result| result.is_ok()),
+            None
+        );
+        let parsed = parse_load_browser_url_args(
+            &["-t", "%4", "--timeout", "2.5", "--", "https://example.com/"].map(RawText::from),
+        )
+        .expect("arguments");
+        assert_eq!(
+            (
+                parsed.target.as_deref(),
+                parsed.timeout,
+                parsed.url.as_str()
+            ),
+            (
+                Some("%4"),
+                Some(Duration::from_millis(2500)),
+                "https://example.com/"
+            )
+        );
+        for bad in [&[][..], &["-t", "%4"][..], &["a", "b"][..]] {
+            assert!(
+                parse_load_browser_url_args(
+                    &bad.iter().copied().map(RawText::from).collect::<Vec<_>>()
+                )
+                .is_err(),
+                "{bad:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn load_browser_url_returns_once_the_window_reports_the_load() {
+        let shared = Arc::new(Shared::new(1));
+        let (client, _) =
+            shared.register_subscribed(ClientKind::Interactive, None, None, OutboundMailbox::new());
+        let mut context = ExecutionContext::default();
+        let mut run = |name: &str, args: &[&str]| {
+            shared
+                .execute(
+                    client,
+                    ClientKind::Interactive,
+                    &mut context,
+                    &CommandInvocation::new(name, args.iter().copied()),
+                )
+                .unwrap_or_else(|error| panic!("{name}: {error}"))
+                .output
+                .to_string()
+        };
+        run("new-session", &["-s", "load"]);
+        let browser = run(
+            "split-window",
+            &["--kind", "browser", "-P", "-F", "#{pane_id}", "about:blank"],
+        );
+        let browser = browser.trim().to_owned();
+        run(
+            "set-option",
+            &["-p", "-t", &browser, "@browser_loaded", "7"],
+        );
+        run(
+            "set-option",
+            &["-p", "-t", &browser, "@browser_loading", "0"],
+        );
+
+        let caller = {
+            let (shared, browser) = (Arc::clone(&shared), browser.clone());
+            thread::spawn(move || {
+                shared.execute(
+                    ClientId(98),
+                    ClientKind::Command,
+                    &mut ExecutionContext::default(),
+                    &CommandInvocation::new(
+                        "load-browser-url",
+                        ["-t", &browser, "https://example.com/"],
+                    ),
+                )
+            })
+        };
+        let url = |run: &mut dyn FnMut(&str, &[&str]) -> String| {
+            run("display-message", &["-p", "-t", &browser, "#{browser_url}"])
+        };
+        let deadline = Instant::now() + Duration::from_secs(30);
+        while url(&mut run).trim() != "https://example.com/" {
+            assert!(Instant::now() < deadline, "the URL was never set");
+            thread::sleep(Duration::from_millis(10));
+        }
+        run(
+            "set-option",
+            &["-p", "-t", &browser, "@browser_loading", "1"],
+        );
+        thread::sleep(Duration::from_millis(200));
+        assert!(!caller.is_finished(), "returned while the page was loading");
+        run(
+            "set-option",
+            &["-p", "-t", &browser, "@browser_loaded", "8"],
+        );
+        run(
+            "set-option",
+            &["-p", "-t", &browser, "@browser_loading", "0"],
+        );
+        caller
+            .join()
+            .expect("caller thread")
+            .expect("the page loaded");
+    }
+
+    #[test]
     fn capture_browser_and_send_last_output_parsers_reject_stray_positionals() {
         let args = ["-t", "%2", "-o", "/tmp/frame.png"].map(RawText::from);
         let parsed = parse_capture_browser_args(&args).expect("capture-browser args");
@@ -86159,6 +86633,10 @@ set-option -g @alias-mixed-next yes
             "wait-pane",
             "run-pane",
             "capture-browser",
+            "load-browser-url",
+            "copy-file",
+            "read-file",
+            "write-file",
             "capture-simulator",
             "tap-simulator",
             "html",

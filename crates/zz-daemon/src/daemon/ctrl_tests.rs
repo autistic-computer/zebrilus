@@ -619,6 +619,7 @@ fn control_query_wakeup_excludes_hooks_and_pending_events() {
         ("run-shell", &["sleep 30"][..]),
         ("agent-send", &["--wait", "x"][..]),
         ("capture-browser", &[][..]),
+        ("load-browser-url", &["about:blank"][..]),
     ] {
         assert!(!ctrl::control_query_can_defer_wakeup(
             &inner,
