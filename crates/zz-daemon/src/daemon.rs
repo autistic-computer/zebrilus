@@ -58,10 +58,6 @@ mod flow_tests;
 mod helpers;
 mod history_io;
 #[cfg(unix)]
-#[allow(
-    dead_code,
-    reason = "job families move to the loop registry in subsequent slices"
-)]
 mod jobs;
 #[cfg(unix)]
 mod lifecycle;

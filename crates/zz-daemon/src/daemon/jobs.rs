@@ -81,7 +81,9 @@ pub(super) struct Launch {
 }
 
 pub(super) struct Completion {
+    #[cfg(test)]
     pub(super) id: JobId,
+    #[cfg(test)]
     pub(super) pid: u32,
     pub(super) status: Option<ExitStatus>,
     pub(super) output: Vec<Vec<u8>>,
@@ -320,7 +322,9 @@ impl JobRegistry {
             }
             if let Some(complete) = job.complete.take() {
                 complete(Completion {
+                    #[cfg(test)]
                     id: JobId(self.next_id),
+                    #[cfg(test)]
                     pid: job.pid,
                     status: None,
                     output: std::mem::take(&mut job.output),
@@ -529,7 +533,9 @@ impl JobRegistry {
             stream.publish(true, false);
         }
         complete(Completion {
+            #[cfg(test)]
             id,
+            #[cfg(test)]
             pid: job.pid,
             status: job.status,
             output: std::mem::take(&mut job.output),

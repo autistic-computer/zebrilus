@@ -119,20 +119,6 @@ impl Overlays {
         })
     }
 
-    pub fn await_menu_closed(&self) {
-        self.await_event(|payload| match payload {
-            EventPayload::Menu { state: None } => Some(()),
-            _ => None,
-        });
-    }
-
-    pub fn next_menu_event(&self) -> Option<MenuState> {
-        self.await_event(|payload| match payload {
-            EventPayload::Menu { state } => Some(state),
-            _ => None,
-        })
-    }
-
     pub fn await_menu_matching(&self, accept: impl Fn(&MenuState) -> bool) -> MenuState {
         self.await_event(|payload| match payload {
             EventPayload::Menu { state: Some(state) } if accept(&state) => Some(state),

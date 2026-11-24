@@ -17,9 +17,7 @@ env_logger.workspace = true
 log.workspace = true
 mimalloc.workspace = true
 semver.workspace = true
-serde.workspace = true
 serde_json.workspace = true
-uuid.workspace = true
 zz-client.workspace = true
 zz-config.workspace = true
 zz-daemon = { workspace = true, features = ["default"] }

@@ -395,7 +395,6 @@ impl EventLoop {
         Ok(())
     }
 
-    #[allow(dead_code, reason = "job families migrate in subsequent slices")]
     pub(super) fn register_job(&mut self, launch: jobs::Launch) -> io::Result<jobs::JobId> {
         self.jobs
             .register(self.poll.registry(), &mut self.next_token, launch)

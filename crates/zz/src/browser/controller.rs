@@ -2023,10 +2023,6 @@ impl BrowserController {
         self.queue_cef_work(move || input.cancel_composition(), cx);
     }
 
-    #[allow(
-        dead_code,
-        reason = "the tab-strip follow-up is the first production caller"
-    )]
     pub(crate) fn close_tab(&mut self, pane: PaneId, tab: TabId) {
         if self.active_tab(pane) == Some(tab) {
             log::error!(

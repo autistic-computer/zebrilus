@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 pub(crate) mod json;
 
 use std::{
@@ -174,13 +172,6 @@ impl CellNode {
         }
     }
 
-    const fn pane(&self) -> Option<PaneId> {
-        match self {
-            Self::Leaf { pane, .. } | Self::Float { pane, .. } => Some(*pane),
-            Self::Node { .. } => None,
-        }
-    }
-
     fn extent(&self, axis: Axis) -> u16 {
         self.geometry().extent(axis)
     }
@@ -290,13 +281,6 @@ impl CellLayout {
             };
             edge == Some(path[depth])
         })
-    }
-
-    pub(crate) fn floating_panes(&self) -> Vec<PaneId> {
-        let mut panes = Vec::new();
-        collect_panes(&self.root, &mut panes);
-        panes.retain(|pane| self.is_floating(*pane));
-        panes
     }
 
     pub(crate) fn tiled_panes(&self) -> Vec<PaneId> {
@@ -746,10 +730,6 @@ impl CellLayout {
         self.extent = extent;
     }
 
-    pub(crate) fn clamp_floats(&mut self, sx: u16, sy: u16, pad: &dyn Fn(PaneId) -> u16) {
-        clamp_floats(&mut self.root, sx, sy, pad);
-    }
-
     pub(crate) fn resize(&mut self, sx: u16, sy: u16) {
         self.resize_with(sx, sy, &|_| 1);
     }
@@ -1036,12 +1016,6 @@ impl ParsedLayout {
 
     pub(crate) fn pane_count(&self) -> usize {
         count_parsed_panes(&self.root)
-    }
-
-    pub(crate) fn has_floating(&self) -> bool {
-        let mut leaves = Vec::new();
-        parsed_leaves(&self.root, &mut leaves);
-        leaves.iter().any(|leaf| leaf.float.is_some())
     }
 
     pub(crate) fn trim_bottom_right(&mut self) {
