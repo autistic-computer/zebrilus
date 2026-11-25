@@ -135,3 +135,4 @@ metadata in the attach request.
 </important>
 
 - Besides what the shared no-comments rule keeps, zz keeps the help headers `bench/run.sh`, `bench/inner.sh`, `bench/gen-fixtures.sh` and `compat/run.sh` print with `sed`, and module docstrings that argparse shows through `__doc__`.
+- Tests go in the test file of the module they exercise, named for the subject (`jobs_tests.rs`, `event_loop_wait_tests.rs`). Never name a file, module or test after a plan step, wave, ticket or fix round, and never start a new test file because a commit is new. Keep source files under about 3,000 lines: split by subject before adding to one that is larger.
