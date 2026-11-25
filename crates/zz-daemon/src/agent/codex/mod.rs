@@ -1637,15 +1637,19 @@ impl Runtime {
             self.notices,
             random_u64() & 0xffff_ffff
         );
+        let shown = verb_echo(name, rest, text);
         self.update(
             json!({
                 "sessionUpdate": "user_message_chunk",
                 "messageId": echo,
-                "content": { "type": "text", "text": verb_echo(name, rest, text) },
+                "content": { "type": "text", "text": shown },
             }),
             true,
         )
         .await?;
+        if steer.is_some() && shown == rest {
+            self.translator.expect_prompt(rest);
+        }
         self.reply = Some(echo);
         let answered = match steer {
             Some(steer) => {

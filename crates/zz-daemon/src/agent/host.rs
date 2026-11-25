@@ -20,7 +20,7 @@ use zz_protocol::agent_stream::agent_verb;
 use zz_protocol::{
     AgentAutoApprove, AgentGitSummary, AgentProvider, AgentQuestionAnswer, AgentTaskWire, ClientId,
     MAX_AGENT_PROMPT_BYTES, MAX_AGENT_QUEUED_PROMPTS, MAX_AGENT_TASKS, PaneId, QuotaWindows,
-    agent_mention::is_relayed,
+    agent_mention::{ReportTiming, is_relayed, timed_report},
 };
 
 use crate::agent::{
@@ -1604,8 +1604,9 @@ impl PanePump {
         if text.is_empty() || !prompt.images.is_empty() || !self.steerable() {
             return false;
         }
+        let in_turn = timed_report(text, ReportTiming::InTurn);
         let steer = AgentPrompt {
-            text: format!("/steer {text}"),
+            text: format!("/steer {}", in_turn.as_deref().unwrap_or(text)),
             ..prompt.clone()
         };
         self.commands
@@ -1738,7 +1739,10 @@ impl PanePump {
         if relayed.is_empty() {
             return rest;
         }
-        for prompt in relayed.into_iter().rev() {
+        for mut prompt in relayed.into_iter().rev() {
+            if let Some(text) = timed_report(&prompt.text, ReportTiming::AfterTurn) {
+                prompt.text = text;
+            }
             self.queue.push_front(QueuedPrompt {
                 prompt,
                 waiter: None,
@@ -2776,7 +2780,13 @@ mod tests {
             chunk_text(payload) == Some("prompt busy")
         });
         inject(report("done"));
-        let steered = format!("verb /steer {}", report("done"));
+        let in_turn = timed_report(&report("done"), ReportTiming::InTurn).expect("a report");
+        assert!(in_turn.contains("carry on with what you were doing"));
+        assert_eq!(
+            zz_protocol::agent_mention::AgentReport::parse(&in_turn),
+            zz_protocol::agent_mention::AgentReport::parse(&report("done"))
+        );
+        let steered = format!("verb /steer {in_turn}");
         fixture
             .recorder
             .wait("the report inside the turn", |payload| {

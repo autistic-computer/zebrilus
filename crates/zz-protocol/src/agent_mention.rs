@@ -531,6 +531,34 @@ fn follow_up(host: Option<&str>, pane: PaneId) -> String {
     )
 }
 
+fn carry_on(host: Option<&str>, pane: PaneId) -> String {
+    format!(
+        "This reached you inside your running turn and the user did not write it: carry on with what you were doing. Only if something is missing: {}",
+        send_command(host, pane)
+    )
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ReportTiming {
+    InTurn,
+    AfterTurn,
+}
+
+#[must_use]
+pub fn timed_report(text: &str, timing: ReportTiming) -> Option<String> {
+    let (host, report) = AgentReport::parse_from(text)?;
+    let (host, pane) = (host.as_deref(), report.pane());
+    let (after, during) = (follow_up(host, pane), carry_on(host, pane));
+    let text = text.trim_end();
+    let body = text
+        .strip_suffix(after.as_str())
+        .or_else(|| text.strip_suffix(during.as_str()))?;
+    Some(match timing {
+        ReportTiming::InTurn => format!("{body}{during}"),
+        ReportTiming::AfterTurn => format!("{body}{after}"),
+    })
+}
+
 fn try_again(host: Option<&str>, pane: PaneId) -> String {
     format!(
         "Tell the user, or try again with: {}",
@@ -648,8 +676,9 @@ impl AgentReport {
         rest: &str,
     ) -> Option<Self> {
         let reply = || {
-            let follow = follow_up(host, pane);
-            rest.strip_suffix(follow.as_str())
+            let (after, during) = (follow_up(host, pane), carry_on(host, pane));
+            rest.strip_suffix(after.as_str())
+                .or_else(|| rest.strip_suffix(during.as_str()))
                 .unwrap_or(rest)
                 .trim()
                 .to_owned()

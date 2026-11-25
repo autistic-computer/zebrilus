@@ -19,11 +19,11 @@ use parking_lot::Mutex;
 
 use crate::agent::chat_bridge::{Shadow, chat_answer, chat_answers, journal_marks, without_images};
 use serde_json::{Map, Value, json};
-use zz_protocol::agent_stream::agent_verb;
 use zz_protocol::chat::ChatEvent;
 use zz_protocol::{
     AgentAutoApprove, AgentProvider, AgentQuestionAnswer, AgentTaskWire, MAX_AGENT_TASKS,
 };
+use zz_protocol::{agent_mention::is_relayed, agent_stream::agent_verb};
 
 use crate::agent::{
     accounts,
@@ -1481,12 +1481,13 @@ impl Runtime {
                     command: uuid.clone(),
                 })
                 .await?;
+                let priority = if is_relayed(rest) { "next" } else { "now" };
                 self.send(&json!({
                     "type": "user",
                     "uuid": uuid,
                     "session_id": "",
                     "parent_tool_use_id": null,
-                    "priority": "now",
+                    "priority": priority,
                     "message": { "role": "user", "content": [{ "type": "text", "text": rest }] },
                     "origin": { "kind": "human" },
                 }));
