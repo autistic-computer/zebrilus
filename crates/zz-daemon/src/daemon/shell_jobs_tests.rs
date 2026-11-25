@@ -52,7 +52,7 @@ fn shell_job_closes_stdin_and_ignores_inherited_output_descriptors_after_exit() 
 #[test]
 fn twenty_shell_jobs_add_no_workers_and_admission_is_capped_at_256() {
     if !super::solo_tests::rerun_alone(
-        "daemon::shell_jobs_e14_tests::twenty_shell_jobs_add_no_workers_and_admission_is_capped_at_256",
+        "daemon::shell_jobs_tests::twenty_shell_jobs_add_no_workers_and_admission_is_capped_at_256",
     ) {
         return;
     }

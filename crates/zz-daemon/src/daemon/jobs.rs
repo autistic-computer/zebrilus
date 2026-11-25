@@ -623,16 +623,8 @@ impl JobRegistry {
 }
 
 #[cfg(test)]
-#[path = "jobs_e12_tests.rs"]
-mod e12_tests;
-
-#[cfg(test)]
-#[path = "jobs_e16fix_tests.rs"]
-mod e16fix_tests;
-
-#[cfg(test)]
-#[path = "jobs_reviewfixes_tests.rs"]
-mod reviewfixes_tests;
+#[path = "jobs_tests.rs"]
+mod tests;
 
 pub(super) struct JobChild {
     pid: u32,

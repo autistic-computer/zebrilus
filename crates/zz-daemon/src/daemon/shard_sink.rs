@@ -352,8 +352,8 @@ pub(super) fn publish_loop_view(
 }
 
 #[cfg(test)]
-#[path = "shard_sink_bytes2_tests.rs"]
-mod bytes2_tests;
+#[path = "shard_sink_drain_tests.rs"]
+mod drain_tests;
 
 pub(super) struct ControlWake {
     pending: AtomicBool,

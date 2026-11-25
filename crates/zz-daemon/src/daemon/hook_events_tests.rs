@@ -866,7 +866,7 @@ fn a_run_shell_job_sleeps_until_its_output_or_its_exit() {
     }
     let job = |command: &str| {
         let shared = Arc::new(Shared::new(1));
-        shell_jobs_e14_tests::start_loop(&shared).expect("shell loop");
+        shell_jobs_tests::start_loop(&shared).expect("shell loop");
         let (completed, completion) = mpsc::sync_channel(1);
         let before = switches();
         let started = Instant::now();

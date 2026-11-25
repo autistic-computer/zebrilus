@@ -5787,10 +5787,6 @@ fn prepare_config_command(
     Ok((command, alias_matched))
 }
 
-#[cfg(all(test, unix))]
-#[path = "daemon/loop_reviewfixes_tests.rs"]
-mod loop_reviewfixes_tests;
-
 #[cfg(test)]
 #[path = "daemon/empty_pane_tests.rs"]
 mod empty_pane_tests;
@@ -17134,7 +17130,7 @@ impl Shared {
         #[cfg(unix)]
         {
             #[cfg(test)]
-            shell_jobs_e14_tests::start_loop(&self.server_owner())?;
+            shell_jobs_tests::start_loop(&self.server_owner())?;
             let shared = self.server_owner();
             let launch = move || {
                 if shared.stopping.load(Ordering::Acquire)
@@ -36943,7 +36939,7 @@ struct OverlayCommands {
 }
 
 #[cfg(all(test, unix))]
-mod overlay_queue_e07_tests;
+mod overlay_queue_tests;
 
 struct RegisteredWait {
     name: String,
@@ -37262,7 +37258,7 @@ impl Default for AutomaticPasteBufferLimit {
 mod pane_exit;
 
 #[cfg(all(test, unix))]
-mod pane_exit_e09_tests;
+mod pane_exit_tests;
 
 struct PaneExitWait {
     current: Arc<pane_exit::Completion>,
@@ -39620,7 +39616,7 @@ struct ModeTreeMenu {
 }
 
 #[cfg(all(test, unix))]
-mod menu_queue_e08_tests;
+mod menu_queue_tests;
 
 struct ClientAliasRoute {
     command: Option<CommandInvocation>,
@@ -46471,8 +46467,8 @@ impl Drop for ShutdownBlocker {
 }
 
 #[cfg(all(test, unix))]
-#[path = "daemon/shell_jobs_e14_tests.rs"]
-mod shell_jobs_e14_tests;
+#[path = "daemon/shell_jobs_tests.rs"]
+mod shell_jobs_tests;
 
 #[cfg(unix)]
 struct ShellJobProcess {
@@ -46901,8 +46897,8 @@ fn run_copy_pipe_with_timeout(
 }
 
 #[cfg(all(test, unix))]
-#[path = "daemon/pipe_jobs_e16_tests.rs"]
-mod pipe_jobs_e16_tests;
+#[path = "daemon/pipe_jobs_tests.rs"]
+mod pipe_jobs_tests;
 
 #[cfg(unix)]
 fn launch_copy_pipe(
@@ -50396,9 +50392,6 @@ impl std::ops::Deref for CommandQueueExecution {
 type DeferredShellJob = Box<dyn FnOnce(&Arc<Shared>) + Send>;
 
 type OverlaySourceThen = Box<dyn FnOnce(&Arc<Shared>) + Send>;
-
-#[cfg(all(test, unix))]
-mod focusfix_tests;
 
 impl CommandQueueExecution {
     fn insert_foreground_child(&self, child: InsertedQueueChild) {

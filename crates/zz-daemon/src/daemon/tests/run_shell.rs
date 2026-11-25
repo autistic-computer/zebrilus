@@ -189,7 +189,7 @@ fn shell_formats_use_the_selected_current_client() {
     let mut context =
         ExecutionContext::new(Some(first_session), Some(first_window), Some(first_pane));
 
-    let output = loop_reviewfixes_tests::execute_and_drive_loop(
+    let output = event_loop_tests::execute_and_drive_loop(
         &shared,
         &mut event_loop,
         command_client,
@@ -206,7 +206,7 @@ fn shell_formats_use_the_selected_current_client() {
         "printf '#{{session_active}}' > {}",
         shell_quote(&other_output)
     );
-    loop_reviewfixes_tests::execute_and_drive_loop(
+    event_loop_tests::execute_and_drive_loop(
         &shared,
         &mut event_loop,
         command_client,
@@ -220,7 +220,7 @@ fn shell_formats_use_the_selected_current_client() {
     .expect("other-session run-shell format");
     assert_eq!(fs::read_to_string(other_output).unwrap(), "0");
 
-    let output = loop_reviewfixes_tests::execute_and_drive_loop(
+    let output = event_loop_tests::execute_and_drive_loop(
         &shared,
         &mut event_loop,
         command_client,
@@ -239,7 +239,7 @@ fn shell_formats_use_the_selected_current_client() {
     .expect("current-session if-shell format");
     assert_eq!(output.output, "active");
 
-    let output = loop_reviewfixes_tests::execute_and_drive_loop(
+    let output = event_loop_tests::execute_and_drive_loop(
         &shared,
         &mut event_loop,
         command_client,
@@ -287,7 +287,7 @@ fn shell_formats_use_the_selected_current_client() {
         ),
     )
     .expect("write sourced format command");
-    loop_reviewfixes_tests::execute_and_drive_loop(
+    event_loop_tests::execute_and_drive_loop(
         &shared,
         &mut event_loop,
         interactive,
@@ -303,7 +303,7 @@ fn shell_formats_use_the_selected_current_client() {
         ),
     )
     .expect("install sourced client hook");
-    loop_reviewfixes_tests::execute_and_drive_loop(
+    event_loop_tests::execute_and_drive_loop(
         &shared,
         &mut event_loop,
         interactive,
@@ -316,7 +316,7 @@ fn shell_formats_use_the_selected_current_client() {
         fs::read_to_string(source_output).unwrap(),
         "shell-first|1|shell-first"
     );
-    loop_reviewfixes_tests::drive_loop_until(&shared, &mut event_loop, || {
+    event_loop_tests::drive_loop_until(&shared, &mut event_loop, || {
         shared
             .inner
             .lock()
@@ -354,7 +354,7 @@ fn shell_formats_use_the_selected_current_client() {
         "run-shell \"printf '#{{session_active}}' > {}\"",
         shell_quote(&hook_output)
     );
-    loop_reviewfixes_tests::execute_and_drive_loop(
+    event_loop_tests::execute_and_drive_loop(
         &shared,
         &mut event_loop,
         interactive,
@@ -366,7 +366,7 @@ fn shell_formats_use_the_selected_current_client() {
         ),
     )
     .expect("install client format hook");
-    loop_reviewfixes_tests::execute_and_drive_loop(
+    event_loop_tests::execute_and_drive_loop(
         &shared,
         &mut event_loop,
         interactive,
@@ -375,11 +375,11 @@ fn shell_formats_use_the_selected_current_client() {
         &CommandInvocation::new("display-message", ["-p", "trigger"]),
     )
     .expect("trigger client format hook");
-    loop_reviewfixes_tests::drive_loop_until(&shared, &mut event_loop, || {
+    event_loop_tests::drive_loop_until(&shared, &mut event_loop, || {
         fs::read_to_string(&hook_output).is_ok_and(|output| output == "1")
     });
 
-    loop_reviewfixes_tests::execute_and_drive_loop(
+    event_loop_tests::execute_and_drive_loop(
         &shared,
         &mut event_loop,
         interactive,
@@ -395,7 +395,7 @@ fn shell_formats_use_the_selected_current_client() {
         ),
     )
     .expect("install clientless event hook");
-    loop_reviewfixes_tests::execute_and_drive_loop(
+    event_loop_tests::execute_and_drive_loop(
         &shared,
         &mut event_loop,
         interactive,
@@ -404,7 +404,7 @@ fn shell_formats_use_the_selected_current_client() {
         &CommandInvocation::new("new-session", ["-d", "-s", "event-trigger"]),
     )
     .expect("trigger clientless event hook");
-    loop_reviewfixes_tests::drive_loop_until(&shared, &mut event_loop, || {
+    event_loop_tests::drive_loop_until(&shared, &mut event_loop, || {
         shared
             .inner
             .lock()
@@ -435,7 +435,7 @@ fn shell_formats_use_the_selected_current_client() {
 
     shared.detach(second_client);
     shared.detach(interactive);
-    let output = loop_reviewfixes_tests::execute_and_drive_loop(
+    let output = event_loop_tests::execute_and_drive_loop(
         &shared,
         &mut event_loop,
         command_client,

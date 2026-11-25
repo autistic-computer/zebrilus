@@ -1,5 +1,7 @@
 use super::*;
-use zz_protocol::{AttachOperation, Hello, InputMessage, encode_protocol_message};
+use zz_protocol::{
+    AttachOperation, ExecFlags, ExecRequest, Hello, InputMessage, encode_protocol_message,
+};
 
 fn hello(kind: ClientKind) -> ProtocolMessage {
     let ProtocolMessage::ClientHello(mut hello) = super::io_tests::hello() else {
@@ -408,7 +410,7 @@ fn pending_bytes_are_bounded_before_the_message_count_limit() {
 #[test]
 fn control_output_loop_delivers_bytes_without_readers() {
     if !crate::daemon::solo_tests::rerun_alone(
-        "daemon::event_loop::b2fix_tests::control_output_loop_delivers_bytes_without_readers",
+        "daemon::event_loop::connection_tests::control_output_loop_delivers_bytes_without_readers",
     ) {
         return;
     }
@@ -547,4 +549,130 @@ fn quiet_worker_replies_wait_for_the_loop_writer() {
     assert!(mailbox.enqueue_reliable(&ProtocolMessage::TreeSync));
     mailbox.finish_control_query();
     assert!(peer.read(&mut [0; 4096]).unwrap() > 0);
+}
+
+#[test]
+fn a_client_arriving_while_shutdown_drains_receives_the_stopping_refusal() {
+    let socket = PathBuf::from(format!("/tmp/zz-drainfix-{}.sock", server_id()));
+    let listener = LocalTransport::bind(&socket).unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let _socket_guard = SocketGuard::new(socket.clone());
+    let shared = Arc::new(Shared::new(241));
+    let mut event_loop = EventLoop::empty(&shared).unwrap();
+    let blocker = ShutdownBlocker::acquire(&shared, false).unwrap();
+    shared.request_shutdown();
+    event_loop.turn(&shared).unwrap();
+    assert!(shared.shutdown_pending.load(Ordering::Acquire));
+    assert!(!shared.stopping.load(Ordering::Acquire));
+
+    let mut client = UnixStream::connect(&socket).unwrap();
+    client
+        .write_all(&encode_protocol_message(&io_tests::hello()).unwrap())
+        .unwrap();
+    client.set_nonblocking(true).unwrap();
+    event_loop
+        .accept_ready::<LocalTransport>(&listener, &shared)
+        .unwrap();
+    assert_eq!(event_loop.connections.len(), 1);
+    let mut input = Inbound::default();
+    let mut received = Vec::new();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !event_loop.connections.is_empty() {
+        assert!(Instant::now() < deadline, "late client stayed connected");
+        event_loop.turn(&shared).unwrap();
+        received.extend(io_tests::messages(&mut client, &mut input));
+        thread::sleep(Duration::from_millis(1));
+    }
+    received.extend(io_tests::messages(&mut client, &mut input));
+    assert_eq!(received, [server_stopping_response(0)]);
+
+    drop(blocker);
+    while !event_loop.shutdown_completed() {
+        assert!(Instant::now() < deadline, "shutdown did not finish");
+        event_loop.turn(&shared).unwrap();
+        thread::sleep(Duration::from_millis(1));
+    }
+    assert!(shared.stopping.load(Ordering::Acquire));
+}
+
+#[test]
+fn response_completion_wakes_the_loop_only_after_admissions_freeze() {
+    let shared = Arc::new(Shared::new(1));
+    let mut event_loop = EventLoop::empty(&shared).unwrap();
+    let mut admission = ResponseAdmissionGuard::new(&shared).unwrap();
+    admission.finish();
+    event_loop
+        .poll
+        .poll(&mut event_loop.events, Some(Duration::from_millis(20)))
+        .unwrap();
+    assert!(event_loop.events.is_empty());
+
+    let mut first = ResponseAdmissionGuard::new(&shared).unwrap();
+    let mut last = ResponseAdmissionGuard::new(&shared).unwrap();
+    event_loop.start_shutdown(&shared);
+    assert!(ResponseAdmissionGuard::new(&shared).is_none());
+    first.finish();
+    event_loop
+        .poll
+        .poll(&mut event_loop.events, Some(Duration::from_millis(20)))
+        .unwrap();
+    assert!(event_loop.events.is_empty());
+
+    last.finish();
+    event_loop
+        .poll
+        .poll(&mut event_loop.events, Some(Duration::from_secs(1)))
+        .unwrap();
+    assert!(event_loop.events.iter().any(|event| event.token() == WAKE));
+    assert_eq!(shared.response_admissions.lock().active, 0);
+}
+
+#[test]
+fn completed_exec_removal_leaves_no_cleanup_wake() {
+    let shared = Arc::new(Shared::new(723));
+    let mut event_loop = EventLoop::empty(&shared).unwrap();
+    let (mut peer, server) = UnixStream::pair().unwrap();
+    peer.set_nonblocking(true).unwrap();
+    let token = event_loop.insert(server.receive_fd().unwrap()).unwrap();
+    let mut flags = ExecFlags::default();
+    flags.set(ExecFlags::LAST, true);
+    let request = ProtocolMessage::Exec(ExecRequest {
+        protocol_version: PROTOCOL_VERSION,
+        flags,
+        client_instance_id: ClientInstanceId(723),
+        origin: None,
+        working_directory: None,
+        tty: None,
+        size: None,
+        features: 0,
+        startup_reentry: None,
+        spawned_server_id: None,
+        expect_server_id: None,
+        process_id: std::process::id(),
+        environment: ClientEnvironmentBlob::default(),
+        commands: vec![CommandInvocation::new("display-message", ["-p", "done"])],
+        raw_control_line: None,
+    });
+    peer.write_all(&encode_protocol_message(&request).unwrap())
+        .unwrap();
+    event_loop.read_ready(token, &shared);
+    event_loop
+        .poll
+        .poll(&mut event_loop.events, Some(Duration::ZERO))
+        .unwrap();
+    event_loop.turn(&shared).unwrap();
+    let messages = io_tests::messages(&mut peer, &mut Inbound::default());
+    assert!(matches!(
+        &messages[0],
+        ProtocolMessage::CommandResponse(CommandResponse::Success { output, .. })
+            if output == "done"
+    ));
+    assert!(matches!(messages[1], ProtocolMessage::ExecExit(_)));
+    assert!(!event_loop.connections.contains_key(&token));
+    assert!(shared.inner.lock().clients.is_empty());
+    event_loop
+        .poll
+        .poll(&mut event_loop.events, Some(Duration::ZERO))
+        .unwrap();
+    assert!(event_loop.events.is_empty());
 }

@@ -290,7 +290,7 @@ fn first_command_session_uses_zero_ids_and_arms_last_session_shutdown() {
 
     assert!(shared.inner.lock().engine.state.sessions.is_empty());
     #[cfg(unix)]
-    loop_reviewfixes_tests::drive_loop_until(&shared, &mut event_loop, || {
+    event_loop_tests::drive_loop_until(&shared, &mut event_loop, || {
         shared.stopping.load(Ordering::Acquire)
     });
     assert!(shared.stopping.load(Ordering::Acquire));

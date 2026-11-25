@@ -1,5 +1,54 @@
 use super::super::{ClientId, ClientKind, CommandInvocation, ExecutionContext, Shared};
 use super::*;
+use std::{sync::mpsc, time::Instant};
+
+#[test]
+fn helpers_are_bounded_and_retire_within_one_second() {
+    let pool = Pool::default();
+    assert_eq!(pool.state.queue.lock().workers, 0);
+    let (started, ready) = mpsc::sync_channel(2);
+    let mut releases = Vec::new();
+    for _ in 0..2 {
+        let (release, wait) = mpsc::channel();
+        releases.push(release);
+        pool.submit(Task::Hold(wait, started.clone())).unwrap();
+    }
+    for _ in 0..2 {
+        ready.recv_timeout(Duration::from_secs(1)).unwrap();
+    }
+    assert_eq!(pool.state.queue.lock().workers, 2);
+    for _ in 0..MAX_PENDING {
+        let (release, wait) = mpsc::channel();
+        releases.push(release);
+        pool.submit(Task::Hold(wait, started.clone())).unwrap();
+    }
+    let (_, wait) = mpsc::channel();
+    assert_eq!(
+        pool.submit(Task::Hold(wait, started)).unwrap_err().kind(),
+        io::ErrorKind::WouldBlock
+    );
+    assert_eq!(pool.state.queue.lock().workers, 2);
+    drop(ready);
+    for release in releases {
+        release.send(()).unwrap();
+    }
+    let deadline = Instant::now() + Duration::from_secs(1);
+    while pool.state.queue.lock().workers != 0 {
+        assert!(Instant::now() < deadline);
+        thread::sleep(Duration::from_millis(5));
+    }
+    let (release, wait) = mpsc::channel();
+    let (started, ready) = mpsc::sync_channel(1);
+    pool.submit(Task::Hold(wait, started)).unwrap();
+    ready.recv_timeout(Duration::from_secs(1)).unwrap();
+    assert_eq!(pool.state.queue.lock().workers, 1);
+    release.send(()).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(1);
+    while pool.active() {
+        assert!(Instant::now() < deadline);
+        thread::sleep(Duration::from_millis(5));
+    }
+}
 
 #[test]
 fn steady_send_keys_at_twenty_panes_starts_no_helpers() {
@@ -108,4 +157,37 @@ fn a_peer_probe_leaves_no_idle_worker() {
                 .timed_out()
         );
     }
+}
+
+#[cfg(all(feature = "agent", unix))]
+#[test]
+fn a_panicking_peer_scan_completes_and_the_next_scan_can_finish() {
+    let (completed, completions) = crossbeam_channel::unbounded();
+    for panic in [true, false] {
+        let (reply, result) = std::sync::mpsc::sync_channel(1);
+        assert!(
+            finish_peer_scan(
+                || {
+                    assert!(!panic, "peer scan failure");
+                    Ok(Vec::new())
+                },
+                Some(reply),
+                Some(completed.clone()),
+            )
+            .is_none()
+        );
+        assert_eq!(result.try_recv().unwrap().is_err(), panic);
+        assert!(matches!(
+            completions.try_recv().unwrap(),
+            super::super::timers::TimerCompletion::Peer
+        ));
+    }
+    assert!(matches!(
+        finish_peer_scan(|| panic!("peer scan failure"), None, Some(completed)),
+        Some(Result::Peers(Err(_)))
+    ));
+    assert!(matches!(
+        completions.try_recv().unwrap(),
+        super::super::timers::TimerCompletion::Peer
+    ));
 }

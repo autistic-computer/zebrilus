@@ -200,7 +200,7 @@ impl StatusClient {
 }
 
 #[cfg(all(test, unix))]
-#[path = "jobs_e15_tests.rs"]
+#[path = "status_jobs_tests.rs"]
 pub(crate) mod tests;
 
 #[cfg(all(test, windows))]

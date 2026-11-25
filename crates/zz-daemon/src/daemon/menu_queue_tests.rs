@@ -58,7 +58,7 @@ fn menu_open(shared: &Shared, target: ClientId) -> bool {
 #[test]
 fn twenty_open_menus_return_at_once_and_add_zero_workers() {
     if !super::solo_tests::rerun_alone(
-        "daemon::menu_queue_e08_tests::twenty_open_menus_return_at_once_and_add_zero_workers",
+        "daemon::menu_queue_tests::twenty_open_menus_return_at_once_and_add_zero_workers",
     ) {
         return;
     }

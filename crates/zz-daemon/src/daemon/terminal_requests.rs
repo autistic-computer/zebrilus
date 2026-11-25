@@ -644,5 +644,5 @@ fn run_effects(
 }
 
 #[cfg(test)]
-#[path = "terminal_requests_e04_tests.rs"]
+#[path = "terminal_requests_tests.rs"]
 mod tests;

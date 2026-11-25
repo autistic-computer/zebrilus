@@ -1254,12 +1254,8 @@ mod loop_tests;
 mod client_tests;
 
 #[cfg(all(test, unix))]
-#[path = "status_loop_b6fix_tests.rs"]
-mod b6fix_tests;
-
-#[cfg(all(test, unix))]
-#[path = "timers_e20_tests.rs"]
-mod e20_tests;
+#[path = "timers_tests.rs"]
+mod tests;
 
 #[cfg(all(test, unix))]
 #[path = "delay_timer_tests.rs"]
