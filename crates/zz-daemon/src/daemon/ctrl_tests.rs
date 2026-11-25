@@ -858,6 +858,7 @@ fn a_late_gui_hook_wakes_quiet_started_before_its_reply() {
         shared
             .inner
             .lock()
+            .transfers
             .pending_gui_requests
             .contains_key(&request_id)
     });

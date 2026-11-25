@@ -7334,6 +7334,7 @@ impl Shared {
             let mut inner = self.inner.lock();
             let mut removed_client = inner.clients.remove(&client);
             let files = inner
+                .transfers
                 .client_file_waiters
                 .extract_if(.., |_, waiter| waiter.client == client)
                 .map(|(_, waiter)| waiter)
@@ -7366,9 +7367,13 @@ impl Shared {
             }
             inner.client_flags.clear(client);
             inner
+                .transfers
                 .paste_uploads
                 .retain(|(uploader, _), _| *uploader != client);
-            inner.file_writes.retain(|(writer, _), _| *writer != client);
+            inner
+                .transfers
+                .file_writes
+                .retain(|(writer, _), _| *writer != client);
             let mut wait_wakes = remove_client_wait_items(&mut inner.wait_channels, client);
             wait_wakes.extend(hook_events::take_event_waiter_wakes(
                 &mut inner.event_waiters,
@@ -10717,7 +10722,10 @@ impl Shared {
                             inner.pane_mode_zooms.remove(pane);
                             inner.panes_mode_frames.remove(pane);
                             inner.engine.set_pane_status_hidden(*pane, false);
-                            inner.paste_uploads.retain(|_, upload| upload.pane != *pane);
+                            inner
+                                .transfers
+                                .paste_uploads
+                                .retain(|_, upload| upload.pane != *pane);
                             removed_panes.push(*pane);
                         }
                     }
@@ -19876,9 +19884,16 @@ impl Shared {
         if !inner.clients.contains_key(&waiter.client) {
             return Err(client_file_failure("the invoking client is gone", &waiter.path).into());
         }
-        inner.next_client_file_request = inner.next_client_file_request.wrapping_add(1).max(1);
-        let request_id = inner.next_client_file_request;
-        inner.client_file_waiters.insert(request_id, waiter);
+        inner.transfers.next_client_file_request = inner
+            .transfers
+            .next_client_file_request
+            .wrapping_add(1)
+            .max(1);
+        let request_id = inner.transfers.next_client_file_request;
+        inner
+            .transfers
+            .client_file_waiters
+            .insert(request_id, waiter);
         Ok(request_id)
     }
 
@@ -19886,6 +19901,7 @@ impl Shared {
         let files = self
             .inner
             .lock()
+            .transfers
             .client_file_waiters
             .extract_if(.., |_, waiter| waiter.pane == Some(pane))
             .map(|(_, waiter)| waiter)
@@ -19899,6 +19915,7 @@ impl Shared {
         let waiter = {
             let mut inner = self.inner.lock();
             if inner
+                .transfers
                 .client_file_waiters
                 .get(&response.request_id)
                 .is_none_or(|waiter| waiter.client != client)
@@ -19906,6 +19923,7 @@ impl Shared {
                 return;
             }
             inner
+                .transfers
                 .client_file_waiters
                 .remove(&response.request_id)
                 .unwrap()
@@ -26767,6 +26785,7 @@ impl Shared {
             return;
         }
         let in_flight = inner
+            .transfers
             .paste_uploads
             .keys()
             .filter(|(owner, id)| *owner == client && *id != upload_id)
@@ -26780,7 +26799,7 @@ impl Shared {
             );
             return;
         }
-        inner.paste_uploads.insert(
+        inner.transfers.paste_uploads.insert(
             (client, upload_id),
             PasteUpload {
                 pane,
@@ -26796,12 +26815,12 @@ impl Shared {
         let key = (client, upload_id);
         let finished = {
             let mut inner = self.inner.lock();
-            let Some(upload) = inner.paste_uploads.get(&key) else {
+            let Some(upload) = inner.transfers.paste_uploads.get(&key) else {
                 return;
             };
             if upload.bytes.len().saturating_add(bytes.len()) > upload.total_bytes {
                 let pane = upload.pane;
-                inner.paste_uploads.remove(&key);
+                inner.transfers.paste_uploads.remove(&key);
                 drop(inner);
                 self.reject_paste_upload(
                     client,
@@ -26811,6 +26830,7 @@ impl Shared {
                 return;
             }
             let upload = inner
+                .transfers
                 .paste_uploads
                 .get_mut(&key)
                 .expect("the upload was present a statement ago");
@@ -26818,7 +26838,7 @@ impl Shared {
             if upload.bytes.len() < upload.total_bytes {
                 return;
             }
-            inner.paste_uploads.remove(&key)
+            inner.transfers.paste_uploads.remove(&key)
         };
         let Some(upload) = finished else {
             return;
@@ -30813,7 +30833,12 @@ impl Shared {
             );
         let (wait, reply) =
             agent_waits::reply::<Result<String, String>>(self, None, move |shared, outcome| {
-                shared.inner.lock().pending_gui_requests.remove(&request_id);
+                shared
+                    .inner
+                    .lock()
+                    .transfers
+                    .pending_gui_requests
+                    .remove(&request_id);
                 match outcome {
                     terminal_requests::ReplyOutcome::Ready(Ok(output)) => Ok(Execution {
                         output: output.into(),
@@ -30829,7 +30854,7 @@ impl Shared {
                     .into()),
                 }
             });
-        self.inner.lock().pending_gui_requests.insert(
+        self.inner.lock().transfers.pending_gui_requests.insert(
             request_id,
             PendingGuiRequest {
                 client,
@@ -30842,7 +30867,11 @@ impl Shared {
         );
         self.expire_stalled_gui_request(request_id, 0);
         if !subscriber.enqueue_reliable(&Self::event(payload(request_id))) {
-            self.inner.lock().pending_gui_requests.remove(&request_id);
+            self.inner
+                .lock()
+                .transfers
+                .pending_gui_requests
+                .remove(&request_id);
             wait.state
                 .resolve(Err(ServerError::PaneNotAttached(pane).into()));
             return wait.finish(self, Execution::default());
@@ -30856,7 +30885,8 @@ impl Shared {
             .schedule(Instant::now() + GUI_REQUEST_TIMEOUT, move |shared| {
                 let stalled = {
                     let mut inner = shared.inner.lock();
-                    let Some(pending) = inner.pending_gui_requests.get(&request_id) else {
+                    let Some(pending) = inner.transfers.pending_gui_requests.get(&request_id)
+                    else {
                         return;
                     };
                     let now = pending
@@ -30868,7 +30898,7 @@ impl Shared {
                         shared.expire_stalled_gui_request(request_id, now);
                         return;
                     }
-                    inner.pending_gui_requests.remove(&request_id)
+                    inner.transfers.pending_gui_requests.remove(&request_id)
                 };
                 drop(stalled);
             });
@@ -30877,7 +30907,7 @@ impl Shared {
     fn take_gui_request(&self, client: ClientId, request_id: u64) -> Option<PendingGuiRequest> {
         let mut inner = self.inner.lock();
         owned_gui_request(&mut inner, client, request_id)?;
-        inner.pending_gui_requests.remove(&request_id)
+        inner.transfers.pending_gui_requests.remove(&request_id)
     }
 
     fn complete_gui_request(&self, client: ClientId, response: GuiResponse) {
@@ -30908,7 +30938,7 @@ impl Shared {
                     return;
                 }
             }
-            inner.pending_gui_requests.remove(&request_id)
+            inner.transfers.pending_gui_requests.remove(&request_id)
         };
         let Some(pending) = pending else {
             return;
@@ -30934,12 +30964,13 @@ impl Shared {
         let pending = {
             let mut inner = self.inner.lock();
             let ids = inner
+                .transfers
                 .pending_gui_requests
                 .iter()
                 .filter_map(|(id, request)| (request.client == client).then_some(*id))
                 .collect::<Vec<_>>();
             ids.into_iter()
-                .filter_map(|id| inner.pending_gui_requests.remove(&id))
+                .filter_map(|id| inner.transfers.pending_gui_requests.remove(&id))
                 .collect::<Vec<_>>()
         };
         for request in pending {
@@ -36822,9 +36853,8 @@ struct ServerState {
     next_command_output_id: u64,
     control_command_event_captures:
         HashMap<(ClientId, cmdq::ItemId), Vec<CapturedControlCommandEvents>>,
-    client_file_waiters: BTreeMap<u64, ClientFileWaiter>,
+    transfers: Transfers,
     pane_exit_waits: BTreeMap<PaneId, PaneExitWait>,
-    next_client_file_request: u64,
     attached: BTreeMap<SessionId, BTreeSet<ClientId>>,
     destroying_unattached: BTreeSet<SessionId>,
     terminal_geometries: BTreeMap<PaneId, BTreeMap<ClientId, TerminalGeometry>>,
@@ -36861,9 +36891,6 @@ struct ServerState {
     next_buffer_id: u64,
     next_client_id: u64,
     next_display_panes_token: u64,
-    pending_gui_requests: BTreeMap<u64, PendingGuiRequest>,
-    paste_uploads: BTreeMap<(ClientId, u64), PasteUpload>,
-    file_writes: BTreeMap<(ClientId, u64), file_edit::PendingFileWrite>,
     wait_channels: BTreeMap<String, WaitChannel>,
     pane_pipes: BTreeMap<PaneId, PanePipe>,
     control_routes: BTreeMap<ClientId, ControlRoute>,
@@ -36875,6 +36902,15 @@ struct ServerState {
     border_presentations_cache: Mutex<Option<CachedBorderPresentations>>,
     status_parameters_cache: Mutex<Option<CachedStatusParameters>>,
     status_preparation_cache: Mutex<Option<CachedStatusPreparation>>,
+}
+
+#[derive(Default)]
+struct Transfers {
+    pending_gui_requests: BTreeMap<u64, PendingGuiRequest>,
+    paste_uploads: BTreeMap<(ClientId, u64), PasteUpload>,
+    client_file_waiters: BTreeMap<u64, ClientFileWaiter>,
+    file_writes: BTreeMap<(ClientId, u64), file_edit::PendingFileWrite>,
+    next_client_file_request: u64,
 }
 
 struct WaitItem {
@@ -37211,7 +37247,7 @@ fn owned_gui_request(
     client: ClientId,
     request_id: u64,
 ) -> Option<&mut PendingGuiRequest> {
-    let pending = inner.pending_gui_requests.get_mut(&request_id)?;
+    let pending = inner.transfers.pending_gui_requests.get_mut(&request_id)?;
     if pending.client != client {
         log::warn!(target: "zz_daemon::diagnostics::connection", "discarding GUI response for request={request_id} from client={client}; owner is {}", pending.client);
         return None;

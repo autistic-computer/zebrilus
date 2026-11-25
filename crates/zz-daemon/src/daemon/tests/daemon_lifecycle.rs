@@ -1520,7 +1520,7 @@ fn detach_keeps_one_connection_restores_views_and_clears_client_state() {
                 lane: CommittedTextLane::Terminal,
                 suppressed_character: Some('b'),
             }]));
-        inner.pending_gui_requests.insert(
+        inner.transfers.pending_gui_requests.insert(
             99,
             PendingGuiRequest {
                 client,
@@ -1583,7 +1583,7 @@ fn detach_keeps_one_connection_restores_views_and_clears_client_state() {
                 .client(client)
                 .is_none_or(|c| c.pending_committed_text.is_none())
         );
-        assert!(!inner.pending_gui_requests.contains_key(&99));
+        assert!(!inner.transfers.pending_gui_requests.contains_key(&99));
     }
     let deadline = Instant::now() + Duration::from_secs(30);
     while terminal.latest_viewport_for(view).is_some() && Instant::now() < deadline {

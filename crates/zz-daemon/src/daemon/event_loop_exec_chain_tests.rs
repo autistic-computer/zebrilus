@@ -419,7 +419,7 @@ fn gui_replies_bypass_a_waiting_control_queue() {
     });
     let client = event_loop.connections[&token].client.unwrap();
     let (reply, replied) = crossbeam_channel::bounded(1);
-    shared.inner.lock().pending_gui_requests.insert(
+    shared.inner.lock().transfers.pending_gui_requests.insert(
         202,
         PendingGuiRequest {
             client,

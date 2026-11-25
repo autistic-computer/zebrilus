@@ -125,7 +125,8 @@ impl Shared {
             refuse(error);
             return;
         }
-        let assembled = append_file_write(&mut self.inner.lock().file_writes, client, chunk);
+        let assembled =
+            append_file_write(&mut self.inner.lock().transfers.file_writes, client, chunk);
         let (pane, path, text) = match assembled {
             Ok(Some(write)) => write,
             Ok(None) => return,

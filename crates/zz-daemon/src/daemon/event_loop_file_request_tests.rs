@@ -67,7 +67,7 @@ fn twenty_file_operations_park_without_workers_and_reject_wrong_owners() {
         peers.iter().all(|(_, _, _, file, _)| file.is_some())
     });
     assert_eq!(shared.connection_threads.worker_count(), 0);
-    assert_eq!(shared.inner.lock().client_file_waiters.len(), 20);
+    assert_eq!(shared.inner.lock().transfers.client_file_waiters.len(), 20);
     let wrong = ProtocolMessage::ClientFileResponse(ClientFileResponse {
         request_id: peers[0].3.as_ref().unwrap().request_id,
         data: b"wrong".to_vec(),
@@ -78,7 +78,7 @@ fn twenty_file_operations_park_without_workers_and_reject_wrong_owners() {
         .write_all(&encode_protocol_message(&wrong).unwrap())
         .unwrap();
     event_loop.read_ready(peers[1].0, &shared);
-    assert_eq!(shared.inner.lock().client_file_waiters.len(), 20);
+    assert_eq!(shared.inner.lock().transfers.client_file_waiters.len(), 20);
     assert!(shared.inner.lock().paste_buffers.is_empty());
     for (token, peer, _, file, _) in &mut peers {
         let reply = ProtocolMessage::ClientFileResponse(ClientFileResponse {
@@ -102,7 +102,7 @@ fn twenty_file_operations_park_without_workers_and_reject_wrong_owners() {
     });
     assert_eq!(shared.connection_threads.worker_count(), 0);
     let inner = shared.inner.lock();
-    assert!(inner.client_file_waiters.is_empty());
+    assert!(inner.transfers.client_file_waiters.is_empty());
     assert_eq!(inner.paste_buffers.len(), 20);
     assert!(
         inner
@@ -215,8 +215,12 @@ fn pane_stdin_requests_one_chunk_at_a_time_and_cancels_on_target_loss() {
     assert!(matches!(task.run(true), wait_queue::Progress::Waiting));
     let (request, pane) = {
         let inner = shared.inner.lock();
-        assert_eq!(inner.client_file_waiters.len(), 1);
-        let (&request, waiter) = inner.client_file_waiters.first_key_value().unwrap();
+        assert_eq!(inner.transfers.client_file_waiters.len(), 1);
+        let (&request, waiter) = inner
+            .transfers
+            .client_file_waiters
+            .first_key_value()
+            .unwrap();
         (request, waiter.pane.unwrap())
     };
     shared.complete_client_file(
@@ -230,8 +234,13 @@ fn pane_stdin_requests_one_chunk_at_a_time_and_cancels_on_target_loss() {
     assert!(!task.ready());
     let next = {
         let inner = shared.inner.lock();
-        assert_eq!(inner.client_file_waiters.len(), 1);
-        *inner.client_file_waiters.first_key_value().unwrap().0
+        assert_eq!(inner.transfers.client_file_waiters.len(), 1);
+        *inner
+            .transfers
+            .client_file_waiters
+            .first_key_value()
+            .unwrap()
+            .0
     };
     assert_ne!(request, next);
     shared.complete_client_file(
@@ -242,7 +251,7 @@ fn pane_stdin_requests_one_chunk_at_a_time_and_cancels_on_target_loss() {
             error: None,
         },
     );
-    assert_eq!(shared.inner.lock().client_file_waiters.len(), 1);
+    assert_eq!(shared.inner.lock().transfers.client_file_waiters.len(), 1);
     shared
         .execute(
             client,
@@ -252,7 +261,7 @@ fn pane_stdin_requests_one_chunk_at_a_time_and_cancels_on_target_loss() {
         )
         .unwrap();
     assert!(task.ready());
-    assert!(shared.inner.lock().client_file_waiters.is_empty());
+    assert!(shared.inner.lock().transfers.client_file_waiters.is_empty());
     assert!(matches!(task.run(true), wait_queue::Progress::Done));
     let (_, client_exit, _, _) = task.finish();
     assert!(client_exit);
@@ -292,8 +301,9 @@ fn new_pane_stdin_streams_into_the_float_it_creates() {
     assert!(matches!(task.run(true), wait_queue::Progress::Waiting));
     let pane = {
         let inner = shared.inner.lock();
-        assert_eq!(inner.client_file_waiters.len(), 1);
+        assert_eq!(inner.transfers.client_file_waiters.len(), 1);
         let pane = inner
+            .transfers
             .client_file_waiters
             .first_key_value()
             .unwrap()

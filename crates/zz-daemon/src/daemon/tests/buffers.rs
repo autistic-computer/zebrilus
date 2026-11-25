@@ -379,7 +379,7 @@ fn save_buffer_fails_instead_of_writing_locally_when_the_command_client_is_gone(
             if message.contains("the invoking client is gone")
     ));
     assert!(!output.exists());
-    assert!(shared.inner.lock().client_file_waiters.is_empty());
+    assert!(shared.inner.lock().transfers.client_file_waiters.is_empty());
 }
 
 #[test]

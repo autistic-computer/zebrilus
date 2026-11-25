@@ -254,7 +254,7 @@ fn terminal_state_wait_observes_a_short_turn_before_submission_finishes() {
 fn gui_reply_from_another_client_preserves_the_owner_request() {
     let shared = Arc::new(Shared::new(1821));
     let (send, response) = crossbeam_channel::bounded(1);
-    shared.inner.lock().pending_gui_requests.insert(
+    shared.inner.lock().transfers.pending_gui_requests.insert(
         7,
         PendingGuiRequest {
             client: ClientId(1),
@@ -269,7 +269,14 @@ fn gui_reply_from_another_client_preserves_the_owner_request() {
             output: "wrong".to_owned(),
         },
     );
-    assert!(shared.inner.lock().pending_gui_requests.contains_key(&7));
+    assert!(
+        shared
+            .inner
+            .lock()
+            .transfers
+            .pending_gui_requests
+            .contains_key(&7)
+    );
     assert!(response.try_recv().is_err());
     shared.complete_gui_request(
         ClientId(1),
@@ -294,7 +301,7 @@ fn a_browser_screenshot_from_a_remote_window_is_written_where_the_caller_asked()
     let png = b"\x89PNG\r\n\x1a\nframe".to_vec();
     let (send, response) = crossbeam_channel::bounded(2);
     for (request_id, screenshot) in [(8, Some(path.clone())), (9, None)] {
-        shared.inner.lock().pending_gui_requests.insert(
+        shared.inner.lock().transfers.pending_gui_requests.insert(
             request_id,
             PendingGuiRequest {
                 client: ClientId(1),
