@@ -10,7 +10,7 @@
 ---<br>
 name: zebrilus<br>
 description: terminal multiplexer<br>
-status: daily driver<br>
+status: alpha<br>
 license: mit or apache-2.0<br>
 version: 0.31.0<br>
 ---
