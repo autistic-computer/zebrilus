@@ -101,6 +101,7 @@ pub fn host_install(
         Endpoint::Ssh(ssh) => ssh_update(ssh, host, &["--version", &version]),
         Endpoint::Tailnet(_) => update_server(endpoint, host, &["--version", &version], progress),
         Endpoint::Local(_) => Err(HostUpdateError::Failed(NOT_A_HOST.to_owned())),
+        Endpoint::Wsl(_) => Err(HostUpdateError::Failed(NO_WSL.to_owned())),
     }
 }
 
@@ -122,6 +123,7 @@ pub fn host_restart(
             )),
         },
         Endpoint::Local(_) => Err(HostUpdateError::Failed(NOT_A_HOST.to_owned())),
+        Endpoint::Wsl(_) => Err(HostUpdateError::Failed(NO_WSL.to_owned())),
     }
 }
 

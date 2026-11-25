@@ -1,8 +1,8 @@
 ---
 type: Design Plan
 title: Host updates in the app . outdated hosts in the sidebar and Settings
-description: "The desktop app shows which hosts run an older zz and updates them with one click, over ssh or the tailnet. A host is outdated when its running daemon's version is below this app's, read from the facts `zz update --check` already asks for. The app's Update runs the same code as `zz update <host> --restart`, so the owned copy and `restart-server` replace the shell script the app piped over ssh, and tailnet hosts get the offer for the first time. An outdated host carries an arrow in a ring on its sidebar row, and Settings > Hosts is a table with each host's version and Update or Restart beside it. Nothing updates on its own. Built on branch host-update, drawn in the storybook, never run against a real host."
-status: Built on branch host-update 2026-11-24, not merged; the update run is unchecked on real hosts
+description: "The desktop app shows which hosts run an older zz and updates them with one click, over ssh or the tailnet. A host is outdated when its running daemon's version is below this app's, read from the facts `zz update --check` already asks for. The app's Update runs the same code as `zz update <host> --restart`, so the owned copy and `restart-server` replace the shell script the app piped over ssh, and tailnet hosts get the offer for the first time. An outdated host carries an arrow in a ring on its sidebar row, and Settings > Hosts is a table with each host's version and Update or Restart beside it. Nothing updates on its own. Merged 2026-11-25, drawn in the storybook, never run against a real host."
+status: Merged 2026-11-25; the update run is unchecked on real hosts
 tags:
 - update
 - daemon
@@ -254,6 +254,9 @@ item 5, so no Dev build shows any of this.
 Never run: every item of Done when. No facts fetch, install or restart has run against a daemon,
 the question dialog has not been seen in the app, and the sidebar row has not been seen with the
 mark in place.
+
+A WSL host gets no mark: `zz update` does not reach a WSL distribution, so the app reads no
+version there. `zz fleet install NAME` updates it.
 
 # Open
 
