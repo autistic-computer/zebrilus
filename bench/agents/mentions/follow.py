@@ -75,7 +75,7 @@ while True:
     if now - start > 20:
         seen_work = True
     states = {pid: o.get("agent_state", "") for pid, o in ps.items() if o.get("pane_kind") == "agent"}
-    if hs == "needs-approval":
+    if hs in ("needs-approval", "needs-input"):
         host_blocked = host_blocked or now
         if now - host_blocked > HOST_BLOCK:
             end = "host-blocked"
@@ -107,6 +107,7 @@ ps = panes()
 json.dump(
     {
         "end": end,
+        "start": start,
         "wall": round(wall, 1),
         "created": created,
         "sessions": sessions,

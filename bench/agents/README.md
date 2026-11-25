@@ -1,7 +1,7 @@
 # Agent benchmarks
 
-Three harnesses that measure zz as a target for AI agents. All run against real agents and a real
-zz, append TSV rows, and print a summary; none is part of `cargo test`. A fourth rig, `tapes/`,
+Five harnesses that measure zz as a target for AI agents. All run against real agents and a real
+zz, append TSV rows, and print a summary; none is part of `cargo test`. A sixth rig, `tapes/`,
 records what zz and an agent CLI say to each other.
 
 ## tapes/ - recordings of vendor frames
@@ -122,6 +122,36 @@ model, arm, task, rep, pass, wall s, turns, CLI calls, failed calls, blocked, in
 tokens, cost, run id. `run-all.sh` fans out (`TASKS`, `REPS`, `CLAUDE_ARMS`, `CODEX_ARMS`, `PAR`) and
 `summary.py` pivots. Run directories stay under `/tmp/fu-runs/`; delete them afterwards. `results/`
 keeps the 2026-10-21 runs; the 0.21.0 grid there predates the `blocked` column.
+
+## mentions/ - handing a task to another chat
+
+`mentions/README.md` describes the rig: a host chat in a private daemon, every zz call logged, a
+second-by-second timeline of each chat's state, and a judge per scenario.
+
+## tour/ - a scripted walk through the chat commands
+
+Question: when a chat walks the commands it uses to work with other panes and chats, does zz do
+the right thing at each one? `tour.md` is the prompt: sixteen numbered commands, run as written,
+with a line of notes after each. They cover a terminal split and `run-pane` (output and exit
+code), opening a chat and getting its reply inside a turn that is still running, a follow-up whose
+reply starts a new turn, an ask answered with `agent-respond`, closing a chat mid-turn and sending
+to it afterwards, and the titles chats get.
+
+`tour/run.sh HOST [REP]` runs it on the mentions rig (`HOST` is `claude` or `codex`; the chat it
+opens is the other one; `CLAUDE_MODEL`, `CODEX_MODEL`, `ZZ_BINARY` and `TMO` as there) and keeps
+the run under `tour/out/runs/ID`. The rig's judge only counts: calls, failed calls, polling, turns,
+and whether the last answer holds the token.
+
+The verdict comes from an agent. `tour/review.sh RUN [AGENT]` opens a chat (Claude Code by default)
+on `review.md` with the run folder, from inside zz; anywhere else, or with `-` for AGENT, it prints
+the brief to pipe into an agent. `review.md` says what a correct zz does at each step and how to
+label a finding: zz bug, zz gap, agent mistake, not zz. The reviewer writes `review.md` into the
+run folder.
+
+```sh
+ZZ_BINARY=$PWD/target/debug/zz_cli bench/agents/tour/run.sh claude
+bench/agents/tour/review.sh bench/agents/tour/out/runs/ID
+```
 
 Results and the traps the harnesses found live in
 `knowledge/playbooks/agent-benchmarks.md`.

@@ -208,7 +208,7 @@ ran_stamp = [
     and re.search(r"((^|&&|;|\|\||\bthen|\belse)\s*(\./stamp\.sh|(ba)?sh\s+\S*stamp\.sh)\b)|\[\s*\\?[\"']\./stamp\.sh", c["cmd"] or "")
 ]
 
-want = {"m1": meta["token"], "m5": None, "m7": meta["token"], "m8": meta["token"], "m3": meta["secret"], "m6": meta["secret"], "m4": stamp or "<no stamp>", "m4a": stamp or "<no stamp>", "m4b": None, "m4c": None, "m8b": meta["token"]}[sc]
+want = {"m1": meta["token"], "m5": None, "m7": meta["token"], "m8": meta["token"], "m3": meta["secret"], "m6": meta["secret"], "m4": stamp or "<no stamp>", "m4a": stamp or "<no stamp>", "m4b": None, "m4c": None, "m8b": meta["token"], "tour": meta["token"]}[sc]
 token_ok = bool(want) and want in final
 reported = bool(re.match(r"\[zz\] %\d+ \(\w+\) (finished:|stopped|failed:|was closed\b)", last_prompt))
 done = fol["end"] == "done"
@@ -267,6 +267,8 @@ if sc == "m4b":
 if sc == "m5":
     if not any(re.search(r"\) was closed\b", l) for l in injected):
         why.append("no closed report")
+if sc == "tour" and (len(hc) < 15 or hc[-1]["verb"] != "kill-pane"):
+    why.append(f"tour stopped after {len(hc)} calls")
 if sc == "m6" and not token_ok:
     pass
 if sc == "m7" and created:

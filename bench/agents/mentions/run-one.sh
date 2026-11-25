@@ -10,9 +10,10 @@ case $HOSTP in
   codex) OTHER=claude HM=$CODEX_MODEL OM=$CLAUDE_MODEL OTHER_NAME=Claude ;;
   *) echo "host is claude or codex" >&2; exit 2 ;;
 esac
-case $SC in m1|m3|m4|m4a|m4b|m4c|m5|m6|m7|m8|m8b) ;; *) echo "unknown scenario $SC" >&2; exit 2 ;; esac
+case $SC in m1|m3|m4|m4a|m4b|m4c|m5|m6|m7|m8|m8b|tour) ;; *) echo "unknown scenario $SC" >&2; exit 2 ;; esac
+OUT=${OUT:-$S/out}
 
-mkdir -p /tmp/mn-runs "$S/out/runs"
+mkdir -p /tmp/mn-runs "$OUT/runs"
 RUN=$(cd "$(mktemp -d /tmp/mn-runs/XXXXXX)" && pwd -P)
 ID=${RUN##*/}
 H=$RUN/h WS=$RUN/ws SOCK=/tmp/mns-$ID.sock
@@ -63,6 +64,7 @@ case $SC in
       printf '%s' "Find the token in notes.txt and reply with only the token. If unsure, open another agent to check it for you, or ask the chat that opened you." > "$RUN/brief" ;;
   m8b) PROMPT="@+$OTHER what is the token in notes.txt? reply with only the token"
       printf '%s' "Do not read any file yourself. Open another agent with zz to read notes.txt for you, or ask the chat that opened you for the token. Then reply with only the token." > "$RUN/brief" ;;
+  tour) PROMPT=$(sed "s/@OTHER@/$OTHER/g" "$S/../tour/tour.md") ;;
 esac
 
 PX=$(Z new-session -d -P -F '#{pane_id}' -s work -n main -x 200 -y 50 -c "$WS") || { echo "daemon start failed" >&2; rm -rf "$RUN"; exit 2; }
@@ -116,7 +118,7 @@ pkill -f "$RUN/" 2>/dev/null
 for _ in 1 2 3 4 5; do pgrep -f "$RUN/|mns-$ID" >/dev/null || break; sleep 1; done
 pgrep -fl "$RUN/|mns-$ID" >> "$RUN/rig.err" && pkill -9 -f "$RUN/|mns-$ID"
 
-DEST=$S/out/runs/$ID
+DEST=$OUT/runs/$ID
 mkdir -p "$DEST"
 cp -R "$RUN/io" "$RUN/transcripts" "$RUN/logs" "$DEST/"
 mkdir -p "$DEST/sessions"
@@ -126,7 +128,7 @@ cp "$RUN"/*.json "$RUN"/*.txt "$RUN/rig.err" "$RUN"/panes.jsonl "$DEST/" 2>/dev/
 ls -la "$WS" > "$DEST/ws.txt"; cp "$WS/stamped.txt" "$DEST/" 2>/dev/null
 row=$(python3 "$S/judge.py" "$DEST")
 [ -n "${KEEP-}" ] || rm -rf "$RUN"
-printf '%s\n' "$row" >> "${RESULTS:-$S/out/results.tsv}"
+printf '%s\n' "$row" >> "${RESULTS:-$OUT/results.tsv}"
 python3 - "$DEST/result.json" <<'EOF'
 import json, sys
 r = json.load(open(sys.argv[1]))

@@ -107,6 +107,11 @@ token against transcripts. `bench/agents/mentions/README.md` maps scenarios to c
 The 2026-11-23 report's final m8b rerun recorded 1/3 passes with a Codex host. The TSV and
 per-run explanations live in `bench/agents/mentions/results/`.
 
+For an end-to-end pass over the chat commands, run `bench/agents/tour/run.sh HOST` and then
+`bench/agents/tour/review.sh RUN`. The host walks sixteen scripted zz commands on the mentions
+rig, and a second agent reads the run folder against `bench/agents/tour/review.md`, which lists
+what a correct zz does at each step. A run takes a few minutes on the rig's default models.
+
 For a driver trace, build `zz-cli` and the `agent_cancel` example, then run
 `bench/agents/tapes/record.sh PROVIDER SCENARIO`. Providers are `agy`, `grok`, `cursor`,
 `claude` and `codex`. Scenarios are `open`, `hello`, `tools`, `stop`, `queue` and

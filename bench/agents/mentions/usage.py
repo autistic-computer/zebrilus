@@ -26,7 +26,8 @@ def text(v):
     if isinstance(v, list):
         return "\n".join(text(x.get("text", x.get("content", ""))) if isinstance(x, dict) else str(x) for x in v)
     if isinstance(v, dict):
-        return text(v.get("output", v.get("content", json.dumps(v))))
+        inner = v.get("output", v.get("content"))
+        return json.dumps(v) if inner is None else text(inner)
     return str(v)
 
 
