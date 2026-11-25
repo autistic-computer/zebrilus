@@ -602,6 +602,21 @@ impl CommandPaletteView {
         palette
     }
 
+    pub fn new_folder_pick_on(
+        backend: Rc<dyn PaletteBackend>,
+        host: PaletteHostId,
+        body: &str,
+        pick: FolderPick,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let mut palette = Self::new_unified(backend, None, window, cx);
+        palette.pick_folder = Some(pick);
+        palette.scope_to_host(host);
+        palette.set_files_body(body, window, cx);
+        palette
+    }
+
     pub const fn is_local(&self) -> bool {
         self.local
     }

@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sidebar model</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="/penna-src/components/button/button.css">
+<link rel="stylesheet" href="/penna-src/components/kbd/kbd.css">
+<link rel="stylesheet" href="/penna-src/components/menu/menu.css">
+<link rel="stylesheet" href="/penna-src/components/spinner/spinner.css">
+<link rel="stylesheet" href="/zz.css">
+<script src="/penna/kit.js" data-tokens="/tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+<script src="/penna-src/components/kbd/kbd.js" defer></script>
+<style>
+  .zz-page { display: grid; gap: 56px; max-width: 1440px; margin: 0 auto; padding: 40px 32px 96px; }
+  .zz-page h1 { margin: 0; font-size: var(--penna-text-title-size); line-height: var(--penna-text-title-line); font-weight: 600; }
+  .zz-page h2 { margin: 0; font-size: 15px; line-height: 20px; font-weight: 600; }
+  .zz-intro p, .zz-take > p { margin: 4px 0 0; max-width: 100ch; color: var(--penna-fg-muted); }
+  .zz-take { display: grid; gap: 20px; min-width: 0; }
+  .zz-shelf { display: flex; flex-wrap: wrap; gap: 36px 32px; align-items: start; }
+  .zz-cell { display: grid; gap: 8px; min-width: 0; align-content: start; }
+  .zz-cap { margin: 0; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); color: var(--penna-fg-muted); }
+  .zz-cap b { color: var(--penna-fg); font-weight: 600; }
+  .zz-flow { display: grid; gap: 28px; align-content: start; }
+  .zz-flow > h2 { height: 20px; }
+  .zz-spec { width: 100%; max-width: 1100px; border-collapse: collapse; font-size: var(--penna-text-small-size); line-height: var(--penna-text-small-line); }
+  .zz-spec th, .zz-spec td { padding: 6px 16px 6px 0; text-align: left; vertical-align: top; border-bottom: 1px solid var(--penna-divider); }
+  .zz-spec th { font-weight: 600; color: var(--penna-fg); }
+  .zz-spec td { color: var(--penna-fg-muted); }
+  .zz-spec td:first-child, .zz-spec td:last-child { color: var(--penna-fg); }
+  .zz-spec td:first-child { white-space: nowrap; }
+  .zz-decide { display: grid; gap: 8px; margin: 0; padding-left: 18px; max-width: 100ch; color: var(--penna-fg-muted); }
+  .zz-decide b { color: var(--penna-fg); font-weight: 600; }
+
+  .zz-side.penna-window { grid-template-columns: 256px; grid-template-rows: 40px auto; width: 256px; }
+  .zz-app.penna-window { grid-template-columns: 256px 380px; grid-template-rows: 40px 560px; width: 636px; }
+  .zz-nav[data-penna="sidebar"] { display: flex; flex-direction: column; gap: 0; height: 100%; min-height: 0; padding: 0; --zz-ground: var(--penna-fill); }
+  .zz-nav > .penna-strip { padding-right: 10px; }
+  .zz-nav [data-penna="chrome.button"] { display: grid; place-items: center; padding: 0; color: var(--penna-fg-muted); }
+  .zz-actions { display: flex; flex: none; flex-direction: column; padding: 0 8px 8px 0; }
+  .zz-foot { display: flex; flex: none; flex-direction: column; margin-top: auto; padding: 16px 8px 6px 0; }
+  .zz-action[data-penna] { height: 32px; margin: 0 var(--penna-row-inset); padding: 0 10px; gap: 8px; font-size: 13px; line-height: 16px; --penna-icon-size: 16px; cursor: var(--penna-click-cursor); }
+  .zz-list { position: relative; display: flex; flex-direction: column; padding-right: 8px; }
+
+  .zz-host { position: relative; display: flex; flex: none; align-items: center; gap: 8px; height: 30px; padding: 0 8px 0 16px; font-size: 13px; font-weight: 600; line-height: 16px; color: color-mix(in oklab, var(--penna-fg) 85%, transparent); }
+  .zz-list > :not(.zz-host) + .zz-host, .zz-list > .zz-host + .zz-host { margin-top: 18px; }
+  .zz-host > [data-icon]:first-child { color: var(--penna-fg-muted); --penna-icon-size: 16px; }
+  .zz-host[data-off] > [data-icon]:first-child, .zz-host[data-off] > [data-penna-text] { opacity: 0.5; }
+  .zz-host[data-state~="hover"] { color: var(--penna-fg); }
+  .zz-host > .zz-grow { flex: 1; }
+  .zz-note { flex: none; color: var(--penna-fg-muted); --penna-icon-size: 14px; }
+  .zz-hbtn[data-penna] { flex: none; height: 20px; padding: 0 8px; font-size: 11px; font-weight: 500; line-height: 20px; }
+  .zz-hadd[data-penna] { display: grid; flex: none; place-items: center; width: 22px; height: 22px; padding: 0; color: var(--penna-fg-muted); --penna-icon-size: 14px; }
+  .zz-hadd[data-state~="hover"] { color: var(--penna-fg); }
+  .zz-empty[data-penna] { height: 32px; margin: 1px var(--penna-row-inset); padding: 0 10px 0 16px; gap: 10px; font-size: 13px; line-height: 16px; color: var(--penna-fg-muted); --penna-icon-size: 16px; }
+
+  .zz-group { position: relative; display: flex; flex-direction: column; --zz-track: var(--penna-divider); }
+  .zz-row[data-penna="row.nav"] { position: relative; flex: none; flex-direction: row; align-items: center; justify-content: flex-start; gap: 10px; height: 46px; margin: 1px var(--penna-row-inset); padding: 0 13px 0 10px; font-weight: 400; cursor: var(--penna-click-cursor); --zz-row-fill: var(--penna-fill); }
+  .zz-stack { position: relative; flex: none; height: 28px; }
+  .zz-tile[data-penna] { position: absolute; top: 0; display: grid; place-items: center; width: 28px; height: 28px; background: linear-gradient(color-mix(in srgb, var(--penna-fg) 6%, var(--penna-fill)), var(--penna-fill)); box-shadow: 0 0 0 0.5px color-mix(in srgb, var(--penna-fg) 16%, transparent), var(--penna-shadow-contact); --penna-icon-size: 16px; }
+  .zz-dot { position: absolute; right: -2.5px; bottom: -2.5px; display: grid; place-items: center; width: 11px; height: 11px; border-radius: 50%; background: linear-gradient(var(--zz-row-fill), var(--zz-row-fill)), var(--zz-ground); }
+  .zz-dot::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--zz-tone); }
+  [data-tone="accent"] { --zz-tone: var(--penna-accent); }
+  [data-tone="warning"] { --zz-tone: var(--penna-warning); }
+  [data-tone="success"] { --zz-tone: var(--penna-success); }
+  .zz-text { display: flex; flex: 1; flex-direction: column; gap: 1px; min-width: 0; }
+  .zz-title { display: flex; align-items: center; gap: 6px; height: 17px; font-size: 13px; font-weight: 500; line-height: 17px; }
+  .zz-row[data-plain] .zz-title { font-weight: 400; }
+  .penna-spinner { color: var(--penna-muted); }
+  .zz-label, .zz-parts { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; -webkit-mask-image: linear-gradient(to left, transparent, #000 16px); mask-image: linear-gradient(to left, transparent, #000 16px); }
+  .zz-line { display: flex; align-items: center; gap: 8px; height: 15px; font-size: 12px; line-height: 15px; color: var(--penna-muted); }
+  .zz-parts > [data-tone="normal"] { color: var(--penna-ink); }
+  .zz-age { flex: none; font-size: 11px; font-variant-numeric: tabular-nums; color: var(--penna-muted); }
+  .zz-pointer { position: absolute; z-index: 9; width: 12px; height: 18px; pointer-events: none; background: var(--penna-fg); clip-path: polygon(0 0, 0 15px, 4px 11px, 7px 18px, 9px 17px, 6px 10px, 11px 10px); filter: drop-shadow(0 0 1px var(--penna-bg)); }
+
+  .zz-tree { display: flex; flex-direction: column; padding: 0 8px 0 var(--penna-row-inset); }
+  .zz-tree [data-penna="sidebar.row"] { position: relative; }
+  .zz-tree [data-off] > * { opacity: 0.5; }
+  .zz-tree .penna-marker { color: var(--penna-fg-muted); --penna-icon-size: 16px; }
+  .zz-tree .zz-index { flex: none; font-size: 11px; color: var(--penna-muted); }
+
+  .zz-body { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--penna-bg); }
+  .zz-app > [data-penna="titlebar"] { padding: 0 8px; gap: 4px; }
+  .zz-body > [data-penna="pane"] { display: flex; flex: 1; flex-direction: column; min-height: 0; }
+  .zz-body [data-penna="bar.pane"] > .zz-grow { flex: 1; }
+  .zz-landing { display: flex; flex: 1; align-items: center; justify-content: center; padding: 0 12px; }
+  .zz-picker { position: relative; display: flex; flex-direction: column; gap: 2px; width: 100%; max-width: 300px; }
+  .zz-plabel { padding: 8px 12px 2px; font-size: 11px; font-weight: 600; line-height: 14px; color: var(--penna-fg-muted); }
+  .zz-pick[data-penna] { display: flex; flex: none; align-items: center; gap: 10px; height: 32px; padding: 0 12px; font-size: 13px; line-height: 16px; white-space: nowrap; --penna-icon-size: 16px; }
+  .zz-pick > [data-icon]:first-child { flex: none; color: var(--penna-fg-muted); }
+  .zz-pick > [data-penna-text] { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .zz-pick > .zz-pnote { flex: none; font-size: 11px; color: var(--penna-muted); }
+  .zz-pick > .zz-check { color: var(--penna-fg-muted); --penna-icon-size: 14px; }
+  .zz-pick[data-state~="disabled"] { opacity: 0.5; }
+  .zz-card { display: grid; width: 300px; padding: 10px 6px 12px; border-radius: 12px; background: var(--penna-bg); box-shadow: 0 0 0 0.5px color-mix(in srgb, var(--penna-fg) 16%, transparent); }
+  .zz-terminal [data-ink="muted"] { color: var(--penna-fg-muted); }
+  .zz-terminal [data-ink="cursor"] { background: var(--penna-fg); color: var(--penna-bg); }
+  .zz-chat { display: flex; flex: 1; flex-direction: column; justify-content: flex-end; padding: 12px; }
+  .zz-chat [data-penna="field.composer"] > .zz-input { color: var(--penna-muted); }
+</style>
+</head>
+<body>
+<main class="zz-page">
+  <div class="zz-intro">
+    <h1>Sidebar model</h1>
+    <p>One fleet drawn four ways: macbook (this machine), ubuntu (a chat running), alienware (connected, nothing open) and win-desktop (offline). Each take puts today next to the change.</p>
+  </div>
+  <section class="zz-take" data-take="hosts">
+    <h2>1. A machine with nothing open</h2>
+    <div class="zz-shelf" data-slot="hosts"></div>
+  </section>
+  <section class="zz-take" data-take="new-chat">
+    <h2>2. New chat on alienware</h2>
+    <div class="zz-shelf" data-slot="new-chat"></div>
+  </section>
+  <section class="zz-take" data-take="views">
+    <h2>3. The two views</h2>
+    <div class="zz-shelf" data-slot="views"></div>
+  </section>
+  <section class="zz-take" data-take="pickers">
+    <h2>4. What a split offers</h2>
+    <div class="zz-shelf" data-slot="pickers"></div>
+  </section>
+  <section class="zz-take" data-take="compare">
+    <h2>Side by side</h2>
+    <div data-slot="compare"></div>
+  </section>
+</main>
+<script>
+(() => {
+  const MARKS = {
+    "zz-claude": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z'/></svg>",
+    "zz-openai": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z'/></svg>",
+    "zz-macos": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M12.131 7.193c-.79 0-2.013-.898-3.3-.867c-1.7.022-3.258.986-4.134 2.512c-1.764 3.062-.455 7.586 1.266 10.075c.844 1.212 1.84 2.575 3.16 2.533c1.267-.054 1.742-.823 3.279-.823c1.526 0 1.958.823 3.3.79c1.364-.022 2.23-1.233 3.063-2.457c.963-1.407 1.363-2.771 1.385-2.846c-.033-.011-2.652-1.018-2.683-4.048c-.022-2.533 2.067-3.745 2.164-3.799c-1.191-1.742-3.019-1.937-3.658-1.98c-1.667-.13-3.062.908-3.842.908zM14.946 4.638c.703-.843 1.167-2.022 1.038-3.192c-1.006.043-2.218.671-2.943 1.515c-.65.747-1.212 1.948-1.061 3.095c1.115.087 2.263-.573 2.966-1.418'/></svg>",
+    "zz-ubuntu": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M16.675 2.375a2.842 2.842 0 0 0-2.842 2.842a2.842 2.842 0 0 0 2.842 2.842a2.842 2.842 0 0 0 2.842-2.842a2.842 2.842 0 0 0-2.842-2.842zM12.767 2.662C9.436 2.643 6.281 4.447 4.623 7.372a3.75 3.75 0 0 1 .217-.006a4.1 4.1 0 0 1 2.154.614A6.93 6.93 0 0 1 12.573 4.996A4.12 4.12 0 0 1 13.436 2.691A9.173 9.173 0 0 0 12.767 2.662zm7.688 4.162a4.096 4.096 0 0 1-1.598 1.872a6.967 6.967 0 0 1-.228 6.919a4.075 4.075 0 0 1 1.36 2.117a9.297 9.297 0 0 0 .466-10.908zM4.842 8.606A2.842 2.842 0 0 0 2 11.447a2.842 2.842 0 0 0 2.842 2.841a2.842 2.842 0 0 0 2.842-2.842a2.842 2.842 0 0 0-2.842-2.842zm1.689 6.555a4.09 4.09 0 0 1-2.429.298a9.25 9.25 0 0 0 6.659 5.582a9.362 9.362 0 0 0 2.018.208a4.066 4.066 0 0 1-.833-2.375a7.07 7.07 0 0 1-.697-.113a6.92 6.92 0 0 1-4.719-3.6zm9.504.773a2.842 2.842 0 0 0-2.842 2.842a2.842 2.842 0 0 0 2.842 2.842a2.842 2.842 0 0 0 2.842-2.842a2.842 2.842 0 0 0-2.842-2.842z'/></svg>",
+    "zz-neovim": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"64\" height=\"64\" viewBox=\"0 0 24 24\"><defs><linearGradient id=\"a\" x1=\"50%\" x2=\"50%\" y2=\"100%\"><stop offset=\"0%\" stop-color=\"#fff\" stop-opacity=\".8\"/><stop offset=\"100%\" stop-color=\"#fff\"/></linearGradient><linearGradient id=\"b\" x1=\"50%\" x2=\"50%\" y2=\"100%\"><stop offset=\"0%\" stop-color=\"#fff\"/><stop offset=\"100%\" stop-color=\"#fff\" stop-opacity=\".8\"/></linearGradient></defs><g fill=\"none\" fill-rule=\"evenodd\"><path fill=\"url(#a)\" d=\"M0 5.16 5.11 0v23.99L0 18.89z\" transform=\"translate(2)\"/><path fill=\"url(#b)\" d=\"M14.6 5.21 19.78 0l-.1 23.99-5.11-5.1z\" transform=\"matrix(-1 0 0 1 36.35 0)\"/><path fill=\"#fff\" fill-opacity=\".9\" d=\"M7.11 0 20.4 20.28 16.68 24 3.38 3.77z\"/></g></svg>",
+    "zz-rust": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"64\" height=\"64\" viewBox=\"0 0 106 106\"><g fill=\"none\" fill-rule=\"evenodd\" stroke=\"#000\"><path fill=\"#000\" fill-rule=\"nonzero\" stroke-linejoin=\"round\" d=\"M44.5 38.5h13c8 0 8 8 0 8h-13zm-31 37h40v-11h-9v-8h10c11 0 5 19 14 19h25v-19h-6v2c0 8-9 7-10 2s-5-9-6-9c15-8 6-24-6-24h-47v11h10v26h-15z\"/><g transform=\"translate(2 2)\"><circle cx=\"51\" cy=\"51\" r=\"43\" stroke-width=\"9\"/><path fill=\"#000\" stroke-linejoin=\"round\" stroke-width=\"3\" d=\"m97 54 5-3-5-3zm-1.47 8.92 5.49-1.97-4.32-3.92zm-3.18 8.46 5.77-.86-3.47-4.69zm-4.77 7.67 5.82.28-2.49-5.27zm-6.18 6.6 5.66 1.41-1.41-5.65zm-7.34 5.26 5.27 2.5-.28-5.83zm-8.23 3.74 4.69 3.47.86-5.77zm-8.8 2.05 3.92 4.32 1.97-5.49zM48 97l3 5 3-5zm-8.92-1.47 1.97 5.49 3.92-4.32zm-8.46-3.18.86 5.77 4.69-3.47zm-7.67-4.77-.28 5.82 5.27-2.49zm-6.6-6.18-1.41 5.66 5.65-1.41zm-5.26-7.34-2.5 5.27 5.83-.28zm-3.74-8.23-3.47 4.69 5.77.86zm-2.05-8.8L.98 60.95l5.49 1.97zM5 48l-5 3 5 3zm1.47-8.92L.98 41.05l4.32 3.92zm3.18-8.46-5.77.86 3.47 4.69zm4.77-7.67-5.82-.28 2.49 5.27zm6.18-6.6-5.66-1.41 1.41 5.65zm7.34-5.26-5.27-2.5.28 5.83zm8.23-3.74-4.69-3.47-.86 5.77zm8.8-2.05L41.05.98l-1.97 5.49zM54 5l-3-5-3 5zm8.92 1.47L60.95.98 57.03 5.3zm8.46 3.18-.86-5.77-4.69 3.47zm7.67 4.77.28-5.82-5.27 2.49zm6.6 6.18 1.41-5.66-5.65 1.41zm5.26 7.34 2.5-5.27-5.83.28zm3.74 8.23 3.47-4.69-5.77-.86zm2.05 8.8 4.32-3.92-5.49-1.97z\"/><path fill=\"#000\" stroke-linejoin=\"round\" stroke-width=\"6\" d=\"m44 9 7 7 7-7zm44.78 22.36-4.5 8.82 8.83 4.5zm-7.43 49.5-9.78-1.54-1.55 9.77zM31.98 89.1l-1.55-9.78-9.78 1.54zM8.9 44.68l8.81-4.5-4.5-8.82z\"/></g></g></svg>",
+    "zz-arch": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M12 1.996C11.11 4.179 10.572 5.608 9.581 7.726c.608.644 1.355 1.395 2.566 2.242c-1.303-.536-2.191-1.075-2.855-1.633C8.023 10.983 6.035 14.755 2 22.004c3.171-1.831 5.629-2.959 7.92-3.391a5.803 5.803 0 0 1-.15-1.358l.003-.101c.051-2.032 1.107-3.595 2.359-3.488c1.252.105 2.225 1.84 2.176 3.871a5.724 5.724 0 0 1-.128 1.091c2.265.443 4.699 1.569 7.826 3.375c-.616-1.135-1.168-2.159-1.694-3.134c-.828-.641-1.691-1.477-3.453-2.382c1.212.315 2.078.678 2.754 1.083c-5.347-9.951-5.779-11.273-7.612-15.575z'/></svg>",
+    "zz-windows": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M2 2H11.481V11.477H2ZM12.519 2H22V11.477H12.519ZM2 12.519H11.481V22H2Zm10.519 0H22V22H12.519'/></svg>",
+    "zz-phone": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='6' y='2' width='12' height='20' rx='2.5'/><path d='M11 18h2'/></svg>",
+  };
+  const marks = document.createElement("style");
+  marks.textContent = Object.entries(MARKS)
+    .map(([name, svg]) => `[data-icon="${name}"] { --penna-icon: url("data:image/svg+xml,${encodeURIComponent(svg)}"); }`)
+    .join("\n");
+  document.head.append(marks);
+
+  const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+  const ic = (name, extra = "") => `<i data-icon="${name}"${extra}></i>`;
+  const states = (...list) => {
+    const value = list.filter(Boolean).join(" ");
+    return value ? ` data-state="${value}"` : "";
+  };
+  const pointer = (x, y) => `<span class="zz-pointer" style="left: ${x}px; top: ${y}px"></span>`;
+  const spinner = `<span class="penna-spinner" data-size="small">${ic("loader")}</span>`;
+  const kbd = (key) => `<kbd class="penna-kbd" data-penna="keycap" data-size="small" data-kbd="${key}" data-kbd-lowercase></kbd>`;
+
+  const HOSTS = [
+    { name: "macbook", icon: "zz-macos" },
+    { name: "ubuntu", icon: "zz-ubuntu" },
+    { name: "alienware", icon: "zz-arch" },
+    { name: "win-desktop", icon: "zz-windows", off: true },
+  ];
+  const MAC = 0, UBUNTU = 1, ALIEN = 2;
+  const WINDOWS = [
+    { host: MAC, faces: [["zz-claude", "accent"]], title: "Fix stack hit tests", detail: [["Running the tests"]], age: "now", working: true },
+    { host: MAC, faces: [["zz-claude"], ["terminal"]], title: "Port bento to penna", detail: [["zebrilus · bento"]], age: "12m" },
+    { host: MAC, id: "nvim", faces: [["zz-neovim"], ["terminal"]], title: "nvim flat.rs", detail: [["zebrilus · main"]], age: "2m", plain: true },
+    { host: UBUNTU, faces: [["zz-openai", "success"]], title: "Bump arch package", detail: [["Done", "normal"], [" · PKGBUILD"]], age: "2h" },
+  ];
+  const SHELL = { host: ALIEN, id: "shell", faces: [["terminal"]], title: "zsh", detail: [["~"]], age: "now", plain: true };
+  const FRESH = { host: ALIEN, id: "fresh", faces: [["zz-claude"]], title: "Claude Code", detail: [["~"]], age: "now" };
+
+  const tiles = (faces) => faces.slice(0, 3).map(([icon, tone], slot) => `<span class="zz-tile" data-penna="tile.stack" style="left: ${slot * 7}px; z-index: ${10 - slot}">${slot === 0 ? ic(icon) : ""}${tone ? `<span class="zz-dot" data-tone="${tone}"></span>` : ""}</span>`).join("");
+  const row = (win, current) => `<div class="zz-row" data-penna="row.nav" role="button"${states(current && "current")}${win.plain ? " data-plain" : ""}><span class="zz-stack" style="width: 35px">${tiles(win.faces)}</span><span class="zz-text"><span class="zz-title"><span class="zz-label" data-penna-text>${esc(win.title)}</span>${win.working ? spinner : ""}</span><span class="zz-line"><span class="zz-parts">${win.detail.map(([part, tone = "muted"]) => `<span data-tone="${tone}">${esc(part)}</span>`).join("")}</span><span class="zz-age">${win.age}</span></span></span></div>`;
+
+  const hostHead = (host, index, { add, hover }) => {
+    const over = hover === index;
+    const note = host.off ? `${ic("circle-x", ` class="zz-note"`)}<button class="zz-hbtn" data-penna="button.row">Connect</button>` : "";
+    const plus = add === "hover" && over && !host.off ? `<button class="zz-hadd" data-penna="icon-button.row" data-state="hover" aria-label="New chat on ${host.name}">${ic("chat-plus")}</button>${pointer(240, 20)}` : "";
+    return `<div class="zz-host" role="button"${host.off ? " data-off" : ""}${states(over && "hover")}>${ic(host.icon)}<span data-penna-text>${host.name}</span><span class="zz-grow"></span>${note}${plus}</div>`;
+  };
+  const chatList = (windows, options) => HOSTS.map((host, index) => {
+    const mine = windows.filter((win) => win.host === index);
+    if (options.hide && !mine.length) return "";
+    const rows = mine.map((win) => row(win, win.id && win.id === options.current)).join("");
+    const empty = !mine.length && !host.off && options.add === "row" ? `<div class="zz-empty" data-penna="sidebar.row" role="button">${ic("chat-plus")}<span data-penna-text>New chat</span></div>` : "";
+    return hostHead(host, index, options) + rows + empty;
+  }).join("");
+  const action = (icon, label, current) => `<div class="zz-action" data-penna="sidebar.row" role="button"${current ? ` aria-current="true" data-state="current"` : ""}>${ic(icon)}<span data-penna-text>${label}</span></div>`;
+  const chatNav = (windows, options = {}) => `<nav class="zz-nav" data-penna="sidebar"><div class="penna-strip"><button data-penna="chrome.button" aria-label="Show the session tree">${ic("chat")}</button><button data-penna="chrome.button" aria-label="Hide the sidebar">${ic("panel-left")}</button></div><div class="zz-actions">${action("chat-plus", "New chat", options.current === "new")}${action("server-plus", "Add host")}</div><div class="zz-list">${chatList(windows, options)}</div><div class="zz-foot">${action("settings", "Settings")}</div></nav>`;
+  const lights = `<div class="penna-lights"><i></i><i></i><i></i></div>`;
+  const side = (nav) => `<div class="penna-window zz-side" data-penna="window">${lights}${nav}</div>`;
+  const cell = (caption, html) => `<div class="zz-cell"><p class="zz-cap">${caption}</p>${html}</div>`;
+
+  const TREE = [
+    { depth: 0, icon: "zz-macos", label: "macbook" },
+    { depth: 1, icon: "chevron-down", label: "zebrilus", index: "zz 0" },
+    { depth: 2, icon: "zz-claude", label: "Fix stack hit tests" },
+    { depth: 2, icon: "zz-claude", label: "Port bento to penna" },
+    { depth: 2, icon: "zz-neovim", label: "nvim flat.rs", current: true },
+    { depth: 0, icon: "zz-ubuntu", label: "ubuntu" },
+    { depth: 1, icon: "chevron-down", label: "packaging", index: "zz 0" },
+    { depth: 2, icon: "zz-openai", label: "Bump arch package" },
+    { depth: 0, icon: "zz-arch", label: "alienware", hover: true },
+    { depth: 0, icon: "zz-windows", label: "win-desktop", off: true },
+  ];
+  const treeRow = (item) => {
+    const tail = item.off
+      ? `${ic("circle-x", ` class="zz-note"`)}`
+      : item.hover
+        ? `<button class="zz-hadd" data-penna="icon-button.row" data-state="hover" aria-label="New session">${ic("layers-plus")}</button>${pointer(236, 18)}`
+        : "";
+    return `<div data-penna="sidebar.row" style="--depth: ${item.depth}"${item.current ? ` aria-current="true" data-state="current"` : ""}${item.off ? " data-off" : ""}${states(item.hover && "hover")}><span class="penna-marker">${ic(item.icon)}</span><span class="penna-label">${esc(item.label)}</span>${item.index ? `<span class="zz-index">${item.index}</span>` : ""}${tail}</div>`;
+  };
+  const treeNav = `<nav class="zz-nav" data-penna="sidebar"><div class="penna-strip"><button data-penna="chrome.button" aria-label="Show chat view">${ic("list-tree")}</button><button data-penna="chrome.button" aria-label="Hide the sidebar">${ic("panel-left")}</button></div><div class="zz-actions">${action("server-plus", "Add host")}</div><div class="zz-tree">${TREE.map(treeRow).join("")}</div><div class="zz-foot">${action("settings", "Settings")}</div></nav>`;
+
+  const pick = ({ icon, label, note = "", key = "", check = false, selected = false, off = false, hover = false }) => `<div class="zz-pick" data-penna="menu-item.card"${states(selected && "selected", off && "disabled", hover && "hover")}>${ic(icon)}<span data-penna-text>${label}</span>${note ? `<span class="zz-pnote">${note}</span>` : ""}${key ? kbd(key) : ""}${check ? ic("check", ` class="zz-check"`) : ""}</div>`;
+  const plabel = (text) => `<div class="zz-plabel">${text}</div>`;
+  const machines = (target, hover) => {
+    const live = HOSTS.map((host, index) => index).filter((index) => !HOSTS[index].off);
+    const next = live[(live.indexOf(target) + 1) % live.length];
+    return plabel("Machine") + HOSTS.map((host, index) => pick({ icon: host.icon, label: host.name, note: host.off ? "offline" : "", key: index === next ? "m" : "", check: index === target, off: host.off, hover: hover === index })).join("");
+  };
+  const AGENTS = plabel("Agent") + pick({ icon: "zz-claude", label: "Claude Code", key: "c", selected: true }) + pick({ icon: "zz-openai", label: "Codex", key: "x" });
+  const PANES = pick({ icon: "square-terminal", label: "Terminal", key: "t" }) + pick({ icon: "globe", label: "Browser", key: "b" }) + pick({ icon: "zz-phone", label: "Simulator", key: "s" });
+  const folder = (path) => plabel("Folder") + pick({ icon: "folder", label: path, key: "tab" });
+  const landing = (target, path, hover) => `<div class="zz-landing"><div class="zz-picker">${machines(target, hover)}${folder(path)}${AGENTS}${hover === undefined ? "" : pointer(206, 26 + 34 * hover + 18)}</div></div>`;
+  const header = (icon, title) => `<div data-penna="bar.pane"><div data-penna="button.title">${ic(icon)}<span>${esc(title)}</span></div><span class="zz-grow"></span><button data-penna="icon-button.bar" aria-label="Pane menu">${ic("ellipsis")}</button></div>`;
+  const shell = `<section data-penna="pane">${header("terminal", "zsh")}<pre class="zz-terminal"><span data-ink="muted">alienware ~</span>
+$ <span data-ink="cursor"> </span></pre></section>`;
+  const chat = `<section data-penna="pane">${header("zz-claude", "Claude Code")}<div class="zz-chat"><div data-penna="field.composer"><div class="zz-input">Ask Claude Code</div><button data-penna="button.send" data-prominent>${ic("arrow-up")}</button></div></div></section>`;
+  const tab = (icon, title) => `<div data-penna="tab.window" aria-selected="true">${ic(icon)}${esc(title)}</div>`;
+  const app = (nav, tabs, body) => `<div class="penna-window zz-app" data-penna="window">${lights}${nav}<header data-penna="titlebar">${tabs}</header><div class="zz-body">${body}</div></div>`;
+
+  const today = { hide: true };
+  const all = { add: "hover" };
+  const slot = (name, html) => (document.querySelector(`[data-slot="${name}"]`).innerHTML = html);
+
+  slot("hosts", [
+    cell("<b>Today.</b> alienware and win-desktop are not there", side(chatNav(WINDOWS, { ...today, current: "nvim" }))),
+    cell("<b>A.</b> Every machine, header only", side(chatNav(WINDOWS, { current: "nvim" }))),
+    cell("<b>B.</b> New chat on the header, on hover", side(chatNav(WINDOWS, { add: "hover", hover: ALIEN, current: "nvim" }))),
+    cell("<b>C.</b> An empty machine holds a New chat row", side(chatNav(WINDOWS, { add: "row", current: "nvim" }))),
+  ].join(""));
+
+  slot("new-chat", [
+    `<div class="zz-flow"><h2>Today</h2>${[
+      cell("<b>1.</b> New chat. The nvim row stays marked", app(chatNav(WINDOWS, { ...today, current: "nvim" }), "", landing(MAC, "~/dev/zebrilus", ALIEN))),
+      cell("<b>2.</b> Click alienware: a shell, and a session nobody asked for", app(chatNav([...WINDOWS, SHELL], { ...today, current: "shell" }), tab("terminal", "zsh"), shell)),
+    ].join("")}</div>`,
+    `<div class="zz-flow"><h2>Proposed</h2>${[
+      cell("<b>1.</b> New chat. Its row is the marked one", app(chatNav(WINDOWS, { ...all, current: "new" }), "", landing(MAC, "~/dev/zebrilus", ALIEN))),
+      cell("<b>2.</b> Click alienware: only the target moves", app(chatNav(WINDOWS, { ...all, current: "new" }), "", landing(ALIEN, "~"))),
+      cell("<b>3.</b> Press c: the chat is alienware's first row", app(chatNav([...WINDOWS, FRESH], { ...all, current: "fresh" }), tab("zz-claude", "Claude Code"), chat)),
+    ].join("")}</div>`,
+  ].join(""));
+
+  slot("views", [
+    cell("<b>Session tree.</b> New session on the header", side(treeNav)),
+    cell("<b>Chat view.</b> New chat on the header", side(chatNav(WINDOWS, { add: "hover", hover: ALIEN, current: "nvim" }))),
+  ].join(""));
+
+  const card = (rows) => `<div class="zz-card"><div class="zz-picker">${rows}</div></div>`;
+  slot("pickers", [
+    cell("<b>Today, session tree.</b> No agents", card(plabel("Pane") + PANES.replace(`data-penna="menu-item.card"`, `data-penna="menu-item.card" data-state="selected"`))),
+    cell("<b>Today, chat view.</b> Machines too", card(machines(MAC) + folder("~/dev/zebrilus") + AGENTS + plabel("Pane") + pick({ icon: "square-terminal", label: "Terminal", key: "t" }) + pick({ icon: "globe", label: "Browser", key: "b" }))),
+    cell("<b>Proposed, both views.</b> A split stays on its machine", card(folder("~/dev/zebrilus") + AGENTS + plabel("Pane") + PANES)),
+  ].join(""));
+
+  const ROWS = [
+    ["Machines listed", "Tree: all. Chat view: only those with a window", "All, in both"],
+    ["Offline machine", "Chat view hides it, so Connect is out of reach", "Header with Connect, in both"],
+    ["Create on a machine", "Tree: New session per host. Chat view: none", "A button on every header: New session, New chat"],
+    ["New chat, another machine", "Attaches first; an empty machine opens a shell", "Changes the target; attaches when an agent is picked"],
+    ["New chat screen ends", "When an unknown window takes focus", "On a pick, a row press or Escape"],
+    ["Marked row on the New chat screen", "The window underneath", "New chat"],
+    ["A split's picker", "Decided by the sidebar toggle", "The same in both views"],
+    ["Machine choice", "In every chat view picker", "On the New chat screen only"],
+  ];
+  slot("compare", `<table class="zz-spec"><thead><tr><th></th><th>Today</th><th>Proposed</th></tr></thead><tbody>${ROWS.map((cells) => `<tr>${cells.map((text) => `<td>${text}</td>`).join("")}</tr>`).join("")}</tbody></table>`);
+
+  const only = new URLSearchParams(location.search).get("only");
+  if (only) {
+    document.querySelector(".zz-intro").style.display = "none";
+    for (const section of document.querySelectorAll("[data-take]")) if (section.dataset.take !== only) section.style.display = "none";
+  }
+})();
+</script>
+</body>
+</html>

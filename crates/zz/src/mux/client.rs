@@ -3541,6 +3541,18 @@ impl MuxClient {
         self.attach_to_host_target(host, None, None, cx)
     }
 
+    pub(crate) fn land(
+        &mut self,
+        host: HostId,
+        landing: zz_client::new_chat::Landing,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        for command in landing.commands {
+            self.execute_on_host(host, command);
+        }
+        self.attach_to_host_at(host, landing.attach, cx)
+    }
+
     pub(crate) fn release_host(&mut self, host: HostId, cx: &mut Context<Self>) {
         if self.attached_host == host {
             if self.registry.get(HostId::LOCAL).is_some() {
@@ -9024,6 +9036,53 @@ mod tests {
                 assert_eq!(mux.attached_host, remote);
                 assert!(fake_remote.attached_default.get());
                 assert_eq!(fake_remote.attached_session.get(), None);
+            });
+        });
+    }
+
+    #[ala::test]
+    fn a_chat_on_a_machine_with_no_sessions_makes_its_own_and_never_asks_for_a_default(
+        cx: &mut TestAppContext,
+    ) {
+        cx.update(|cx| {
+            crate::config::set_fleet_hosts_for_test(vec![test_host("remote", "ssh://remote")], cx);
+            let mux = cx.new(|cx| {
+                MuxClient::new(
+                    Err(DaemonError::Thread("initial error".to_owned())),
+                    zz_daemon_client::default_socket_path(),
+                    cx,
+                )
+            });
+            let remote = mux.read(cx).registry.get_by_name("remote").unwrap().0;
+            let agent = zz_client::new_chat::AGENT_CHOICES[0];
+            let landing = zz_client::new_chat::landing_chat(
+                &MuxSnapshot::default(),
+                "~/dev/app",
+                agent,
+                &zz_client::agent_launch::AgentLaunches::default(),
+            );
+
+            mux.update(cx, |mux, cx| {
+                let fake_remote = install_fake_connection(mux, remote);
+
+                assert!(mux.land(remote, landing, cx));
+                assert_eq!(mux.attached_host, remote);
+                assert!(!fake_remote.attached_default.get());
+                assert_eq!(fake_remote.attached_session.get(), None);
+                assert_eq!(
+                    *fake_remote.commands.borrow(),
+                    [
+                        CommandInvocation::new(
+                            "new-session",
+                            ["-d", "-s", "app", "-c", "~/dev/app"]
+                        ),
+                        CommandInvocation::new(
+                            "select-pane-kind",
+                            ["-t", "=app:", "-c", "~/dev/app", "agent", "claude"]
+                        ),
+                        CommandInvocation::new("attach-session", ["-t", "=app"]),
+                    ]
+                );
             });
         });
     }

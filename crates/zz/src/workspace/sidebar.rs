@@ -19,7 +19,7 @@ use ala::{
     prelude::FluentBuilder as _, px, uniform_list,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, Ground, Icon, IconName,
+    ActiveTheme as _, Colorize as _, Ground, Icon, IconName, PaintState,
     components::scroll::ScrollableElement as _, rems_from_px,
 };
 use zz_client::{
@@ -881,7 +881,12 @@ impl WorkspaceSidebar {
         cx: &App,
     ) -> ala::Stateful<ala::Div> {
         let sidebar = sidebar.clone();
-        workspace_sidebar_action(action, self.content_ground(cx), cx).on_click(
+        let lit = if action == SidebarAction::NewChat && self.chat_landing() {
+            PaintState::Current
+        } else {
+            PaintState::Rest
+        };
+        workspace_sidebar_action(action, lit, self.content_ground(cx), cx).on_click(
             move |_, window, cx| match action {
                 SidebarAction::NewChat => sidebar.update(cx, |sidebar, cx| {
                     let host = sidebar.mux.read(cx).attached_host();

@@ -1096,6 +1096,7 @@ impl Client {
             | ChatKey::NextMachine
             | ChatKey::Terminal
             | ChatKey::Browser
+            | ChatKey::Editor
             | ChatKey::Simulator
             | ChatKey::Ignored => false,
         }
@@ -1141,6 +1142,7 @@ impl Client {
             | ChatKey::NextMachine
             | ChatKey::Terminal
             | ChatKey::Browser
+            | ChatKey::Editor
             | ChatKey::Simulator
             | ChatKey::Ignored => false,
         }

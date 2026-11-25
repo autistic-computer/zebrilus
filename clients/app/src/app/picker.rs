@@ -294,6 +294,7 @@ impl PanePicker {
                             }
                             ChatPickerTarget::Terminal
                             | ChatPickerTarget::Browser
+                            | ChatPickerTarget::Editor
                             | ChatPickerTarget::Simulator => {}
                         }
                         cx.notify();
@@ -445,7 +446,11 @@ impl PanePicker {
                 }
                 ChatKey::Close => self.close(cx),
                 ChatKey::Changed => cx.notify(),
-                ChatKey::Terminal | ChatKey::Browser | ChatKey::Simulator | ChatKey::Ignored => {
+                ChatKey::Terminal
+                | ChatKey::Browser
+                | ChatKey::Editor
+                | ChatKey::Simulator
+                | ChatKey::Ignored => {
                     return;
                 }
             }

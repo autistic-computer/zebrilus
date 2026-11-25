@@ -334,6 +334,17 @@ impl CommandPaletteView {
         }
     }
 
+    pub(super) fn scope_to_host(&mut self, host: PaletteHostId) {
+        if let Some(unified) = &mut self.unified
+            && let Some(chip) = chip_for(&unified.fleet, Place::host(host.0))
+        {
+            unified.chips = vec![Chip {
+                auto: unified.fleet.here == host.0,
+                ..chip
+            }];
+        }
+    }
+
     pub(super) fn set_files_body(
         &mut self,
         body: &str,

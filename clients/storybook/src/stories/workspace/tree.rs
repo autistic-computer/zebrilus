@@ -6,7 +6,7 @@ use ala::{
     Stateful, Styled as _, UniformListScrollHandle, div, prelude::*, px, uniform_list,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, Icon, IconName,
+    ActiveTheme as _, Colorize as _, Icon, IconName, PaintState,
     components::scroll::ScrollableElement as _,
     components::tree::{IndentGuideColors, IndentGuides},
 };
@@ -450,7 +450,7 @@ fn sidebar_in_view(
             .child(workspace_sidebar_actions(
                 SidebarAction::above(flat)
                     .iter()
-                    .map(|action| workspace_sidebar_action(*action, ground, cx)),
+                    .map(|action| workspace_sidebar_action(*action, PaintState::Rest, ground, cx)),
             ))
             .child(div().flex_1().min_h_0().child(navigation))
             .into_any_element()
@@ -465,7 +465,7 @@ fn sidebar_in_view(
     .when(!settings_selected, |surface| {
         surface.child(workspace_sidebar_footer(
             "sidebar-footer",
-            workspace_sidebar_action(SidebarAction::Settings, ground, cx),
+            workspace_sidebar_action(SidebarAction::Settings, PaintState::Rest, ground, cx),
             cx,
         ))
     })

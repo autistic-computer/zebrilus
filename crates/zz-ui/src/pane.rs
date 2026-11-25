@@ -2255,6 +2255,7 @@ pub enum ChatPickerTarget {
     Agent(usize, zz_client::new_chat::AgentChoice),
     Terminal,
     Browser,
+    Editor,
     Simulator,
 }
 
@@ -2457,6 +2458,13 @@ pub fn chat_picker_rows(
                 "Browser",
                 crate::CHROME_ICON,
                 "b",
+            ),
+            zz_client::new_chat::ChatKey::Editor => (
+                ChatPickerTarget::Editor,
+                "chat-picker-editor",
+                "Editor",
+                crate::IconName::File,
+                "e",
             ),
             zz_client::new_chat::ChatKey::Simulator => (
                 ChatPickerTarget::Simulator,

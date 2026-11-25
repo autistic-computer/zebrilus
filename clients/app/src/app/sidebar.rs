@@ -522,7 +522,7 @@ pub(super) fn flat_tree(
             hosts.push(host);
             continue;
         };
-        if *connection == view.connection {
+        if *connection == view.connection && !view.flat.place.landing() {
             current = current_chat(connection.read(cx), &machine).map(|at| (id, at));
         }
         let connection = connection.read(cx);
@@ -814,6 +814,10 @@ fn flat_event(
             }
             return;
         }
+        FlatEvent::NewChat(host) => {
+            view.new_chat_on(host, window, cx);
+            return;
+        }
         FlatEvent::Open(host, _)
         | FlatEvent::OpenPane(host, ..)
         | FlatEvent::ToggleWindow(host, _)
@@ -850,7 +854,7 @@ fn flat_event(
             connect(view, machine, window, cx);
             return;
         }
-        FlatEvent::Hover(..) => return,
+        FlatEvent::Hover(..) | FlatEvent::NewChat(_) => return,
     };
     let Some(connection) = machine.connection.clone() else {
         return;

@@ -3,6 +3,7 @@
 ## 2026-11-25
 
 * The desktop app marks hosts on an older zz and updates them on request. An outdated host carries an arrow in a ring on its sidebar row, and Settings › Hosts is a table with each host's version and Update or Restart. The dialog that opened on connect is gone. See [host updates in the app](/designs/host-update-ui.md).
+* Chat view lists every machine and puts New chat on a machine's header. On the desktop the New chat screen has a target machine and attaches nothing until an agent is picked, and a picker pane offers the agents and the pane kinds in both sidebar views. See [chat mode](/designs/chat-mode.md).
 
 ## 2026-11-24
 

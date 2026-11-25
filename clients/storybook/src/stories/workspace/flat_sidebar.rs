@@ -1082,7 +1082,7 @@ impl Live {
                 }
                 self.hovered = state.hovered;
             }
-            FlatEvent::Connect(_) | FlatEvent::Upgrade(_) => return,
+            FlatEvent::NewChat(_) | FlatEvent::Connect(_) | FlatEvent::Upgrade(_) => return,
         }
         cx.notify();
     }

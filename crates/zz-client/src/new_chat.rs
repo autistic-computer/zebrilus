@@ -182,16 +182,31 @@ pub fn agent_pane_command(
     command("select-pane-kind", args)
 }
 
-#[must_use]
-pub fn first_chat_commands(
-    snapshot: &MuxSnapshot,
-    folder: &str,
-    agent: AgentChoice,
-    launches: &AgentLaunches,
-) -> Vec<CommandInvocation> {
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Landing {
+    pub commands: Vec<CommandInvocation>,
+    pub attach: String,
+}
+
+impl Landing {
+    #[must_use]
+    pub fn into_commands(self) -> Vec<CommandInvocation> {
+        let mut commands = self.commands;
+        commands.push(command("attach-session", ["-t".to_owned(), self.attach]));
+        commands
+    }
+}
+
+struct LandingPlace {
+    make: CommandInvocation,
+    target: String,
+    attach: String,
+}
+
+fn new_session_place(snapshot: &MuxSnapshot, folder: &str) -> LandingPlace {
     let name = free_session_name(snapshot, folder);
-    vec![
-        command(
+    LandingPlace {
+        make: command(
             "new-session",
             [
                 "-d".to_owned(),
@@ -201,9 +216,63 @@ pub fn first_chat_commands(
                 folder.to_owned(),
             ],
         ),
-        agent_pane_command(format!("={name}:"), folder, agent, launches),
-        command("attach-session", ["-t".to_owned(), format!("={name}")]),
-    ]
+        target: format!("={name}:"),
+        attach: format!("={name}"),
+    }
+}
+
+fn landing_place(snapshot: &MuxSnapshot, folder: &str) -> LandingPlace {
+    let Some(session) = session_for_folder(snapshot, folder) else {
+        return new_session_place(snapshot, folder);
+    };
+    LandingPlace {
+        make: command(
+            "new-window",
+            [
+                "-t".to_owned(),
+                session_target(session),
+                "-c".to_owned(),
+                folder.to_owned(),
+            ],
+        ),
+        target: session_target(session),
+        attach: session.to_string(),
+    }
+}
+
+fn chat_at(
+    place: LandingPlace,
+    folder: &str,
+    agent: AgentChoice,
+    launches: &AgentLaunches,
+) -> Landing {
+    Landing {
+        commands: vec![
+            place.make,
+            agent_pane_command(place.target, folder, agent, launches),
+        ],
+        attach: place.attach,
+    }
+}
+
+#[must_use]
+pub fn first_chat_commands(
+    snapshot: &MuxSnapshot,
+    folder: &str,
+    agent: AgentChoice,
+    launches: &AgentLaunches,
+) -> Vec<CommandInvocation> {
+    chat_at(new_session_place(snapshot, folder), folder, agent, launches).into_commands()
+}
+
+#[must_use]
+pub fn landing_chat(
+    snapshot: &MuxSnapshot,
+    folder: &str,
+    agent: AgentChoice,
+    launches: &AgentLaunches,
+) -> Landing {
+    chat_at(landing_place(snapshot, folder), folder, agent, launches)
 }
 
 #[must_use]
@@ -213,76 +282,23 @@ pub fn landing_chat_commands(
     agent: AgentChoice,
     launches: &AgentLaunches,
 ) -> Vec<CommandInvocation> {
-    let Some(session) = session_for_folder(snapshot, folder) else {
-        return first_chat_commands(snapshot, folder, agent, launches);
-    };
-    let target = session_target(session);
-    vec![
-        command(
-            "new-window",
-            [
-                "-t".to_owned(),
-                target.clone(),
-                "-c".to_owned(),
-                folder.to_owned(),
-            ],
-        ),
-        agent_pane_command(target, folder, agent, launches),
-        command("attach-session", ["-t".to_owned(), session.to_string()]),
-    ]
+    landing_chat(snapshot, folder, agent, launches).into_commands()
 }
 
 #[must_use]
-pub fn landing_pane_commands(
-    snapshot: &MuxSnapshot,
-    folder: &str,
-    kind: &str,
-) -> Vec<CommandInvocation> {
-    let Some(session) = session_for_folder(snapshot, folder) else {
-        let name = free_session_name(snapshot, folder);
-        let mut commands = vec![command(
-            "new-session",
-            [
-                "-d".to_owned(),
-                "-s".to_owned(),
-                name.clone(),
-                "-c".to_owned(),
-                folder.to_owned(),
-            ],
-        )];
-        if kind != "terminal" {
-            commands.push(command(
-                "select-pane-kind",
-                ["-t".to_owned(), format!("={name}:"), kind.to_owned()],
-            ));
-        }
-        commands.push(command(
-            "attach-session",
-            ["-t".to_owned(), format!("={name}")],
-        ));
-        return commands;
-    };
-    let target = session_target(session);
-    let mut commands = vec![command(
-        "new-window",
-        [
-            "-t".to_owned(),
-            target.clone(),
-            "-c".to_owned(),
-            folder.to_owned(),
-        ],
-    )];
+pub fn landing_pane(snapshot: &MuxSnapshot, folder: &str, kind: &str) -> Landing {
+    let place = landing_place(snapshot, folder);
+    let mut commands = vec![place.make];
     if kind != "terminal" {
         commands.push(command(
             "select-pane-kind",
-            ["-t".to_owned(), target, kind.to_owned()],
+            ["-t".to_owned(), place.target, kind.to_owned()],
         ));
     }
-    commands.push(command(
-        "attach-session",
-        ["-t".to_owned(), session.to_string()],
-    ));
-    commands
+    Landing {
+        commands,
+        attach: place.attach,
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -628,6 +644,7 @@ pub enum ChatKey {
     NextMachine,
     Terminal,
     Browser,
+    Editor,
     Simulator,
     Close,
     Changed,
@@ -766,6 +783,7 @@ pub struct ChatPicker {
     pub machines: usize,
     pub terminal: bool,
     pub browser: bool,
+    pub editor: bool,
     pub simulator: bool,
 }
 
@@ -783,6 +801,7 @@ impl ChatPicker {
         [
             (self.terminal, ChatKey::Terminal),
             (self.browser, ChatKey::Browser),
+            (self.editor, ChatKey::Editor),
             (self.simulator, ChatKey::Simulator),
         ]
         .into_iter()
@@ -835,6 +854,7 @@ impl ChatPicker {
                     "k" | "up" => self.step(-1, choices),
                     "t" if self.terminal => ChatKey::Terminal,
                     "b" if self.browser => ChatKey::Browser,
+                    "e" if self.editor => ChatKey::Editor,
                     "s" if self.simulator => ChatKey::Simulator,
                     "enter" => AGENT_CHOICES
                         .get(self.selected)
@@ -1399,13 +1419,26 @@ mod tests {
         assert_eq!(picker.key("t", Some("t"), false, &[]), ChatKey::Ignored);
         assert_eq!(picker.key("b", Some("b"), false, &[]), ChatKey::Ignored);
         assert_eq!(picker.key("s", Some("s"), false, &[]), ChatKey::Ignored);
+        assert_eq!(picker.key("e", Some("e"), false, &[]), ChatKey::Ignored);
         picker.terminal = true;
         picker.browser = true;
         assert_eq!(picker.key("t", Some("t"), false, &[]), ChatKey::Terminal);
         assert_eq!(picker.key("b", Some("b"), false, &[]), ChatKey::Browser);
         picker.simulator = true;
+        picker.editor = true;
         assert_eq!(picker.key("s", Some("s"), false, &[]), ChatKey::Simulator);
+        assert_eq!(picker.key("e", Some("e"), false, &[]), ChatKey::Editor);
+        assert_eq!(
+            picker.pane_offers(),
+            [
+                ChatKey::Terminal,
+                ChatKey::Browser,
+                ChatKey::Editor,
+                ChatKey::Simulator
+            ]
+        );
         picker.simulator = false;
+        picker.editor = false;
         assert_eq!(picker.key("up", None, false, &[]), ChatKey::Changed);
         assert_eq!(picker.selected, AGENT_CHOICES.len() + 1);
         assert_eq!(picker.key("enter", None, false, &[]), ChatKey::Browser);
@@ -1539,7 +1572,7 @@ mod tests {
         );
 
         assert_eq!(
-            landing_pane_commands(&MuxSnapshot::default(), "~/dev/app", "terminal"),
+            landing_pane(&MuxSnapshot::default(), "~/dev/app", "terminal").into_commands(),
             [
                 command(
                     "new-session",
@@ -1549,7 +1582,7 @@ mod tests {
             ]
         );
         assert_eq!(
-            landing_pane_commands(&MuxSnapshot::default(), "~/dev/app", "browser"),
+            landing_pane(&MuxSnapshot::default(), "~/dev/app", "browser").into_commands(),
             [
                 command(
                     "new-session",

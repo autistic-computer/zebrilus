@@ -28,7 +28,7 @@ use crate::{
     muted_on,
     navigation::{
         pane_stack::{PaneStack, StackAction, StackSize, StackTile},
-        workspace_row_fill,
+        workspace_row_fill, workspace_tree_action_button,
     },
     spinner::Spinner,
     tooltip::Tooltip,
@@ -191,6 +191,7 @@ pub enum FlatEvent {
     ToggleWindow(PaletteHostId, WindowId),
     TogglePile(PaletteHostId),
     FoldHost(PaletteHostId),
+    NewChat(PaletteHostId),
     Connect(PaletteHostId),
     Upgrade(PaletteHostId),
     Hover(FlatTarget, bool),
@@ -1035,6 +1036,7 @@ pub fn flat_host_header(
     host: &FlatHost,
     hovered: bool,
     handler: &FlatHandler,
+    ground: Ground,
     cx: &App,
 ) -> Stateful<Div> {
     let theme = cx.theme();
@@ -1059,6 +1061,22 @@ pub fn flat_host_header(
                 None => spinner(STATUS_ICON, HOST_NAME.design_px(), note.color, cx),
             })
     });
+    let folds = !host.rows.is_empty();
+    let new_chat = (hovered && host.live()).then(|| {
+        let handler = handler.clone();
+        workspace_tree_action_button(
+            ("flat-host-new-chat", id.0),
+            IconName::ChatPlus,
+            "New chat",
+            false,
+            ground,
+            cx,
+        )
+        .on_click(move |_: &ClickEvent, window, cx| {
+            cx.stop_propagation();
+            handler(FlatEvent::NewChat(id), window, cx);
+        })
+    });
     let hover = handler.clone();
     let click = handler.clone();
     h_flex()
@@ -1080,9 +1098,12 @@ pub fn flat_host_header(
         })
         .type_style(HOST_NAME, cx)
         .line_height(px(HOST_LINE))
-        .click_cursor()
         .on_hover(move |hovered, window, cx| hover(FlatEvent::Hover(target, *hovered), window, cx))
-        .on_click(move |_, window, cx| click(FlatEvent::FoldHost(id), window, cx))
+        .when(folds, |header| {
+            header
+                .click_cursor()
+                .on_click(move |_, window, cx| click(FlatEvent::FoldHost(id), window, cx))
+        })
         .child(glyph(
             crate::program::platform_icon(host.platform).unwrap_or(if host.remote {
                 IconName::Server
@@ -1103,13 +1124,19 @@ pub fn flat_host_header(
                 .whitespace_nowrap()
                 .text_fade(crate::LABEL_FADE),
         )
-        .children(chevron(
-            ElementId::from(("flat-host-fold", id.0)),
-            host.folded,
-            hovered,
-            HOST_NAME.design_px(),
-            cx,
-        ))
+        .children(
+            folds
+                .then(|| {
+                    chevron(
+                        ElementId::from(("flat-host-fold", id.0)),
+                        host.folded,
+                        hovered,
+                        HOST_NAME.design_px(),
+                        cx,
+                    )
+                })
+                .flatten(),
+        )
         .child(div().flex_1())
         .children(rollup)
         .children(note)
@@ -1118,12 +1145,14 @@ pub fn flat_host_header(
                 header_button(("flat-host-action", id.0), label, event, handler)
             }),
         )
+        .children(new_chat)
 }
 
 pub fn flat_action_row(
     id: &'static str,
     icon: IconName,
     label: &'static str,
+    lit: PaintState,
     ground: Ground,
     cx: &App,
 ) -> Stateful<Div> {
@@ -1132,12 +1161,17 @@ pub fn flat_action_row(
     let fill = workspace_row_fill(
         &element,
         RowLook::Sidebar,
-        PaintState::Rest,
+        lit,
         Some(SharedString::from(id)),
         ground,
         cx,
     );
     let foreground = theme.foreground;
+    let ink = if lit == PaintState::Rest {
+        theme.foreground.rest()
+    } else {
+        foreground
+    };
     h_flex()
         .id(element)
         .role(Role::Button)
@@ -1148,7 +1182,7 @@ pub fn flat_action_row(
         .h(px(ACTION_HEIGHT))
         .px(header_inset(cx))
         .gap(px(HOST_SPACING))
-        .text_color(theme.foreground.rest())
+        .text_color(ink)
         .hover(move |row| row.text_color(foreground))
         .type_style(HOST_NAME, cx)
         .line_height(px(HOST_LINE))
@@ -1355,17 +1389,14 @@ pub fn flat_sidebar(
         .w_full()
         .flex_none()
         .pr(crate::sidebar::SIDEBAR_SCROLLBAR_GUTTER);
-    for (index, host) in hosts
-        .iter()
-        .filter(|host| !host.rows.is_empty())
-        .enumerate()
-    {
+    for (index, host) in hosts.iter().enumerate() {
         list = list.child(motion::enter(
             ("flat-host-enter", host.id.0),
             flat_host_header(
                 host,
                 state.hovered == Some(FlatTarget::Host(host.id)),
                 handler,
+                ground,
                 cx,
             )
             .when(index > 0, |header| header.mt(px(HOST_GAP))),
@@ -1456,6 +1487,7 @@ mod tests {
                     "footer",
                     super::super::workspace_sidebar_action(
                         super::super::SidebarAction::Settings,
+                        PaintState::Rest,
                         cx.theme().ground(),
                         cx,
                     )

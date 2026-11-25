@@ -88,13 +88,13 @@ pub const STORY: Story = Story {
         Section {
             id: "picker",
             name: "New pane picker",
-            summary: "With the sidebar on the session tree, a new pane asks what it should become, even alone in a new window: pane_picker_surface with the three pane_picker_row choices, in their selected, resting and read-only states. Agents start there by typing the CLI into a terminal.",
+            summary: "On web and iPad with the sidebar on the session tree, a new pane asks what it should become, even alone in a new window: pane_picker_surface with the three pane_picker_row choices, in their selected, resting and read-only states. The desktop draws the new agent picker in both sidebar views.",
             build: |_, cx| stateless(picker, cx),
         },
         Section {
             id: "new-agent",
             name: "New agent picker",
-            summary: "With the sidebar on chats, every new pane opens this picker instead of the pane kinds, and so do an empty workspace and a window whose only pane is a terminal with nothing running (a fresh shell, a CLI that exited). chat_picker_rows offers Claude Code and Codex under the machine and folder they will start in, and picking one turns the pane into a chat. M or a click on the machine lists every host; picking another closes this picker and opens one there, so its folders are that machine's. The folder starts as that terminal's folder, or else the one this machine's agents worked in last; Tab or a click on it opens the file picker one folder up, which lists folders with no terminal open, and the folder picked there (or the folder of a file picked) is where the agent starts.",
+            summary: "On the desktop every picker pane opens this picker in both sidebar views, and on web and iPad it does with the sidebar on chats. chat_picker_rows offers the agents under the folder they will start in, and picking one turns the pane into a chat; a picker pane on the desktop also offers Terminal, Browser, Editor and Simulator under Pane. The New chat screen is the same picker with no window behind it and lists every machine first: M or a click on a machine moves the screen to it, so its folders are that machine's, and the desktop attaches nothing until an agent is picked. The folder starts as that terminal's folder, or else the one this machine's agents worked in last; Tab or a click on it opens the file picker one folder up, which lists folders with no terminal open, and the folder picked there (or the folder of a file picked) is where the agent starts.",
             build: |_, cx| stateless(chat_picker, cx),
         },
         Section {

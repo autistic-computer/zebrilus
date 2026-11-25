@@ -99,7 +99,9 @@ use crate::{
     },
     pane::display::DisplayPanesView,
     pane::layout::{SeparatorSide, pane_separator},
-    pane::picker::{AgentChosen, ChooseFolder, ChooseMachine, PanePickerView},
+    pane::picker::{
+        AgentChosen, ChatPicked, ChooseFolder, ChooseMachine, LeaveLanding, PanePickerView,
+    },
     terminal::view::TerminalView,
     window::corners::WindowCorners,
 };
@@ -795,6 +797,7 @@ struct SynchronizeSignature {
     route: WorkspaceRoute,
     chat_mode: bool,
     chat_landing: bool,
+    chat_target: Option<HostId>,
 }
 
 #[allow(clippy::struct_excessive_bools)]
@@ -1233,7 +1236,7 @@ impl AppView {
             &empty_picker,
             window,
             |this, picker, choose: &ChooseFolder, window, cx| {
-                this.open_folder_palette(picker, &choose.start, window, cx);
+                this.open_folder_palette(picker, choose, window, cx);
             },
         )
         .detach();
@@ -1242,6 +1245,18 @@ impl AppView {
             window,
             |this, _, choose: &ChooseMachine, _, cx| this.on_choose_machine(choose, cx),
         )
+        .detach();
+        cx.subscribe(&empty_picker, |this, _, picked: &ChatPicked, cx| {
+            this.sidebar
+                .update(cx, |sidebar, cx| sidebar.chat_picked(cx));
+            this.mux.update(cx, |mux, cx| {
+                mux.land(picked.host, picked.landing.clone(), cx);
+            });
+        })
+        .detach();
+        cx.subscribe(&empty_picker, |this, _, _: &LeaveLanding, cx| {
+            this.sidebar.update(cx, WorkspaceSidebar::close_landing);
+        })
         .detach();
         Self {
             controller,
@@ -1861,17 +1876,19 @@ impl AppView {
     fn open_folder_palette(
         &mut self,
         picker: &Entity<PanePickerView>,
-        start: &str,
+        choose: &ChooseFolder,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         if self.command_palette.is_some() || self.sidebar.read(cx).route() != WorkspaceRoute::App {
             return;
         }
-        let host = self.mux.read(cx).attached_host();
+        let host = choose.host;
         let home = (host == HostId::LOCAL).then(std::env::home_dir).flatten();
-        let body =
-            zz_ui::files::start_dir(Some(start), home.as_ref().and_then(|home| home.to_str()));
+        let body = zz_ui::files::start_dir(
+            Some(&choose.start),
+            home.as_ref().and_then(|home| home.to_str()),
+        );
         let picker = picker.downgrade();
         let pick: zz_ui::command::FolderPick = Rc::new(move |picked, folder, window, cx| {
             if HostId::from(picked) != host {
@@ -1887,7 +1904,14 @@ impl AppView {
         });
         self.show_command_palette(
             move |backend, window, cx| {
-                CommandPaletteView::new_folder_pick(backend, &body, pick, window, cx)
+                CommandPaletteView::new_folder_pick_on(
+                    backend,
+                    host.into(),
+                    &body,
+                    pick,
+                    window,
+                    cx,
+                )
             },
             window,
             cx,
@@ -2060,13 +2084,14 @@ impl AppView {
 
     fn synchronize_panes(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let revision = AppRevision::for_mux(self.mux.read(cx));
-        let (sidebar_focused, route, chat_mode, chat_landing) = {
+        let (sidebar_focused, route, chat_mode, chat_landing, chat_target) = {
             let sidebar = self.sidebar.read(cx);
             (
                 sidebar.is_focused(window),
                 sidebar.route(),
                 sidebar.chat_mode(),
                 sidebar.chat_landing(),
+                sidebar.chat_target(),
             )
         };
         if let Some(last) = &self.synchronized_signature
@@ -2075,6 +2100,7 @@ impl AppView {
             && last.route == route
             && last.chat_mode == chat_mode
             && last.chat_landing == chat_landing
+            && last.chat_target == chat_target
         {
             return;
         }
@@ -2518,9 +2544,8 @@ impl AppView {
         }
 
         self.pickers.retain(|pane, _| wanted_pickers.contains(pane));
-        for picker in self.pickers.values().chain([&self.empty_picker]) {
-            picker.update(cx, |picker, cx| picker.set_chat_view(chat_mode, cx));
-        }
+        self.empty_picker
+            .update(cx, |picker, cx| picker.set_target(chat_target, cx));
         self.terminals
             .retain(|pane, _| wanted_terminals.contains(pane));
         self.terminal_headers.retain(|pane, _| {
@@ -2787,6 +2812,7 @@ impl AppView {
             route,
             chat_mode,
             chat_landing,
+            chat_target,
         });
     }
 
@@ -2832,26 +2858,14 @@ impl AppView {
             &view,
             window,
             |this, picker, choose: &ChooseFolder, window, cx| {
-                this.open_folder_palette(picker, &choose.start, window, cx);
+                this.open_folder_palette(picker, choose, window, cx);
             },
         )
-        .detach();
-        cx.subscribe_in(&view, window, |this, _, choose: &ChooseMachine, _, cx| {
-            this.on_choose_machine(choose, cx);
-        })
         .detach();
         self.pickers.insert(pane, view);
     }
 
     fn on_choose_machine(&mut self, choose: &ChooseMachine, cx: &mut Context<Self>) {
-        let mux = self.mux.read(cx);
-        if let Some(command) = choose
-            .pane
-            .and_then(|pane| zz_client::new_chat::close_picker_command(&mux.snapshot(), pane))
-        {
-            mux.execute(command);
-        }
-        self.empty_picker.update(cx, PanePickerView::forget_folder);
         self.sidebar
             .update(cx, |sidebar, cx| sidebar.new_chat(choose.host, cx));
     }

@@ -153,10 +153,11 @@ impl SidebarAction {
 #[must_use]
 pub fn workspace_sidebar_action(
     action: SidebarAction,
+    lit: PaintState,
     ground: Ground,
     cx: &App,
 ) -> Stateful<ala::Div> {
-    flat::flat_action_row(action.id(), action.icon(), action.label(), ground, cx)
+    flat::flat_action_row(action.id(), action.icon(), action.label(), lit, ground, cx)
 }
 
 #[must_use]

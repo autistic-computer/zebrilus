@@ -47,8 +47,8 @@ use ala::{
     UniformListScrollHandle, Window, div, prelude::*, px, uniform_list,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, ElementExt as _, Ground, Icon, IconName, Label, Panel,
-    PanelLook, Root, TextStyle,
+    ActiveTheme as _, Colorize as _, ElementExt as _, Ground, Icon, IconName, Label, PaintState,
+    Panel, PanelLook, Root, TextStyle,
     components::button::{Button, ButtonLook, ButtonVariants as _},
 };
 use zz_client::{
@@ -1533,7 +1533,15 @@ impl AppShell {
         ground: Ground,
         cx: &Context<Self>,
     ) -> ala::Stateful<ala::Div> {
-        workspace_sidebar_action(action, ground, cx).on_click(cx.listener(
+        let lit = if action == SidebarAction::NewChat
+            && self.preferences.flat_sidebar
+            && self.flat.place.landing()
+        {
+            PaintState::Current
+        } else {
+            PaintState::Rest
+        };
+        workspace_sidebar_action(action, lit, ground, cx).on_click(cx.listener(
             move |this, _, window, cx| {
                 match action {
                     SidebarAction::NewChat => sidebar::new_chat(this, cx),

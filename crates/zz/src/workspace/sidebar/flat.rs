@@ -43,14 +43,31 @@ pub(super) struct FlatView {
     scroll: ScrollHandle,
     moving: Option<(HostId, WindowId, SessionId)>,
     last_chat: Option<(HostId, WindowId)>,
-    landing: bool,
-    landing_from: Option<(HostId, WindowId)>,
-    landing_known: BTreeSet<(HostId, WindowId)>,
+    landing: Option<Landing>,
     entered: bool,
     hints: BTreeMap<HostId, ChatHints>,
     open: BTreeSet<(HostId, WindowId)>,
     piles: BTreeSet<HostId>,
     servers: BTreeMap<HostId, u64>,
+}
+
+struct Landing {
+    host: HostId,
+    from: Option<(HostId, WindowId)>,
+    known: Option<BTreeSet<(HostId, WindowId)>>,
+}
+
+impl Landing {
+    fn over(&self, focused: (HostId, WindowId)) -> bool {
+        match &self.known {
+            Some(known) => !known.contains(&focused),
+            None => self.from != Some(focused),
+        }
+    }
+}
+
+fn on_screen(mux: &MuxClient) -> Option<(HostId, WindowId)> {
+    focused_window(mux).map(|(host, window)| (host, window.id))
 }
 
 fn connection(state: &HostState, loaded: bool) -> HostConnection {
@@ -192,19 +209,6 @@ fn known_windows(mux: &MuxClient) -> BTreeSet<(HostId, WindowId)> {
         .collect()
 }
 
-fn landing_follows(
-    from: Option<(HostId, WindowId)>,
-    (host, window): (HostId, &WindowSnapshot),
-    known: &BTreeSet<(HostId, WindowId)>,
-) -> Option<bool> {
-    let now = (host, window.id);
-    if from == Some(now) || !chat_view_lists(window) {
-        return None;
-    }
-    let moved = from.is_some_and(|from| from.0 == now.0 && from.1 != now.1);
-    Some(!moved && known.contains(&now))
-}
-
 fn window_menu(sidebar: &Entity<WorkspaceSidebar>) -> FlatMenu {
     let sidebar = sidebar.clone();
     Rc::new(move |host, window, menu, _, cx| {
@@ -261,12 +265,14 @@ impl WorkspaceSidebar {
             })
             .into_iter()
             .collect::<BTreeMap<_, _>>();
-        let current = focused_window(mux).and_then(|(host, window)| {
-            let at = machines
-                .get(&host)?
-                .current(window.id, window.active_pane)?;
-            Some((PaletteHostId::from(host), at))
-        });
+        let current = focused_window(mux)
+            .filter(|_| view.landing.is_none())
+            .and_then(|(host, window)| {
+                let at = machines
+                    .get(&host)?
+                    .current(window.id, window.active_pane)?;
+                Some((PaletteHostId::from(host), at))
+            });
         let hosts = mux
             .fleet_hosts()
             .map(|(id, name, state, snapshot)| {
@@ -355,7 +361,7 @@ impl WorkspaceSidebar {
             {
                 mux.execute_on_host(attached_host, command);
             }
-            self.flat_view.landing = false;
+            self.flat_view.landing = None;
             cx.emit(super::SidebarModeChanged);
         }
         match event {
@@ -392,6 +398,7 @@ impl WorkspaceSidebar {
                 }
                 cx.notify();
             }
+            FlatEvent::NewChat(host) => self.new_chat(host.into(), cx),
             FlatEvent::Connect(host) | FlatEvent::Upgrade(host) => {
                 self.mux
                     .update(cx, |mux, cx| mux.install_or_retry_host(host.into(), cx));
@@ -405,26 +412,33 @@ impl WorkspaceSidebar {
     }
 
     pub(crate) fn new_chat(&mut self, host: HostId, cx: &mut Context<Self>) {
-        let switch = {
-            let mux = self.mux.read(cx);
-            let switch = host != mux.attached_host();
-            if switch && mux.host_snapshot(host).is_none() {
-                return;
-            }
-            if !self.flat_view.landing {
-                self.flat_view.landing_from = on_row(mux);
-            }
-            self.flat_view.landing_known = known_windows(mux);
-            switch
+        let mux = self.mux.read(cx);
+        if host != mux.attached_host() && mux.host_snapshot(host).is_none() {
+            return;
+        }
+        let from = match &self.flat_view.landing {
+            Some(landing) => landing.from,
+            None => on_screen(mux),
         };
-        if !self.flat_view.landing {
-            self.flat_view.landing = true;
+        self.flat_view.landing = Some(Landing {
+            host,
+            from,
+            known: None,
+        });
+        cx.emit(super::SidebarModeChanged);
+        cx.notify();
+    }
+
+    pub(crate) fn chat_picked(&mut self, cx: &App) {
+        if let Some(landing) = &mut self.flat_view.landing {
+            landing.known = Some(known_windows(self.mux.read(cx)));
+        }
+    }
+
+    pub(crate) fn close_landing(&mut self, cx: &mut Context<Self>) {
+        if self.flat_view.landing.take().is_some() {
             cx.emit(super::SidebarModeChanged);
             cx.notify();
-        }
-        if switch {
-            self.mux
-                .update(cx, |mux, cx| mux.attach_to_host_default(host, cx));
         }
     }
 
@@ -458,21 +472,31 @@ impl WorkspaceSidebar {
         if let Some((host, window)) = target {
             self.open_window(host, window, cx);
         } else {
-            self.flat_view.landing = true;
-            self.flat_view.landing_from = None;
-            self.flat_view.landing_known = known_windows(self.mux.read(cx));
+            let mux = self.mux.read(cx);
+            self.flat_view.landing = Some(Landing {
+                host: mux.attached_host(),
+                from: on_screen(mux),
+                known: None,
+            });
         }
     }
 
     fn leave_chat_view(&mut self, cx: &App) {
-        if !self.flat_view.landing {
+        if self.flat_view.landing.take().is_none() {
             self.flat_view.last_chat = on_row(self.mux.read(cx));
         }
-        self.flat_view.landing = false;
     }
 
     pub(crate) const fn chat_landing(&self) -> bool {
-        self.flat && self.flat_view.landing
+        self.flat && self.flat_view.landing.is_some()
+    }
+
+    pub(crate) fn chat_target(&self) -> Option<HostId> {
+        self.flat_view
+            .landing
+            .as_ref()
+            .filter(|_| self.flat)
+            .map(|landing| landing.host)
     }
 
     pub(crate) fn follow_moved_window(&mut self, host: HostId, window: WindowId, from: SessionId) {
@@ -496,26 +520,20 @@ impl WorkspaceSidebar {
         }
         self.forget_gone_windows(cx);
         if let Some((host, window)) = focused_window(self.mux.read(cx)) {
-            let step = self.flat_view.landing.then(|| {
-                landing_follows(
-                    self.flat_view.landing_from,
-                    (host, window),
-                    &self.flat_view.landing_known,
-                )
-            });
             let id = window.id;
             self.flat_view
                 .hints
                 .entry(host)
                 .or_default()
                 .observe(window);
-            match step.flatten() {
-                Some(true) => self.flat_view.landing_from = Some((host, id)),
-                Some(false) => {
-                    self.flat_view.landing = false;
-                    cx.emit(super::SidebarModeChanged);
-                }
-                None => {}
+            if self
+                .flat_view
+                .landing
+                .as_ref()
+                .is_some_and(|landing| landing.over((host, id)))
+            {
+                self.flat_view.landing = None;
+                cx.emit(super::SidebarModeChanged);
             }
         }
         let mux = self.mux.read(cx);
@@ -710,33 +728,26 @@ mod tests {
     }
 
     #[test]
-    fn landing_survives_a_machine_switch_and_ends_on_a_new_chat() {
-        let local = (HostId::LOCAL, WindowId(4));
+    fn new_chat_ends_when_you_go_elsewhere_or_a_pick_brings_a_window_that_was_not_there() {
         let remote = HostId::from(PaletteHostId(1));
-        let known = BTreeSet::from([local, (remote, WindowId(4)), (remote, WindowId(9))]);
-        let (plain, fresh, picker) = (shell(9), chat(12), window(13, PaneKindSnapshot::Picker, ""));
-
-        assert_eq!(
-            landing_follows(Some(local), (remote, &plain), &known),
-            Some(true)
+        let (old, plain, fresh) = (
+            (HostId::LOCAL, WindowId(4)),
+            (remote, WindowId(9)),
+            (remote, WindowId(12)),
         );
-        assert_eq!(landing_follows(None, (remote, &plain), &known), Some(true));
+        let mut landing = Landing {
+            host: remote,
+            from: Some(old),
+            known: None,
+        };
         assert_eq!(
-            landing_follows(Some(local), (remote, &fresh), &known),
-            Some(false)
+            [old, plain, fresh].map(|focused| landing.over(focused)),
+            [false, true, true]
         );
-        assert_eq!(landing_follows(None, (remote, &fresh), &known), Some(false));
+        landing.known = Some(BTreeSet::from([old, plain]));
         assert_eq!(
-            landing_follows(Some((remote, WindowId(9))), (remote, &chat(4)), &known),
-            Some(false)
-        );
-        assert_eq!(
-            landing_follows(Some((remote, WindowId(9))), (remote, &plain), &known),
-            None
-        );
-        assert_eq!(
-            landing_follows(Some(local), (remote, &picker), &known),
-            None
+            [old, plain, fresh].map(|focused| landing.over(focused)),
+            [false, false, true]
         );
     }
 
