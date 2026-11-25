@@ -589,7 +589,7 @@ fn chooser_templates_substitute_targets_and_resolve_aliases_at_selection() {
         &mut context,
         CommandInvocation::new("choose-buffer", ["set-environment -g CHOOSER_STALE %%"]),
     );
-    shared.inner.lock().paste_buffers.clear();
+    shared.inner.lock().buffers.paste_buffers.clear();
     select_buffer(&mut context);
     assert_eq!(
         shared
@@ -1181,6 +1181,7 @@ fn daemon_choose_buffer_searches_pastes_and_deletes_across_native_surfaces() {
         shared
             .inner
             .lock()
+            .buffers
             .paste_buffers
             .iter()
             .any(|buffer| buffer.name == "binary"),
@@ -1367,7 +1368,7 @@ fn daemon_choose_buffer_searches_pastes_and_deletes_across_native_surfaces() {
             }) if state.as_ref().map_or(0, |state| state.items.len()) == remaining
         )));
     }
-    assert!(shared.inner.lock().paste_buffers.is_empty());
+    assert!(shared.inner.lock().buffers.paste_buffers.is_empty());
     assert!(shared.read_client(client, |c| c.is_none_or(|c| c.choose_buffer.is_none())));
 }
 

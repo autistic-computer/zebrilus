@@ -79,7 +79,7 @@ fn twenty_file_operations_park_without_workers_and_reject_wrong_owners() {
         .unwrap();
     event_loop.read_ready(peers[1].0, &shared);
     assert_eq!(shared.inner.lock().transfers.client_file_waiters.len(), 20);
-    assert!(shared.inner.lock().paste_buffers.is_empty());
+    assert!(shared.inner.lock().buffers.paste_buffers.is_empty());
     for (token, peer, _, file, _) in &mut peers {
         let reply = ProtocolMessage::ClientFileResponse(ClientFileResponse {
             request_id: file.as_ref().unwrap().request_id,
@@ -103,9 +103,10 @@ fn twenty_file_operations_park_without_workers_and_reject_wrong_owners() {
     assert_eq!(shared.connection_threads.worker_count(), 0);
     let inner = shared.inner.lock();
     assert!(inner.transfers.client_file_waiters.is_empty());
-    assert_eq!(inner.paste_buffers.len(), 20);
+    assert_eq!(inner.buffers.paste_buffers.len(), 20);
     assert!(
         inner
+            .buffers
             .paste_buffers
             .iter()
             .all(|buffer| buffer.data.as_ref() == b"a\0b\xff")
@@ -177,7 +178,7 @@ fn source_replay_parks_at_a_client_file_and_resumes_its_own_frame() {
     });
     assert!(output.iter().any(|message| matches!(message, ProtocolMessage::CommandResponse(CommandResponse::Success { output, .. }) if output == "yes")));
     assert_eq!(
-        shared.inner.lock().paste_buffers[0].data.as_ref(),
+        shared.inner.lock().buffers.paste_buffers[0].data.as_ref(),
         b"nested bytes"
     );
     event_loop.remove(token, &shared);
@@ -462,7 +463,7 @@ fn sourced_commands_run_once_when_their_new_hooks_park() {
         let deadline = Instant::now() + Duration::from_secs(10);
         let mut input = Inbound::default();
         let mut output = Vec::new();
-        while shared.inner.lock().paste_buffers.is_empty() {
+        while shared.inner.lock().buffers.paste_buffers.is_empty() {
             assert!(Instant::now() < deadline, "case {index}: {output:?}");
             event_loop.poll_test_turn(&shared, Duration::from_millis(1));
             output.extend(io_tests::messages(&mut peer, &mut input));
@@ -478,7 +479,7 @@ fn sourced_commands_run_once_when_their_new_hooks_park() {
             .unwrap();
         assert!(after.output.to_string().trim().is_empty(), "case {index}: {output:?}");
         assert!(!output.iter().any(|message| matches!(message, ProtocolMessage::ExecExit(_))));
-        assert_eq!(shared.inner.lock().paste_buffers.len(), 1);
+        assert_eq!(shared.inner.lock().buffers.paste_buffers.len(), 1);
         fs::write(&release.0, "").unwrap();
         while !output
             .iter()
@@ -489,7 +490,7 @@ fn sourced_commands_run_once_when_their_new_hooks_park() {
             output.extend(io_tests::messages(&mut peer, &mut input));
         }
         assert!(output.iter().any(|message| matches!(message, ProtocolMessage::CommandResponse(CommandResponse::Success { output, exit_code: 0, .. }) if output == "yes")));
-        assert_eq!(shared.inner.lock().paste_buffers.len(), 1);
+        assert_eq!(shared.inner.lock().buffers.paste_buffers.len(), 1);
         assert_eq!(shared.connection_threads.worker_count(), 0);
         event_loop.remove(token, &shared);
     }

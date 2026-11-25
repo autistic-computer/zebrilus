@@ -144,6 +144,7 @@ fn an_editor_write_back_names_its_buffer_and_skips_a_replaced_one() {
             let inner = shared.inner.lock();
             Arc::clone(
                 &inner
+                    .buffers
                     .paste_buffers
                     .iter()
                     .find(|buffer| buffer.name == "edit1")
@@ -166,6 +167,7 @@ fn an_editor_write_back_names_its_buffer_and_skips_a_replaced_one() {
     let buffer = || {
         let inner = shared.inner.lock();
         inner
+            .buffers
             .paste_buffers
             .iter()
             .find(|buffer| buffer.name == "edit1")
@@ -225,6 +227,7 @@ fn paste_buffer_hooks_respect_the_existing_no_hooks_boundary() {
     let inner = shared.inner.lock();
     assert!(
         inner
+            .buffers
             .paste_buffers
             .iter()
             .any(|buffer| buffer.name == "outer")

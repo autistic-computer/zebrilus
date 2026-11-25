@@ -1882,6 +1882,7 @@ fn configured_v_e_y_preserves_indentation_in_the_clipboard() {
                         .and_then(KeyEngine::active_table)
                         .map(str::to_owned),
                     inner
+                        .buffers
                         .paste_buffers
                         .iter()
                         .map(|buffer| String::from_utf8_lossy(&buffer.data).into_owned())

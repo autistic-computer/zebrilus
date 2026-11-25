@@ -11430,7 +11430,7 @@ impl Shared {
                         let Some(mut chooser) = ChooseBufferSession::new(
                             *pane,
                             &inner.engine,
-                            &inner.paste_buffers,
+                            &inner.buffers.paste_buffers,
                             attached_session,
                             &facts,
                             filter.clone(),
@@ -11676,7 +11676,8 @@ impl Shared {
                         }
                     }
                     MuxEffect::BufferLimitChanged(limit) => {
-                        inner.automatic_paste_buffer_limit = AutomaticPasteBufferLimit(*limit);
+                        inner.buffers.automatic_paste_buffer_limit =
+                            AutomaticPasteBufferLimit(*limit);
                     }
                     MuxEffect::WordSeparatorsChanged { session } => {
                         for (pane, terminal) in inner.terminals.iter() {
@@ -19785,6 +19786,7 @@ impl Shared {
                 {
                     let mut inner = self.inner.lock();
                     let Some(buffer) = inner
+                        .buffers
                         .paste_buffers
                         .iter_mut()
                         .find(|buffer| buffer.name == name && Arc::ptr_eq(&buffer.data, &data))
@@ -20572,6 +20574,7 @@ impl Shared {
                 if parsed.has('a')
                     && let Some(name) = requested_name
                     && let Some(buffer) = inner
+                        .buffers
                         .paste_buffers
                         .iter()
                         .find(|buffer| buffer.name == name)
@@ -20653,7 +20656,7 @@ impl Shared {
                 inner.engine.set_format_now(unix_timestamp());
                 let format_context =
                     server_format_context(&inner.engine, &inner.config_files, None, None, None);
-                let mut buffers = inner.paste_buffers.clone();
+                let mut buffers = inner.buffers.paste_buffers.clone();
                 sort.apply(&mut buffers, |left, right| {
                     let ordering = match sort.order() {
                         Some(TmuxSortOrder::Creation) => right.created.cmp(&left.created),
@@ -20793,7 +20796,10 @@ impl Shared {
                 let name = resolve_buffer(&inner, parsed.value('b'), BufferMissing::UnknownBuffer)?
                     .name
                     .clone();
-                inner.paste_buffers.retain(|buffer| buffer.name != name);
+                inner
+                    .buffers
+                    .paste_buffers
+                    .retain(|buffer| buffer.name != name);
                 drop(inner);
                 if !context.no_hooks {
                     self.run_event_hooks(vec![PendingHookEvent::paste_buffer(
@@ -20932,11 +20938,12 @@ impl Shared {
         }
         let removed = delete && {
             let mut inner = self.inner.lock();
-            let before = inner.paste_buffers.len();
+            let before = inner.buffers.paste_buffers.len();
             inner
+                .buffers
                 .paste_buffers
                 .retain(|buffer| buffer.name != buffer_name || !Arc::ptr_eq(&buffer.data, &data));
-            inner.paste_buffers.len() != before
+            inner.buffers.paste_buffers.len() != before
         };
         if removed {
             if event_hooks_enabled {
@@ -25116,6 +25123,7 @@ impl Shared {
                             .and_then(|index| chooser.rendered.items.get(index))
                             .and_then(|item| {
                                 inner
+                                    .buffers
                                     .paste_buffers
                                     .iter()
                                     .find(|buffer| buffer.name == item.name)
@@ -25174,7 +25182,7 @@ impl Shared {
                 } else if let Some(key) = search_edit {
                     let (_, separators) = inner.engine.prompt_key_options(attached_session);
                     chooser.edit_search(
-                        &inner.paste_buffers,
+                        &inner.buffers.paste_buffers,
                         key,
                         prompt_history(&inner, CommandPromptType::Search),
                         &separators,
@@ -25200,7 +25208,7 @@ impl Shared {
                             .filter(|search| !search.query.is_empty())
                             .map(|search| (CommandPromptType::Search, search.query.clone()));
                     }
-                    match chooser.apply(action, &inner.paste_buffers) {
+                    match chooser.apply(action, &inner.buffers.paste_buffers) {
                         Ok(result) => result,
                         Err(error) => {
                             inner.client_entry(client).choose_buffer.replace(chooser);
@@ -25221,7 +25229,7 @@ impl Shared {
                         let facts = borrowed_format_hook_facts(&inner);
                         chooser.rebuild(
                             &inner.engine,
-                            &inner.paste_buffers,
+                            &inner.buffers.paste_buffers,
                             attached_session,
                             &facts,
                         );
@@ -25231,6 +25239,7 @@ impl Shared {
                     }
                     ChooseBufferResult::Delete(names) => {
                         inner
+                            .buffers
                             .paste_buffers
                             .retain(|buffer| !names.contains(&buffer.name));
                         deleted = names;
@@ -25238,7 +25247,7 @@ impl Shared {
                         let facts = borrowed_format_hook_facts(&inner);
                         chooser.rebuild(
                             &inner.engine,
-                            &inner.paste_buffers,
+                            &inner.buffers.paste_buffers,
                             attached_session,
                             &facts,
                         );
@@ -25255,6 +25264,7 @@ impl Shared {
                             .into_iter()
                             .filter(|name| {
                                 inner
+                                    .buffers
                                     .paste_buffers
                                     .iter()
                                     .any(|buffer| buffer.name == *name)
@@ -29514,7 +29524,7 @@ impl Shared {
                     .map(|window| inner.engine.state.windows[&window].session);
                 if attached_session != Some(chooser.source_session)
                     || source_session != Some(chooser.source_session)
-                    || inner.paste_buffers.is_empty()
+                    || inner.buffers.paste_buffers.is_empty()
                 {
                     updates.push((client, None));
                     continue;
@@ -29527,7 +29537,7 @@ impl Shared {
                 let facts = borrowed_format_hook_facts(&inner);
                 chooser.rebuild(
                     &inner.engine,
-                    &inner.paste_buffers,
+                    &inner.buffers.paste_buffers,
                     attached_session,
                     &facts,
                 );
@@ -31690,6 +31700,7 @@ impl Shared {
             }
             PasteBufferAction::Append => {
                 let requested_name = inner
+                    .buffers
                     .paste_buffers
                     .iter()
                     .find(|buffer| buffer.automatic)
@@ -36895,9 +36906,8 @@ struct ServerState {
     silence_deadlines: BTreeMap<WindowId, SilenceDeadline>,
     next_silence_token: u64,
     history: History,
-    paste_buffers: Vec<PasteBuffer>,
+    buffers: Buffers,
     editors: BTreeMap<PaneId, EditorSession>,
-    automatic_paste_buffer_limit: AutomaticPasteBufferLimit,
     active_copy_pipes: usize,
     active_shell_jobs: usize,
     #[cfg(unix)]
@@ -36905,7 +36915,6 @@ struct ServerState {
     #[cfg(not(unix))]
     shell_jobs: BTreeMap<u64, Arc<Mutex<Option<Child>>>>,
     next_shell_job_token: u64,
-    next_buffer_id: u64,
     next_client_id: u64,
     next_display_panes_token: u64,
     pane_pipes: BTreeMap<PaneId, PanePipe>,
@@ -36918,6 +36927,13 @@ struct ServerState {
     border_presentations_cache: Mutex<Option<CachedBorderPresentations>>,
     status_parameters_cache: Mutex<Option<CachedStatusParameters>>,
     status_preparation_cache: Mutex<Option<CachedStatusPreparation>>,
+}
+
+#[derive(Default)]
+struct Buffers {
+    paste_buffers: Vec<PasteBuffer>,
+    automatic_paste_buffer_limit: AutomaticPasteBufferLimit,
+    next_buffer_id: u64,
 }
 
 #[derive(Default)]
@@ -37265,7 +37281,7 @@ impl DiagnosticSample {
                 .copied()
                 .collect(),
             command_history: inner.history.command_history.clone(),
-            paste_buffers: inner.paste_buffers.clone(),
+            paste_buffers: inner.buffers.paste_buffers.clone(),
             active_copy_pipes: inner.active_copy_pipes,
         }
     }
@@ -48913,6 +48929,7 @@ fn apply_terminal_resizes(resizes: Vec<(Arc<TerminalSession>, TerminalGeometry)>
 
 fn find_buffer<'a>(inner: &'a ServerState, name: Option<&str>) -> Option<&'a PasteBuffer> {
     inner
+        .buffers
         .paste_buffers
         .iter()
         .find(|buffer| name.map_or(buffer.automatic, |name| buffer.name == name))
@@ -49621,7 +49638,7 @@ fn split_borrowed_format_hook_facts(
 
         pane_modes,
         pane_pipes,
-        paste_buffers,
+        buffers: Buffers { paste_buffers, .. },
         session_last_attached,
         terminal_geometries,
         terminals,
@@ -49656,7 +49673,7 @@ fn readonly_borrowed_format_hook_facts(
 ) -> BorrowedFormatHookFacts<'_> {
     BorrowedFormatHookFacts {
         client_fields: ClientFormatFields::from_inner(inner),
-        paste_buffers: &inner.paste_buffers,
+        paste_buffers: &inner.buffers.paste_buffers,
         terminals: &inner.terminals,
         pane_pipes: &inner.pane_pipes,
         attached: &inner.attached,
@@ -49917,6 +49934,7 @@ fn format_hook_facts(inner: &ServerState) -> FormatHookFacts {
                 .collect(),
         ),
         buffer: inner
+            .buffers
             .paste_buffers
             .iter()
             .find(|buffer| buffer.automatic)
@@ -51746,11 +51764,12 @@ fn insert_paste_buffer(
         (name.to_owned(), false)
     } else {
         let mut name = None;
-        for _ in 0..inner.paste_buffers.len().saturating_add(1) {
-            let candidate = format!("{automatic_prefix}{}", inner.next_buffer_id);
-            inner.next_buffer_id = inner.next_buffer_id.wrapping_add(1);
+        for _ in 0..inner.buffers.paste_buffers.len().saturating_add(1) {
+            let candidate = format!("{automatic_prefix}{}", inner.buffers.next_buffer_id);
+            inner.buffers.next_buffer_id = inner.buffers.next_buffer_id.wrapping_add(1);
             validate_paste_buffer_name(&candidate)?;
             if !inner
+                .buffers
                 .paste_buffers
                 .iter()
                 .any(|buffer| buffer.name == candidate)
@@ -51763,20 +51782,22 @@ fn insert_paste_buffer(
             ServerError::InvalidCommand("no automatic paste buffer names available".to_owned())
         })?;
         while inner
+            .buffers
             .paste_buffers
             .iter()
             .filter(|buffer| buffer.automatic)
             .count()
-            >= inner.automatic_paste_buffer_limit.0
+            >= inner.buffers.automatic_paste_buffer_limit.0
         {
             let Some(index) = inner
+                .buffers
                 .paste_buffers
                 .iter()
                 .rposition(|buffer| buffer.automatic)
             else {
                 break;
             };
-            let removed = inner.paste_buffers.remove(index);
+            let removed = inner.buffers.paste_buffers.remove(index);
             events.push(PendingHookEvent::paste_buffer(
                 "paste-buffer-deleted",
                 removed.name,
@@ -51785,7 +51806,7 @@ fn insert_paste_buffer(
         (name, true)
     };
 
-    inner.paste_buffers.retain(|buffer| {
+    inner.buffers.paste_buffers.retain(|buffer| {
         if buffer.name == name {
             if replacement_delete {
                 events.push(PendingHookEvent::paste_buffer(
@@ -51798,7 +51819,7 @@ fn insert_paste_buffer(
             true
         }
     });
-    inner.paste_buffers.insert(
+    inner.buffers.paste_buffers.insert(
         0,
         PasteBuffer {
             name: name.clone(),
@@ -51818,11 +51839,13 @@ fn rename_paste_buffer(
 ) -> Result<Vec<PendingHookEvent>, ServerError> {
     let mut source_index = match requested_name {
         Some(name) => inner
+            .buffers
             .paste_buffers
             .iter()
             .position(|buffer| buffer.name == name)
             .ok_or_else(|| ServerError::InvalidCommand(format!("unknown buffer: {name}")))?,
         None => inner
+            .buffers
             .paste_buffers
             .iter()
             .position(|buffer| buffer.automatic)
@@ -51832,17 +51855,18 @@ fn rename_paste_buffer(
         return Err(ServerError::InvalidCommand("new name is empty".to_owned()));
     }
     validate_paste_buffer_name(new_name)?;
-    if inner.paste_buffers[source_index].name == new_name {
+    if inner.buffers.paste_buffers[source_index].name == new_name {
         return Ok(Vec::new());
     }
 
     let mut events = Vec::new();
     if let Some(destination_index) = inner
+        .buffers
         .paste_buffers
         .iter()
         .position(|buffer| buffer.name == new_name)
     {
-        let removed = inner.paste_buffers.remove(destination_index);
+        let removed = inner.buffers.paste_buffers.remove(destination_index);
         events.push(PendingHookEvent::paste_buffer(
             "paste-buffer-deleted",
             removed.name,
@@ -51852,7 +51876,7 @@ fn rename_paste_buffer(
         }
     }
 
-    let source = &mut inner.paste_buffers[source_index];
+    let source = &mut inner.buffers.paste_buffers[source_index];
     let old_name = std::mem::replace(&mut source.name, new_name.to_owned());
     source.automatic = false;
     events.push(PendingHookEvent::paste_buffer(

@@ -854,6 +854,7 @@ pub(super) fn chooser_presentation(
         .filter(|_| chooser.preview_size != ChooserPreviewSize::Off)
         .and_then(|name| {
             inner
+                .buffers
                 .paste_buffers
                 .iter()
                 .find(|buffer| &buffer.name == name)

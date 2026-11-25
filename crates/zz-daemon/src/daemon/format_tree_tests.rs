@@ -46,7 +46,7 @@ fn borrowed<'a>(
 ) -> BorrowedFormatHookFacts<'a> {
     BorrowedFormatHookFacts {
         client_fields: ClientFormatFields::from_inner(inner),
-        paste_buffers: &inner.paste_buffers,
+        paste_buffers: &inner.buffers.paste_buffers,
         terminals: &inner.terminals,
         pane_pipes: &inner.pane_pipes,
         attached: &inner.attached,
@@ -529,7 +529,7 @@ fn selected_status_client_dynamic_references_keep_terminal_and_environment_facts
 fn selected_status_explicit_fact_groups_match_complete_capture() {
     let (shared, client, mut target) = fixture();
     let mut inner = shared.inner.lock();
-    inner.paste_buffers.push(PasteBuffer {
+    inner.buffers.paste_buffers.push(PasteBuffer {
         name: "kept-buffer".to_owned(),
         data: Arc::from(b"buffer data".as_slice()),
         created: UNIX_EPOCH + Duration::from_secs(17),
@@ -636,7 +636,7 @@ fn selected_status_modes_capture_their_own_detached_fact_dependencies() {
     let mut inner = shared.inner.lock();
     inner.terminals_mut().insert(target.pane.unwrap(), terminal);
     enter_copy_session(&mut inner, client, target.pane.unwrap()).unwrap();
-    inner.paste_buffers.push(PasteBuffer {
+    inner.buffers.paste_buffers.push(PasteBuffer {
         name: "mode-buffer".to_owned(),
         data: Arc::from(b"mode data".as_slice()),
         created: UNIX_EPOCH,

@@ -2120,6 +2120,7 @@ fn capture_pane_routes_stdout_buffers_and_reversed_ranges_like_tmux() {
     let automatic_before = shared
         .inner
         .lock()
+        .buffers
         .paste_buffers
         .iter()
         .filter(|buffer| buffer.automatic)
@@ -2140,6 +2141,7 @@ fn capture_pane_routes_stdout_buffers_and_reversed_ranges_like_tmux() {
         shared
             .inner
             .lock()
+            .buffers
             .paste_buffers
             .iter()
             .filter(|buffer| buffer.automatic)

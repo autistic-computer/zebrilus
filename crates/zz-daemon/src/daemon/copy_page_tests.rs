@@ -97,14 +97,15 @@ impl CopyFixture {
     }
 
     fn copy_prefix(&mut self, expected: &str) {
-        let previous = self.shared.inner.lock().next_buffer_id;
+        let previous = self.shared.inner.lock().buffers.next_buffer_id;
         self.action("copy-selection-no-clear");
         let deadline = Instant::now() + Duration::from_secs(30);
         loop {
             let ready = {
                 let inner = self.shared.inner.lock();
-                inner.next_buffer_id != previous
+                inner.buffers.next_buffer_id != previous
                     && inner
+                        .buffers
                         .paste_buffers
                         .first()
                         .is_some_and(|buffer| buffer.data.as_ref() == expected.as_bytes())
