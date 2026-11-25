@@ -33,7 +33,7 @@ path. The actor publishes immutable frames per client view to a daemon frame sin
 The daemon routes commands, pane events and subscriber mailboxes.
 [PTY worker](/concepts/pty-worker.md) · [Data flow](/architecture/data-flow.md)
 
-`AgentHost::open` in `crates/zz-daemon/src/agent/host.rs` starts a thread per
+`AgentHost::open` in `crates/zz-agent/src/host.rs` starts a thread per
 native chat. `AgentFanout` uses a shared flusher for its 25 ms batching window.
 The daemon applies events only if the pane still holds the matching runtime
 generation. Closing the GUI leaves these runtimes available to other clients.

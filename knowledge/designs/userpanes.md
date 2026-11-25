@@ -170,7 +170,7 @@ page's identity, so zz stores nothing about it.
 * **Who opens the pane.** Any agent that runs `zz html`. Antigravity without being told: its ACP
   `tool_call` for a page it wants shown carries `rawInput.ArtifactMetadata.UserFacing: true` and
   the file's `Path`. The fan-out keeps that path on the tool call when it ends in `.html`, `.htm`
-  or `.svg` and a turn is live (`user_facing_page`, `crates/zz-daemon/src/agent/fanout.rs`), and
+  or `.svg` and a turn is live (`user_facing_page`, `crates/zz-agent/src/fanout.rs`), and
   the agent inbox runs `html -t <chat> -- <path>` once the call completes
   (`Shared::show_agent_page`). A session being restored opens nothing.
 * **A pane you closed stays closed.** `show_agent_page` does nothing when the chat's page pane is
@@ -339,7 +339,7 @@ leaves whole documents to the page plugin.
 **Codex's visualize references.** Codex's bundled visualize skill writes the fragment to a file and
 puts `\u{e200}visualize\u{e202}{"path": ...}\u{e201}` in its reply, which only Codex's own app
 draws. The Codex driver rewrites it before anything else sees the update
-(`crates/zz-daemon/src/agent/visualize.rs`, run at the top of the runtime's `emit`, ahead of the
+(`crates/zz-agent/src/visualize.rs`, run at the top of the runtime's `emit`, ahead of the
 chat machine whose events clients draw): the reference becomes an `html preview` block holding the
 file, read by the daemon that ran the agent, so it works on ssh hosts and the transcript keeps the
 page after the file is gone. Codex streams the reference a few characters per delta; a reference

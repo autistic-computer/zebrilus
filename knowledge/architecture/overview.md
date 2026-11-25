@@ -27,7 +27,7 @@ Layouts are measured in cells and projected into snapshots for the clients.
 | Responsibility | Code |
 |---|---|
 | Resolve tmux commands, targets, options and layouts | [zz-mux](/crates/zz-mux.md) |
-| Serve mux state, drive PTYs and agent runtimes, publish updates | [zz-daemon](/crates/zz-daemon.md), [zz-terminal](/crates/zz-terminal.md) |
+| Serve mux state, drive PTYs and agent runtimes, publish updates | [zz-daemon](/crates/zz-daemon.md), [zz-agent](/crates/zz-agent.md), [zz-terminal](/crates/zz-terminal.md) |
 | Exchange snapshots, events and packed terminal frames | [zz-protocol](/crates/zz-protocol.md) |
 | Connect to a host and maintain the client view | [zz-daemon-client](/crates/zz-daemon-client.md), [zz-client](/crates/zz-client.md) |
 | Draw the desktop workspace | [zz](/crates/zz.md), zz-ui, [penna](/references/penna.md), [ala](/references/ala.md), [ala-cef](/crates/ala-cef.md) |

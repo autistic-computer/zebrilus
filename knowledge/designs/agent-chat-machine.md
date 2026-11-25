@@ -3,7 +3,7 @@ type: Design Plan
 title: "Agent chat state and replay"
 description: "Typed chat events carry turns, items, subagents and requests from provider drivers to client views."
 status: "Implemented, verified against source 2026-11-24"
-resource: crates/zz-daemon/src/agent/chat.rs
+resource: crates/zz-agent/src/chat.rs
 tags:
 - agent
 - design-plan
@@ -16,11 +16,11 @@ The daemon converts provider frames into typed facts, runs the chat and [turn ma
 
 | Responsibility | Source |
 | --- | --- |
-| Project turn, item and request lifetimes into chat events | `ChatMachine` in `crates/zz-daemon/src/agent/chat.rs` |
-| Admit, dispatch and reclaim live prompts | `PanePump::prompt`, `dispatch_next` and `reclaim_queue` in `crates/zz-daemon/src/agent/host.rs` |
-| Translate and apply facts from the drivers | `crates/zz-daemon/src/agent/chat_bridge.rs` |
+| Project turn, item and request lifetimes into chat events | `ChatMachine` in `crates/zz-agent/src/chat.rs` |
+| Admit, dispatch and reclaim live prompts | `PanePump::prompt`, `dispatch_next` and `reclaim_queue` in `crates/zz-agent/src/host.rs` |
+| Translate and apply facts from the drivers | `crates/zz-agent/src/chat_bridge.rs` |
 | Protocol events, projection and compacted chat records | `ChatEvent`, `ChatView::apply` and `ChatLog::in_effect` in `crates/zz-protocol/src/chat.rs` |
-| Replay, including a client whose requested sequence fell out of the ring | `crates/zz-daemon/src/agent/fanout.rs` |
+| Replay, including a client whose requested sequence fell out of the ring | `crates/zz-agent/src/fanout.rs` |
 
 # Replay
 
@@ -68,7 +68,7 @@ dialect keeps the ones a fallback replays out of the stream it forwards.
 
 # Evidence and remaining limits
 
-`agent/chat_tests.rs` covers transition behavior. `agent/cut_points.rs` exercises late attach, journal reload and session resume at different points in provider recordings. The expected findings in each sweep and the scope of its comparison live beside the test cases. A recording covers only the provider paths and event shapes it contains.
+`crates/zz-agent/src/chat_tests.rs` covers transition behavior. `crates/zz-agent/src/cut_points.rs` exercises late attach, journal reload and session resume at different points in provider recordings. The expected findings in each sweep and the scope of its comparison live beside the test cases. A recording covers only the provider paths and event shapes it contains.
 
 A rebuild can omit chat state when the events still in effect exceed `MAX_REBUILD_BYTES` by themselves. The client retains its prior chat in that case. The November 22 campaign also recorded differences in how provider history and the journal preserve permission prompts, question options and internal turn marks. Its full observations and proposed driver follow-ups are in `git show 1ce632dce:knowledge/designs/agent-chat-machine.md`.
 

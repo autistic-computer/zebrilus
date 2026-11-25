@@ -17,7 +17,8 @@ CLI, TUI, web gateway or mobile app. Host connections include SSH, tailnet and, 
 | Path | Owns |
 | --- | --- |
 | `crates/zz`, `crates/zz-ui` | Desktop client and zz-specific UI shared with thin clients. Reusable widgets belong in penna. |
-| `crates/zz-daemon`, `crates/zz-mux` | Session and PTY ownership, agent drivers, command execution and the tmux model. |
+| `crates/zz-daemon`, `crates/zz-mux` | Session and PTY ownership, command execution and the tmux model. |
+| `crates/zz-agent` | Agent runtime and drivers (Claude Code, Codex, ACP), journal and logins. zz-daemon builds it under its `agent` feature. |
 | `crates/zz-protocol`, `crates/zz-client` | Wire messages, key tables and command catalog. Renderer-independent client state. |
 | `crates/zz-daemon-client`, `crates/zz-tailnet` | Endpoints, transport and daemon lifecycle. The latter runs zz's own tailnet node on Linux and Apple Silicon macOS. |
 | `crates/zz-cli`, `crates/zz-tui`, `crates/zz-terminal` | Headless entry point, raw-terminal attach client, PTYs and viewport snapshots. |

@@ -25,7 +25,7 @@ create a numeric session on its first default interactive attach.
 | Chromium page state | Lives in the browser instance while its client keeps it open | A newly opened page starts a fresh renderer |
 | Browser profile data, recent pages and main-window bounds | Stored on the client | Their files remain |
 
-See `AgentJournal::replay_for` in `crates/zz-daemon/src/agent/journal.rs`,
+See `AgentJournal::replay_for` in `crates/zz-agent/src/journal.rs`,
 [browser profiles](/browser/profile.md) and [agent panes](/concepts/agent-panes.md).
 
 ## Daemon lifecycle
