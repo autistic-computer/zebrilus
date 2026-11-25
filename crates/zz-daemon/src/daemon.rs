@@ -36808,7 +36808,7 @@ struct ServerState {
     engine: MuxEngine,
     cold_bootstrap: ColdBootstrapLease,
     last_published_mux_generation: u64,
-    published_simulators: BTreeMap<PaneId, SimulatorDescriptor>,
+    artifact_state: ArtifactState,
     published_agent_parents: BTreeMap<PaneId, PaneId>,
     appearance: Arc<TerminalAppearance>,
     published_style_appearance: Option<Arc<TerminalAppearance>>,
@@ -36847,8 +36847,6 @@ struct ServerState {
     cli_exits: BTreeMap<PaneId, u32>,
     #[cfg(feature = "agent")]
     agent_forks: BTreeMap<PaneId, Option<String>>,
-    artifacts: artifacts::Artifacts,
-    artifacts_watching: bool,
     terminal_spawns: BTreeMap<PaneId, TerminalSpawn>,
     next_command_output_id: u64,
     control_command_event_captures:
@@ -36902,6 +36900,13 @@ struct ServerState {
     border_presentations_cache: Mutex<Option<CachedBorderPresentations>>,
     status_parameters_cache: Mutex<Option<CachedStatusParameters>>,
     status_preparation_cache: Mutex<Option<CachedStatusPreparation>>,
+}
+
+#[derive(Default)]
+struct ArtifactState {
+    artifacts: artifacts::Artifacts,
+    artifacts_watching: bool,
+    published_simulators: BTreeMap<PaneId, SimulatorDescriptor>,
 }
 
 #[derive(Default)]
@@ -45372,10 +45377,12 @@ fn changed_simulator_panes(inner: &mut ServerState) -> Vec<(PaneId, SimulatorDes
     let current = simulator_panes(inner);
     let changed = current
         .iter()
-        .filter(|(pane, descriptor)| inner.published_simulators.get(pane) != Some(descriptor))
+        .filter(|(pane, descriptor)| {
+            inner.artifact_state.published_simulators.get(pane) != Some(descriptor)
+        })
         .map(|(pane, descriptor)| (*pane, descriptor.clone()))
         .collect();
-    inner.published_simulators = current;
+    inner.artifact_state.published_simulators = current;
     changed
 }
 

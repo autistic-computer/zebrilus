@@ -503,13 +503,18 @@ impl Shared {
             let anchor = target.or(opener).or(context.pane);
             let reuse = target
                 .filter(|pane| shows_pages(&inner.engine.state, *pane))
-                .or_else(
-                    || match inner.artifacts.page_of(anchor?, &inner.engine.state) {
+                .or_else(|| {
+                    match inner
+                        .artifact_state
+                        .artifacts
+                        .page_of(anchor?, &inner.engine.state)
+                    {
                         PageSlot::Open(page) => Some(page),
                         PageSlot::Unused | PageSlot::Closed => None,
-                    },
-                );
+                    }
+                });
             let token = inner
+                .artifact_state
                 .artifacts
                 .register(root.clone(), opener, parsed.reply)
                 .map_err(|error| ServerError::InvalidCommand(error.to_string()))?;
@@ -557,6 +562,7 @@ impl Shared {
             let mut inner = self.inner.lock();
             let inner = &mut *inner;
             inner
+                .artifact_state
                 .artifacts
                 .keep_page(owner, created, &inner.engine.state);
         }
@@ -575,7 +581,12 @@ impl Shared {
     pub(super) fn show_agent_page(self: &Arc<Self>, pane: PaneId, path: &str) {
         let context = {
             let inner = self.inner.lock();
-            if inner.artifacts.page_of(pane, &inner.engine.state) == PageSlot::Closed {
+            if inner
+                .artifact_state
+                .artifacts
+                .page_of(pane, &inner.engine.state)
+                == PageSlot::Closed
+            {
                 return;
             }
             ExecutionContext::for_pane(&inner.engine.state, pane)
@@ -639,6 +650,7 @@ impl Shared {
                 return;
             };
             let found = inner
+                .artifact_state
                 .artifacts
                 .get(token)
                 .map(|artifact| (artifact.root.clone(), artifact.reply))
@@ -664,7 +676,7 @@ impl Shared {
             Target::Bytes(_) => mime_for(INDEX),
         };
         if let (Target::File(file), Some(stamp)) = (target, stamp) {
-            if let Some(artifact) = self.inner.lock().artifacts.get_mut(token) {
+            if let Some(artifact) = self.inner.lock().artifact_state.artifacts.get_mut(token) {
                 artifact.served.insert(file, Some(stamp));
             }
             self.watch_artifacts();
@@ -697,7 +709,11 @@ impl Shared {
             if inner.client_flags.contains(client) {
                 return;
             }
-            let Some((opener, name)) = inner.artifacts.take_reply(token, Instant::now()) else {
+            let Some((opener, name)) = inner
+                .artifact_state
+                .artifacts
+                .take_reply(token, Instant::now())
+            else {
                 return;
             };
             ExecutionContext::for_pane(&inner.engine.state, opener).map(|context| {
@@ -728,17 +744,17 @@ impl Shared {
     fn watch_artifacts(self: &Arc<Self>) {
         {
             let mut inner = self.inner.lock();
-            if inner.artifacts_watching {
+            if inner.artifact_state.artifacts_watching {
                 return;
             }
-            inner.artifacts_watching = true;
+            inner.artifact_state.artifacts_watching = true;
         }
         let owner = Arc::downgrade(&self.server_owner());
         if let Err(error) = thread::Builder::new()
             .name("zz-artifacts".to_owned())
             .spawn(move || scan_artifacts(&owner))
         {
-            self.inner.lock().artifacts_watching = false;
+            self.inner.lock().artifact_state.artifacts_watching = false;
             log::debug!("could not start the artifact watcher: {error}");
         }
     }
@@ -746,7 +762,7 @@ impl Shared {
     fn reload_artifact(&self, token: &str, files: Vec<(PathBuf, Option<Stamp>)>) {
         let panes = {
             let mut inner = self.inner.lock();
-            if let Some(artifact) = inner.artifacts.get_mut(token) {
+            if let Some(artifact) = inner.artifact_state.artifacts.get_mut(token) {
                 for (path, stamp) in files {
                     artifact.served.insert(path, stamp);
                 }
@@ -828,13 +844,14 @@ fn scan_artifacts(owner: &Weak<Shared>) {
             let mut inner = shared.inner.lock();
             let shown = shown_tokens(&inner.engine.state);
             let watched = inner
+                .artifact_state
                 .artifacts
                 .watched()
                 .into_iter()
                 .filter(|(token, _)| shown.contains_key(token))
                 .collect::<Vec<_>>();
             if watched.is_empty() {
-                inner.artifacts_watching = false;
+                inner.artifact_state.artifacts_watching = false;
                 return;
             }
             watched
@@ -1027,6 +1044,7 @@ mod tests {
             let mut inner = shared.inner.lock();
             let (_, _, pane) = inner.engine.state.create_session("artifact-reply").unwrap();
             inner
+                .artifact_state
                 .artifacts
                 .register(
                     ArtifactRoot::Inline(Arc::from(&b"hi"[..])),
@@ -1051,6 +1069,7 @@ mod tests {
             shared
                 .inner
                 .lock()
+                .artifact_state
                 .artifacts
                 .get(&token)
                 .unwrap()
@@ -1070,6 +1089,7 @@ mod tests {
             shared
                 .inner
                 .lock()
+                .artifact_state
                 .artifacts
                 .get(&token)
                 .unwrap()
@@ -1086,8 +1106,13 @@ mod tests {
         let (session, pane, token) = {
             let mut inner = shared.inner.lock();
             let root = ArtifactRoot::File(path.clone());
-            let token = inner.artifacts.register(root.clone(), None, false).unwrap();
+            let token = inner
+                .artifact_state
+                .artifacts
+                .register(root.clone(), None, false)
+                .unwrap();
             inner
+                .artifact_state
                 .artifacts
                 .get_mut(&token)
                 .unwrap()
@@ -1099,7 +1124,7 @@ mod tests {
                     artifact_url(&token, &root),
                     ARTIFACT_PROFILE.to_owned(),
                 ));
-            inner.artifacts_watching = true;
+            inner.artifact_state.artifacts_watching = true;
             (session, pane, token)
         };
         let mailbox = OutboundMailbox::new();
@@ -1141,14 +1166,24 @@ mod tests {
         );
         assert_eq!(reloads(), 1);
         assert_eq!(
-            shared.inner.lock().artifacts.get(&token).unwrap().served[&path],
+            shared
+                .inner
+                .lock()
+                .artifact_state
+                .artifacts
+                .get(&token)
+                .unwrap()
+                .served[&path],
             None
         );
         assert!(
             !run_callback(SCAN * 3),
             "missing file caused repeated reloads"
         );
-        assert_eq!(shared.inner.lock().artifacts.watched().len(), 1);
+        assert_eq!(
+            shared.inner.lock().artifact_state.artifacts.watched().len(),
+            1
+        );
 
         fs::write(&path, "<p>rebuilt</p>").unwrap();
         assert!(
@@ -1157,7 +1192,14 @@ mod tests {
         );
         assert_eq!(reloads(), 1);
         assert_eq!(
-            shared.inner.lock().artifacts.get(&token).unwrap().served[&path],
+            shared
+                .inner
+                .lock()
+                .artifact_state
+                .artifacts
+                .get(&token)
+                .unwrap()
+                .served[&path],
             Stamp::of(&path)
         );
         assert!(
@@ -1173,7 +1215,7 @@ mod tests {
             .unwrap()
             .kind = PaneKind::Terminal;
         watcher.join().unwrap();
-        assert!(!shared.inner.lock().artifacts_watching);
+        assert!(!shared.inner.lock().artifact_state.artifacts_watching);
     }
 
     #[test]
