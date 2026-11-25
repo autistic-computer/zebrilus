@@ -2781,7 +2781,7 @@ mod tests {
         });
         inject(report("done"));
         let in_turn = timed_report(&report("done"), ReportTiming::InTurn).expect("a report");
-        assert!(in_turn.contains("carry on with what you were doing"));
+        assert!(in_turn.contains("Carry on with what you were doing"));
         assert_eq!(
             zz_protocol::agent_mention::AgentReport::parse(&in_turn),
             zz_protocol::agent_mention::AgentReport::parse(&report("done"))

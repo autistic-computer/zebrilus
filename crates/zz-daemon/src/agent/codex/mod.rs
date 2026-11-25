@@ -33,7 +33,7 @@ use crate::agent::{
     accounts,
     child::{
         ChildEvent, Input, Process, Rewind, Title, cancelled, clean_title, fit_update, next_input,
-        option, prompt_outcome, random_u64, verb_echo,
+        option, prompt_outcome, random_u64, spawn_thread, verb_echo,
     },
     environment::{AgentWorkspaceEnvironment, agent_path, find_executable},
     host::RuntimeChannels,
@@ -65,6 +65,8 @@ const VERB_HELP: &str = "zz commands: `/btw <question>` (or `/side`) asks Codex 
 const SIDE_PREFIX: &str = "Answer this side question briefly from what you already know. Do not run commands, edit files, or call tools.\n\n";
 const TITLE_PREFIX: &str = "Name the conversation that opens with the message below. Reply with the name alone on one line: a task title of at most six words that starts with a verb, in the message's language, with no quotes, markdown or closing period. Do not run commands or call tools.\n\nMessage:\n";
 const TITLE_MODELS: [&str; 4] = ["luna", "nano", "mini", "small"];
+const STOP_GRACE: Duration = Duration::from_secs(5);
+const STOP_POLL: Duration = Duration::from_millis(20);
 const MODES: [(&str, &str, &str); 3] = [
     (
         "read-only",
@@ -134,6 +136,7 @@ pub(crate) async fn run_codex_runtime(
         ended: channels.ended,
         events: channels.events,
         child_tx,
+        child_rx: child_rx.clone(),
         process: None,
         generation: 0,
         stderr: StderrTail::default(),
@@ -435,6 +438,7 @@ struct Runtime {
     ended: Arc<AtomicBool>,
     events: Sender<AgentStreamPayload>,
     child_tx: Sender<ChildEvent>,
+    child_rx: async_channel::Receiver<ChildEvent>,
     process: Option<Process>,
     generation: u64,
     stderr: StderrTail,
@@ -1742,18 +1746,67 @@ impl Runtime {
         if !self.ended.load(Ordering::Acquire) {
             return;
         }
-        let turn = self
+        let Some(thread) = self.thread_id() else {
+            return;
+        };
+        let running = self
             .turns
             .turn()
             .and_then(Turn::active_command)
             .map(str::to_owned);
-        if let (Some(thread), Some(turn)) = (self.thread_id(), turn) {
-            self.next_request += 1;
-            self.send(&json!({
-                "method": "turn/interrupt",
-                "id": self.next_request,
-                "params": { "threadId": thread, "turnId": turn },
-            }));
+        let starting = self.requests.iter().find_map(|(id, (outgoing, _))| {
+            matches!(outgoing, Outgoing::Turn { .. } | Outgoing::SteerTurn).then_some(*id)
+        });
+        if running.is_none() && starting.is_none() {
+            return;
+        }
+        let Some(process) = self.process.take() else {
+            return;
+        };
+        self.next_request += 1;
+        let id = self.next_request;
+        let lines = self.child_rx.clone();
+        let stopper = spawn_thread("zz-agent-stop", move || {
+            let interrupt = |turn: &str| {
+                log::info!(target: "zz::agent", "interrupting turn {turn} of closed thread {thread}");
+                process.send(&json!({
+                    "method": "turn/interrupt",
+                    "id": id,
+                    "params": { "threadId": thread, "turnId": turn },
+                }));
+            };
+            let mut asked = running.is_some();
+            if let Some(turn) = &running {
+                interrupt(turn);
+            }
+            let deadline = Instant::now() + STOP_GRACE;
+            while Instant::now() < deadline {
+                let line = match lines.try_recv() {
+                    Ok(ChildEvent::Line(_, line)) => line,
+                    Ok(ChildEvent::Closed(_)) | Err(async_channel::TryRecvError::Closed) => return,
+                    Err(async_channel::TryRecvError::Empty) => {
+                        std::thread::sleep(STOP_POLL);
+                        continue;
+                    }
+                };
+                let Ok(frame) = serde_json::from_slice::<Value>(&line) else {
+                    continue;
+                };
+                if asked && frame["id"] == id {
+                    return;
+                }
+                if !asked
+                    && Some(&frame["id"]) == starting.map(Value::from).as_ref()
+                    && let Some(turn) = frame["result"]["turn"]["id"].as_str()
+                {
+                    interrupt(turn);
+                    asked = true;
+                }
+            }
+            log::warn!(target: "zz::agent", "closed thread {thread} did not answer its interrupt");
+        });
+        if let Err(error) = stopper {
+            log::warn!(target: "zz::agent", "could not stop a closed chat's turn: {error}");
         }
     }
 
@@ -3223,6 +3276,7 @@ while IFS= read -r line; do
     *'"id":900,'*'"fruit":{"answers":["pear"]}'*)
       printf '%s\n' '{"method":"turn/completed","params":{"threadId":"t1","turn":{"id":"u2","status":"completed"}}}' ;;
     *'"id":900,'*) echo "bad answer: $line" >&2; exit 4 ;;
+    *'"method":"turn/start"'*'"text":"answer late"'*) (sleep 0.4; printf '{"id":%s,"result":{"turn":{"id":"u8"}}}\n' "$id") & ;;
     *'"method":"turn/start"'*'"text":"hold the id"'*) held=$id ;;
     *'"method":"thread/list"'*)
       [ -n "$held" ] && printf '{"id":%s,"result":{"turn":{"id":"u7"}}}\n' "$held"
@@ -4072,6 +4126,67 @@ done
             std::thread::sleep(Duration::from_millis(10));
         }
         assert_eq!(interrupts(), [json!({ "threadId": "t4", "turnId": "r1" })]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_chat_closed_before_its_turn_start_is_answered_still_stops_the_turn() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let ended = Arc::new(AtomicBool::new(false));
+        let (commands, _controls, events, runtime) = fake_codex_ending(
+            directory.path(),
+            AgentWorkspaceEnvironment::default(),
+            Arc::clone(&ended),
+        );
+        let driver = async {
+            commands
+                .send(RuntimeCommand::Open {
+                    cwd: directory.path().to_path_buf(),
+                    resume_session: None,
+                })
+                .await
+                .expect("open");
+            until(&events, |payload| {
+                matches!(payload, AgentStreamPayload::SessionReady { .. })
+            })
+            .await;
+            commands
+                .send(RuntimeCommand::Prompt {
+                    turn_id: 1,
+                    prompt: AgentPrompt {
+                        text: "answer late".to_owned(),
+                        ..Default::default()
+                    },
+                    note: None,
+                })
+                .await
+                .expect("prompt");
+            until(&events, |payload| {
+                matches!(payload, AgentStreamPayload::PromptAccepted { .. })
+            })
+            .await;
+            ended.store(true, Ordering::Release);
+            Ok(())
+        };
+        assert_eq!(
+            smol::block_on(futures_lite::future::or(driver, runtime)),
+            Ok(())
+        );
+        let log = directory.path().join("codex.log");
+        let interrupts = || {
+            std::fs::read_to_string(&log)
+                .unwrap_or_default()
+                .lines()
+                .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+                .filter(|request| request["method"] == "turn/interrupt")
+                .map(|request| request["params"].clone())
+                .collect::<Vec<_>>()
+        };
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while interrupts().is_empty() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert_eq!(interrupts(), [json!({ "threadId": "t1", "turnId": "u8" })]);
     }
 
     #[cfg(unix)]

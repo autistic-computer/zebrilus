@@ -533,7 +533,7 @@ fn follow_up(host: Option<&str>, pane: PaneId) -> String {
 
 fn carry_on(host: Option<&str>, pane: PaneId) -> String {
     format!(
-        "This reached you inside your running turn and the user did not write it: carry on with what you were doing. Only if something is missing: {}",
+        "The user did not write this: it reached you while you were working. Carry on with what you were doing, or answer the user if you had finished. Only if something is missing: {}",
         send_command(host, pane)
     )
 }

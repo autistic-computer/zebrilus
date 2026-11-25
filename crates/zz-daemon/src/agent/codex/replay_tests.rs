@@ -17,7 +17,7 @@ fn setup(thread: &str) -> (Runtime, Receiver<AgentStreamPayload>) {
 fn fresh(thread: &str) -> (Runtime, Receiver<AgentStreamPayload>) {
     let command = CodexCommand::parse("codex").expect("command");
     let (events, receiver) = async_channel::unbounded();
-    let (child_tx, _) = async_channel::unbounded();
+    let (child_tx, child_rx) = async_channel::unbounded();
     let runtime = Runtime {
         provider: AgentProvider::Codex,
         command,
@@ -28,6 +28,7 @@ fn fresh(thread: &str) -> (Runtime, Receiver<AgentStreamPayload>) {
         ended: Arc::default(),
         events,
         child_tx,
+        child_rx,
         process: None,
         generation: 1,
         stderr: StderrTail::default(),

@@ -53284,7 +53284,9 @@ fn agent_ask(
             .and_then(serde_json::Value::as_str)
     };
     let title = text("title").or_else(|| text("toolCallId")).unwrap_or("?");
-    let what = text("kind").map_or_else(|| title.to_owned(), |kind| format!("{kind} {title}"));
+    let what = text("kind")
+        .filter(|kind| *kind != "other")
+        .map_or_else(|| title.to_owned(), |kind| format!("{kind} {title}"));
     let options = permission
         .options
         .as_array()
