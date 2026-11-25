@@ -1,0 +1,67 @@
+.penna-input-group {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  height: var(--penna-control-md);
+  padding: 0 3px;
+  gap: 0;
+}
+
+.penna-input-group[data-size="small"] {
+  height: var(--penna-control-sm);
+}
+
+.penna-input-group[data-size="large"] {
+  height: var(--penna-control-lg);
+}
+
+.penna-input-group:focus-within {
+  outline: 1.5px solid var(--penna-focus-neutral);
+  outline-offset: 1px;
+}
+
+.penna-input-addon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--penna-space-4);
+  height: 100%;
+  padding: 0 var(--penna-space-8);
+  font-size: var(--penna-text-small-size);
+  line-height: var(--penna-text-small-line);
+  color: var(--penna-fg-muted);
+  white-space: nowrap;
+  user-select: none;
+  --penna-icon-size: 13px;
+}
+
+.penna-input-addon[data-mono] {
+  font-family: var(--penna-mono);
+  font-size: var(--penna-text-caption-size);
+}
+
+.penna-input-group > .penna-input-addon:first-child {
+  border-right: 1px solid var(--penna-divider);
+}
+
+.penna-input-group > .penna-input-addon:last-child {
+  border-left: 1px solid var(--penna-divider);
+}
+
+.penna-input-group > input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  padding: 0 var(--penna-space-8);
+  border: 0;
+  background: transparent;
+  color: var(--penna-fg);
+  font: inherit;
+  font-size: var(--penna-text-body-size);
+  outline: none;
+}
+
+.penna-input-group > input::placeholder {
+  color: var(--penna-fg-faint);
+}

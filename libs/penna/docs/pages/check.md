@@ -102,6 +102,7 @@ Phrase the option so that on means yes.
 | `.label(text)` | `.penna-label` | The label |
 | `.checked(true)` | `aria-checked="true"` | On |
 | `.indeterminate(true)` | `aria-checked="mixed"` | Mixed |
+| `.state(CheckState)` / `CheckState::from_counts(sel, total)` | `aria-checked="true\|false\|mixed"` | Typed tri-state helper for parent rows |
 | `.on_click(handler)` | `change` | Gets `&bool` with the new value |
 | `RadioGroup::new(id, labels)` | `.penna-radio-group`, `.penna-radio` | The radios |
 | `.selected(index)` | `data-value` | The picked one; `None` for none |

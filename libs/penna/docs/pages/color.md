@@ -228,3 +228,20 @@ Every readable text token meets WCAG 2 floors on `bg` in light and dark: `7:1` f
   </div>
 </div>
 ```
+
+## Data palette
+
+Eight perceptually uniform OKLCH series tokens (`--penna-data-1` through `--penna-data-8`, exposed in Rust as `Theme::data_palette()` and `Theme::data_color(index)`) hold steady lightness in both dark (`L = 0.72`) and light (`L = 0.56`) modes so adjacent chart series stay distinguishable regardless of the theme tint.
+
+```figure
+<div class="docs-data-palette">
+  <div class="docs-data-swatch"><div class="docs-data-chip" style="background: var(--penna-data-1)"></div><span class="docs-data-name">data-1</span></div>
+  <div class="docs-data-swatch"><div class="docs-data-chip" style="background: var(--penna-data-2)"></div><span class="docs-data-name">data-2</span></div>
+  <div class="docs-data-swatch"><div class="docs-data-chip" style="background: var(--penna-data-3)"></div><span class="docs-data-name">data-3</span></div>
+  <div class="docs-data-swatch"><div class="docs-data-chip" style="background: var(--penna-data-4)"></div><span class="docs-data-name">data-4</span></div>
+  <div class="docs-data-swatch"><div class="docs-data-chip" style="background: var(--penna-data-5)"></div><span class="docs-data-name">data-5</span></div>
+  <div class="docs-data-swatch"><div class="docs-data-chip" style="background: var(--penna-data-6)"></div><span class="docs-data-name">data-6</span></div>
+  <div class="docs-data-swatch"><div class="docs-data-chip" style="background: var(--penna-data-7)"></div><span class="docs-data-name">data-7</span></div>
+  <div class="docs-data-swatch"><div class="docs-data-chip" style="background: var(--penna-data-8)"></div><span class="docs-data-name">data-8</span></div>
+</div>
+```

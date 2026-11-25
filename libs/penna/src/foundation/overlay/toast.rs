@@ -1,4 +1,4 @@
-use ala::{App, Global, WindowHandle};
+use ala::{App, Global, SharedString, WindowHandle};
 
 use crate::{blocks::notification::Notification, foundation::overlay::root::Root};
 
@@ -31,6 +31,37 @@ pub fn replace_toast(notification: Notification, cx: &mut App) {
             root.replace_notification(notification, window, cx);
         });
     });
+}
+
+#[derive(Clone, Debug)]
+pub struct ToastPromise {
+    key: SharedString,
+}
+
+impl ToastPromise {
+    pub fn resolve(self, message: impl Into<SharedString>, cx: &mut App) {
+        let note = Notification::success(message).key(self.key);
+        replace_toast(note, cx);
+    }
+
+    pub fn reject(self, message: impl Into<SharedString>, cx: &mut App) {
+        let note = Notification::error(message).key(self.key);
+        replace_toast(note, cx);
+    }
+}
+
+#[must_use]
+pub fn toast_promise(
+    key: impl Into<SharedString>,
+    loading: impl Into<SharedString>,
+    cx: &mut App,
+) -> ToastPromise {
+    let key = key.into();
+    push_toast(
+        Notification::info(loading).key(key.clone()).autohide(false),
+        cx,
+    );
+    ToastPromise { key }
 }
 
 #[cfg(test)]
@@ -121,5 +152,28 @@ mod tests {
         cx.executor().advance_clock(Duration::from_millis(1200));
         cx.run_until_parked();
         assert_eq!(cx.update(|window, cx| window.notifications(cx).len()), 2);
+    }
+
+    #[ala::test]
+    fn toast_promise_replaces_loading_toast_with_success_in_place(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let (_, cx) = cx.add_window_view(|window, cx| {
+            let content = cx.new(|_| Content);
+            Root::new(content, window, cx)
+        });
+        cx.update(|window, cx| set_toast_host(window.window_handle().downcast().unwrap(), cx));
+        let pending = cx.update(|_, cx| toast_promise("deploy", "Deploying build…", cx));
+        cx.run_until_parked();
+        let before = cx.update(|window, cx| window.notifications(cx));
+        assert_eq!(before.len(), 1);
+        cx.update(|_, cx| pending.resolve("Build deployed", cx));
+        cx.run_until_parked();
+        let after = cx.update(|window, cx| window.notifications(cx));
+        assert_eq!(after.len(), 1);
+        assert_eq!(after[0].entity_id(), before[0].entity_id());
+        assert_eq!(
+            cx.update(|_, cx| after[0].read(cx).message.clone()),
+            Some("Build deployed".into())
+        );
     }
 }

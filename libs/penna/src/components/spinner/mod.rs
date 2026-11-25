@@ -1,6 +1,6 @@
 use ala::{
-    App, ElementId, Hsla, IntoElement, ParentElement as _, RenderOnce, Role,
-    StatefulInteractiveElement as _, Transformation, Window, div, percentage,
+    AnyElement, App, ElementId, Hsla, IntoElement, ParentElement as _, RenderOnce, Role,
+    StatefulInteractiveElement as _, Styled as _, Transformation, Window, div, percentage,
     prelude::FluentBuilder as _,
 };
 
@@ -36,6 +36,29 @@ impl Spinner {
     pub fn color(mut self, color: Hsla) -> Self {
         self.color = Some(color);
         self
+    }
+
+    #[must_use]
+    pub fn covering(self, loading: bool, child: impl IntoElement) -> AnyElement {
+        if !loading {
+            return child.into_any_element();
+        }
+        div()
+            .relative()
+            .flex()
+            .items_center()
+            .justify_center()
+            .child(div().opacity(0.0).child(child))
+            .child(
+                div()
+                    .absolute()
+                    .inset_0()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(self),
+            )
+            .into_any_element()
     }
 }
 

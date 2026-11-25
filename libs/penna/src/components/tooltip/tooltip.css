@@ -29,6 +29,30 @@
   gap: var(--penna-space-4);
 }
 
+.penna-tooltip[data-meta][data-penna="tooltip"] {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--penna-space-2);
+  max-width: 260px;
+  padding: var(--penna-space-6) var(--penna-space-10);
+  white-space: normal;
+}
+
+.penna-tooltip-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--penna-space-12);
+  white-space: nowrap;
+}
+
+.penna-tooltip-meta {
+  font-size: var(--penna-text-caption-size);
+  line-height: var(--penna-text-caption-line);
+  color: var(--penna-muted, var(--penna-fg-muted));
+  white-space: normal;
+}
+
 .penna-tooltip[data-floating] {
   position: absolute;
   z-index: 10;

@@ -7,7 +7,7 @@ use ala::{
     prelude::FluentBuilder as _, px,
 };
 
-pub use checkbox::Checkbox;
+pub use checkbox::{CheckState, Checkbox};
 pub use radio::RadioGroup;
 
 use crate::{

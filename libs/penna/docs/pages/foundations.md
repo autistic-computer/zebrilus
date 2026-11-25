@@ -171,6 +171,11 @@ Try the four knobs below. Accent colors details while primary actions and select
     <span class="docs-guide-viz"><span class="docs-viz-rungs"><i style="height: 8px"></i><i style="height: 12px"></i><i style="height: 16px"></i><i style="height: 20px"></i></span></span>
     <span class="docs-guide-copy">Seven control rungs from 20px chips to 56px touch controls, plus density.</span>
   </a>
+  <a class="docs-guide-row" href="motion.html">
+    <span class="docs-guide-name">Motion</span>
+    <span class="docs-guide-viz"><span class="docs-viz-pill">160 ms</span></span>
+    <span class="docs-guide-copy">Surface presence, disclosure turns, speed modes, and reduced motion.</span>
+  </a>
   <a class="docs-guide-row" href="phone.html">
     <span class="docs-guide-name">Phone</span>
     <span class="docs-guide-viz"><span class="docs-viz-pill">44px</span></span>

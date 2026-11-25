@@ -6,6 +6,7 @@ pub mod code_editor;
 pub mod color_picker;
 pub mod compact;
 pub mod dialog;
+pub mod diff;
 pub mod dock;
 pub mod docs;
 pub mod feedback;
@@ -19,8 +20,10 @@ pub mod sheet;
 pub mod shell;
 pub mod sidebar;
 pub mod steps;
+pub mod table;
 pub mod title_bar;
 pub mod touch;
+pub mod trace;
 #[cfg(feature = "tray")]
 pub mod tray;
 pub mod which_key;

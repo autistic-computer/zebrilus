@@ -68,6 +68,8 @@ pub struct Notification {
     closable: bool,
     closing: bool,
     expanded: bool,
+    hovered: bool,
+    pause_when_inactive: bool,
 }
 
 impl Notification {
@@ -84,6 +86,8 @@ impl Notification {
             closable: true,
             closing: false,
             expanded: false,
+            hovered: false,
+            pause_when_inactive: false,
         }
     }
 
@@ -154,6 +158,12 @@ impl Notification {
     #[must_use]
     pub fn autohide_after(mut self, delay: Duration) -> Self {
         self.autohide = Some(delay);
+        self
+    }
+
+    #[must_use]
+    pub fn pause_when_inactive(mut self, pause: bool) -> Self {
+        self.pause_when_inactive = pause;
         self
     }
 
@@ -229,6 +239,9 @@ impl Render for Notification {
             .group("")
             .occlude()
             .relative()
+            .on_hover(cx.listener(|this, hovered, _, _| {
+                this.hovered = *hovered;
+            }))
             .w(self.width)
             .max_w((window.fully_visible_bounds().size.width - px(32.)).max(px(1.)))
             .items_center()
@@ -488,9 +501,23 @@ fn autohide(
     let delay = view.read(cx).autohide?;
     let view = view.clone();
     Some(cx.spawn_in(window, async move |_, cx| {
-        cx.background_executor().timer(delay).await;
+        let mut remaining = delay;
+        let tick = Duration::from_millis(100);
+        while !remaining.is_zero() {
+            let step = remaining.min(tick);
+            cx.background_executor().timer(step).await;
+            let state = view.update_in(cx, |note, window, _| {
+                let inactive = note.pause_when_inactive && !window.is_window_active();
+                (note.closing, note.hovered || note.expanded || inactive)
+            });
+            match state {
+                Ok((true, _)) | Err(_) => return,
+                Ok((false, true)) => continue,
+                Ok((false, false)) => remaining = remaining.saturating_sub(step),
+            }
+        }
         let _ = view.update_in(cx, |note, window, cx| {
-            if !note.expanded {
+            if !note.expanded && !note.hovered {
                 note.dismiss(window, cx);
             }
         });

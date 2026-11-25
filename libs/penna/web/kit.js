@@ -33,7 +33,7 @@ function modeName(value) {
 const showSwitcher = script.dataset.switcher !== "off" && !params.has("bare");
 const saved = stored();
 const choice = {
-  theme: themeName(params.get("theme")) || (showSwitcher ? themeName(saved.theme) : undefined) || script.dataset.theme || THEMES[0],
+  theme: themeName(params.get("theme")) || (!params.has("bare") ? themeName(saved.theme) : undefined) || script.dataset.theme || THEMES[0],
   mode: modeName(params.get("mode")) || modeName(saved.mode) || "dark",
 };
 
@@ -41,6 +41,8 @@ const density = params.get("density") || (!params.has("bare") ? saved.density : 
 if (density === "compact" || density === "comfortable") document.documentElement.dataset.density = density;
 const glass = params.get("glass") || (!params.has("bare") ? saved.glass : undefined);
 if (glass === "none") document.documentElement.dataset.glass = "none";
+const motion = params.get("motion") || (!params.has("bare") ? saved.motion : undefined);
+if (motion === "off" || motion === "0") document.documentElement.dataset.motion = "off";
 if (params.get("pointer") === "arrow") document.documentElement.dataset.pointer = "arrow";
 
 const swapping = new Map();
@@ -120,7 +122,7 @@ function apply() {
   const commit = () => {
     document.documentElement.dataset.pennaTheme = choice.theme;
     document.documentElement.dataset.pennaMode = choice.mode;
-    remember(showSwitcher ? { ...stored(), ...choice } : { ...stored(), mode: choice.mode });
+    if (!params.has("bare")) remember({ ...stored(), ...choice });
     document.dispatchEvent(new CustomEvent("penna-theme", { detail: { ...choice } }));
   };
   if (initial) commit();
@@ -439,4 +441,18 @@ function setGlass(on) {
   document.dispatchEvent(new CustomEvent("penna-theme", { detail: { ...choice, glass: on ? "liquid" : "none" } }));
 }
 
-window.pennaKit = { choice, apply, roundAll, settle, setDensity, setGlass, ceilText: ceilTextRuns, focusRing, apparentCorner, drawnCorner };
+function setTheme(next) {
+  const valid = themeName(next);
+  if (!valid || valid === choice.theme) return;
+  choice.theme = valid;
+  apply();
+}
+
+function setMotion(off) {
+  if (off) document.documentElement.dataset.motion = "off";
+  else delete document.documentElement.dataset.motion;
+  if (!params.has("bare")) remember({ ...stored(), motion: off ? "off" : "default" });
+  document.dispatchEvent(new CustomEvent("penna-theme", { detail: { ...choice, motion: off ? "off" : "default" } }));
+}
+
+window.pennaKit = { choice, apply, roundAll, settle, setTheme, setDensity, setGlass, setMotion, ceilText: ceilTextRuns, focusRing, apparentCorner, drawnCorner };

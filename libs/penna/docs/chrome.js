@@ -1,6 +1,9 @@
 (() => {
   const MODES = ["dark", "light"];
   const DENSITIES = ["compact", "regular", "comfortable"];
+  if (window.pennaKit && pennaKit.choice.theme !== "default" && !new URLSearchParams(location.search).has("theme")) {
+    pennaKit.setTheme("default");
+  }
   const GROUP_ICONS = {
     "Getting started": "sparkle",
     Foundations: "palette",
@@ -25,13 +28,22 @@
   const lookPanel = lookRoot?.querySelector(".docs-look-panel") ?? lookRoot?.panel;
   const modeControl = lookPanel?.querySelector('[data-docs-opt="mode"]');
   const glassControl = lookPanel?.querySelector('[data-docs-opt="glass"]');
+  const motionControl = lookPanel?.querySelector('[data-docs-opt="motion"]');
   const densityControl = lookPanel?.querySelector('[data-docs-opt="density"]');
+  const copyMdButton = document.querySelector("[data-docs-copy-md]");
+  const mainScroll = document.querySelector(".penna-docs-main");
+  const tocNav = document.querySelector("[data-docs-toc]");
 
   const searchTriggers = [...document.querySelectorAll("[data-docs-search]")];
   const backdrop = document.querySelector("[data-docs-palette]");
   const surface = backdrop?.querySelector(".penna-palette-surface");
   const input = backdrop?.querySelector(".docs-palette-input");
   const rowsHost = backdrop?.querySelector(".penna-palette-rows");
+
+  const shortcutsBackdrop = document.querySelector("[data-docs-shortcuts]");
+  const shortcutsSheet = shortcutsBackdrop?.querySelector(".docs-shortcuts-sheet");
+  const shortcutsTriggers = [...document.querySelectorAll("[data-docs-shortcuts-open]")];
+  const shortcutsClose = shortcutsBackdrop?.querySelector("[data-docs-shortcuts-close]");
 
   if (window.pennaKbd && !window.pennaKbd.mac) {
     searchTriggers.forEach((trigger) => {
@@ -41,6 +53,11 @@
         window.pennaKbd.fill(trigger);
       }
     });
+    const shortcutCmdK = shortcutsBackdrop?.querySelector("[data-docs-shortcut-cmdk]");
+    if (shortcutCmdK) {
+      shortcutCmdK.dataset.kbd = "ctrl-k";
+      window.pennaKbd.fill(shortcutsBackdrop);
+    }
   }
 
   function isSideCollapsed() {
@@ -171,6 +188,10 @@
     return document.documentElement.dataset.glass !== "none";
   }
 
+  function currentMotionOff() {
+    return document.documentElement.dataset.motion === "off";
+  }
+
   function syncAppearance() {
     const modeIdx = Math.max(0, MODES.indexOf(pennaKit.choice.mode));
     const densityIdx = Math.max(0, DENSITIES.indexOf(currentDensity()));
@@ -180,6 +201,9 @@
     }
     if (glassControl) {
       glassControl.setAttribute("aria-checked", String(currentGlass()));
+    }
+    if (motionControl) {
+      motionControl.setAttribute("aria-checked", String(currentMotionOff()));
     }
     if (densityControl) {
       densityControl.dataset.value = String(densityIdx);
@@ -217,11 +241,91 @@
     pennaKit.setGlass(Boolean(event.detail.checked));
   });
 
+  motionControl?.addEventListener("change", (event) => {
+    pennaKit.setMotion(Boolean(event.detail.checked));
+  });
+
   densityControl?.addEventListener("change", (event) => {
     const next = DENSITIES[event.detail.index];
     if (!next) return;
     pennaKit.setDensity(next);
   });
+
+  let mdCache = null;
+  let copyTimer = null;
+
+  async function copyPageMarkdown() {
+    const href = copyMdButton?.dataset.docsCopyMd;
+    if (!href) return;
+    try {
+      mdCache ??= await fetch(href).then((response) => (response.ok ? response.text() : ""));
+      if (!mdCache) return;
+      await navigator.clipboard.writeText(mdCache);
+      const label = copyMdButton.querySelector(".penna-label");
+      const icon = copyMdButton.querySelector("[data-icon]");
+      copyMdButton.setAttribute("data-copied", "");
+      if (label) label.textContent = "Copied";
+      if (icon) icon.dataset.icon = "check";
+      window.pennaKit?.ceilText?.(copyMdButton);
+      clearTimeout(copyTimer);
+      copyTimer = setTimeout(() => {
+        copyMdButton.removeAttribute("data-copied");
+        if (label) label.textContent = "Copy md";
+        if (icon) icon.dataset.icon = "copy";
+        window.pennaKit?.ceilText?.(copyMdButton);
+      }, 1600);
+    } catch {}
+  }
+
+  copyMdButton?.addEventListener("click", copyPageMarkdown);
+
+  if (tocNav && mainScroll) {
+    const tocLinks = [...tocNav.querySelectorAll(".docs-toc-link")];
+    const tocTargets = tocLinks
+      .map((link) => {
+        const id = link.getAttribute("href")?.slice(1);
+        const heading = id ? document.getElementById(id) : null;
+        return heading ? { link, heading } : null;
+      })
+      .filter(Boolean);
+
+    let tocRaf = 0;
+
+    function updateToc() {
+      tocRaf = 0;
+      if (!tocTargets.length) return;
+      const hostRect = mainScroll.getBoundingClientRect();
+      const atBottom = mainScroll.scrollTop + mainScroll.clientHeight >= mainScroll.scrollHeight - 8;
+      let active = tocTargets[0];
+      if (atBottom) {
+        active = tocTargets[tocTargets.length - 1];
+      } else {
+        for (const item of tocTargets) {
+          if (item.heading.getBoundingClientRect().top - hostRect.top <= 88) {
+            active = item;
+          } else {
+            break;
+          }
+        }
+      }
+      tocTargets.forEach((item) => {
+        if (item === active) item.link.setAttribute("aria-current", "location");
+        else item.link.removeAttribute("aria-current");
+      });
+    }
+
+    mainScroll.addEventListener(
+      "scroll",
+      () => {
+        if (!tocRaf) tocRaf = requestAnimationFrame(updateToc);
+      },
+      { passive: true },
+    );
+    window.addEventListener("resize", () => {
+      if (!tocRaf) tocRaf = requestAnimationFrame(updateToc);
+    });
+    updateToc();
+  }
 
   document.addEventListener("penna-theme", () => {
     syncAppearance();
@@ -254,6 +358,7 @@
   function commands() {
     const nextMode = pennaKit.choice.mode === "dark" ? "light" : "dark";
     const glassOn = currentGlass();
+    const motionOff = currentMotionOff();
     const collapsed = isSideCollapsed();
     return [
       {
@@ -282,6 +387,38 @@
         icon: "sparkle",
         keywords: "glass liquid none blur transparency",
         run: () => pennaKit.setGlass(!glassOn),
+      },
+      {
+        kind: "action",
+        title: motionOff ? "Enable motion" : "Reduce motion",
+        detail: motionOff ? "Restore UI transitions" : "Stop transitions and animations",
+        icon: "sliders",
+        keywords: "motion animation reduced accessibility",
+        run: () => pennaKit.setMotion(!motionOff),
+      },
+      {
+        kind: "action",
+        title: "Keyboard shortcuts (?)",
+        detail: "Navigation, search and appearance keys",
+        icon: "keyboard",
+        keywords: "shortcuts keys hotkeys help cheat sheet ?",
+        run: () => openShortcuts(),
+      },
+      {
+        kind: "action",
+        title: "Token inspector (F12)",
+        detail: "Inspect live surface role, ground, fill and radius",
+        icon: "layers",
+        keywords: "inspect inspector tokens f12 role ground debug hud",
+        run: () => window.pennaInspector?.toggle?.(),
+      },
+      {
+        kind: "action",
+        title: "Copy page as Markdown",
+        detail: "Raw source for notes or agents",
+        icon: "copy",
+        keywords: "markdown md copy llm agent raw",
+        run: () => copyPageMarkdown(),
       },
       {
         kind: "action",
@@ -371,7 +508,7 @@
     const actions = commands();
     if (!query) {
       const currentSlug = document.querySelector(".penna-docs-page")?.dataset.page || "introduction";
-      const picks = ["introduction", "foundations", "look", "button", "popover", "palette", "chat"]
+      const picks = ["showcase", "components", "blocks", "motion", "look", "icon", "button"]
         .filter((slug) => slug !== currentSlug)
         .map((slug) => pages.find((page) => page.slug === slug))
         .filter(Boolean)
@@ -557,8 +694,39 @@
     }
   }
 
+  function openShortcuts() {
+    if (!shortcutsBackdrop) return;
+    closePalette();
+    setLookOpen(false);
+    if (side?.hasAttribute("data-open")) {
+      side.removeAttribute("data-open");
+      menuButtons.forEach((menu) => menu.setAttribute("aria-expanded", "false"));
+    }
+    lastFocused = document.activeElement;
+    shortcutsBackdrop.hidden = false;
+    window.pennaKbd?.fill(shortcutsBackdrop);
+    shortcutsClose?.focus();
+    if (shortcutsSheet) {
+      requestAnimationFrame(() => window.pennaKit?.settle?.(shortcutsSheet));
+    }
+  }
+
+  function closeShortcuts() {
+    if (!shortcutsBackdrop || shortcutsBackdrop.hidden) return;
+    shortcutsBackdrop.hidden = true;
+    if (lastFocused instanceof HTMLElement && lastFocused.isConnected) lastFocused.focus();
+    lastFocused = null;
+  }
+
+  shortcutsTriggers.forEach((trigger) => trigger.addEventListener("click", openShortcuts));
+  shortcutsClose?.addEventListener("click", closeShortcuts);
+  shortcutsBackdrop?.addEventListener("click", (event) => {
+    if (event.target === shortcutsBackdrop) closeShortcuts();
+  });
+
   function openPalette() {
     if (!backdrop || !input) return;
+    closeShortcuts();
     setLookOpen(false);
     if (side?.hasAttribute("data-open")) {
       side.removeAttribute("data-open");
@@ -622,6 +790,18 @@
         else openPalette();
         return;
       }
+      if (event.key === "Escape" && window.pennaInspector?.isOpen?.()) {
+        event.preventDefault();
+        event.stopPropagation();
+        window.pennaInspector.close();
+        return;
+      }
+      if (event.key === "Escape" && shortcutsBackdrop && !shortcutsBackdrop.hidden) {
+        event.preventDefault();
+        event.stopPropagation();
+        closeShortcuts();
+        return;
+      }
       if (event.key === "Escape" && backdrop && !backdrop.hidden) {
         event.preventDefault();
         event.stopPropagation();
@@ -635,14 +815,28 @@
         lookTrigger?.focus();
         return;
       }
-      if (
-        event.key === "/" &&
-        !event.metaKey &&
-        !event.ctrlKey &&
-        !event.altKey &&
-        backdrop?.hidden &&
-        !(event.target instanceof HTMLElement && event.target.closest('input, textarea, select, [contenteditable="true"]'))
-      ) {
+      const inEditable =
+        event.target instanceof HTMLElement &&
+        event.target.closest('input, textarea, select, [contenteditable="true"]');
+      if (event.metaKey || event.ctrlKey || event.altKey || inEditable) return;
+      if (event.key === "?" && backdrop?.hidden) {
+        event.preventDefault();
+        if (shortcutsBackdrop && !shortcutsBackdrop.hidden) closeShortcuts();
+        else openShortcuts();
+        return;
+      }
+      if (event.key === "[" && backdrop?.hidden && shortcutsBackdrop?.hidden && !mobileMq.matches) {
+        event.preventDefault();
+        setSideCollapsed(!isSideCollapsed());
+        return;
+      }
+      if (key === "d" && !event.shiftKey && backdrop?.hidden && shortcutsBackdrop?.hidden) {
+        event.preventDefault();
+        pennaKit.choice.mode = pennaKit.choice.mode === "dark" ? "light" : "dark";
+        pennaKit.apply();
+        return;
+      }
+      if (event.key === "/" && backdrop?.hidden && shortcutsBackdrop?.hidden) {
         event.preventDefault();
         openPalette();
       }

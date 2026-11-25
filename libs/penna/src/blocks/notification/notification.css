@@ -5,7 +5,7 @@
   gap: var(--penna-space-8);
   box-sizing: border-box;
   width: 400px;
-  max-width: calc(100vw - 32px);
+  max-width: min(100%, calc(100vw - 32px));
   padding: var(--penna-inset-card);
   font-family: var(--penna-font);
   font-size: var(--penna-text-body-size);

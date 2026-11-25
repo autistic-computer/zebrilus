@@ -847,6 +847,10 @@ pub fn drawn_roles() -> BTreeSet<&'static str> {
     DRAWN.with_borrow_mut(|drawn| drawn.take().unwrap_or_default())
 }
 
+pub fn peek_drawn_roles() -> BTreeSet<&'static str> {
+    DRAWN.with_borrow(|drawn| drawn.clone().unwrap_or_default())
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Surface {
     pub(crate) role: SurfaceRole,

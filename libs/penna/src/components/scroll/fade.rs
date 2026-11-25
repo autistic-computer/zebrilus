@@ -57,6 +57,65 @@ pub fn top_fade<H: ScrollbarHandle>(
     .inset_0()
 }
 
+pub fn left_fade<H: ScrollbarHandle>(
+    handle: Rc<H>,
+    ground: Hsla,
+    width: Pixels,
+) -> impl IntoElement {
+    canvas(
+        |_, _, _| {},
+        move |bounds: Bounds<Pixels>, _, window, _| {
+            let before = -handle.offset().x;
+            let width = width.min(before * REACH);
+            if width <= Pixels::ZERO {
+                return;
+            }
+            let strip = Bounds::new(bounds.origin, size(width, bounds.size.height));
+            window.paint_quad(fill(
+                strip,
+                linear_gradient(
+                    270.0,
+                    linear_color_stop(ground.alpha(0.0), 0.0),
+                    linear_color_stop(ground, SOLID_FROM),
+                ),
+            ));
+        },
+    )
+    .absolute()
+    .inset_0()
+}
+
+pub fn right_fade<H: ScrollbarHandle>(
+    handle: Rc<H>,
+    ground: Hsla,
+    width: Pixels,
+) -> impl IntoElement {
+    canvas(
+        |_, _, _| {},
+        move |bounds: Bounds<Pixels>, _, window, _| {
+            let after = handle.content_size().width - bounds.size.width + handle.offset().x;
+            let width = width.min(after * REACH);
+            if width <= Pixels::ZERO {
+                return;
+            }
+            let strip = Bounds::new(
+                point(bounds.right() - width, bounds.top()),
+                size(width, bounds.size.height),
+            );
+            window.paint_quad(fill(
+                strip,
+                linear_gradient(
+                    90.0,
+                    linear_color_stop(ground.alpha(0.0), 0.0),
+                    linear_color_stop(ground, SOLID_FROM),
+                ),
+            ));
+        },
+    )
+    .absolute()
+    .inset_0()
+}
+
 fn paint_fade(
     window: &mut Window,
     strip: Bounds<Pixels>,

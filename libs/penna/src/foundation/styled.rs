@@ -8,10 +8,17 @@ use crate::Space;
 use ala::{
     App, BoxShadow, DefiniteLength, Div, Edges, ElementId, FULL_CORNER_RADIUS, Hsla,
     InteractiveElement as _, Pixels, Refineable, Stateful, StatefulInteractiveElement,
-    StyleRefinement, Styled, div, px,
+    StyleRefinement, Styled, Window, div, px,
 };
 
 use super::rems_from_px;
+
+pub const INACTIVE_WINDOW_OPACITY: f32 = 0.62;
+
+#[must_use]
+pub const fn window_chrome_opacity(active: bool) -> f32 {
+    if active { 1.0 } else { INACTIVE_WINDOW_OPACITY }
+}
 
 #[inline(always)]
 pub fn h_flex() -> Div {
@@ -153,6 +160,14 @@ pub trait StyledExt: Styled + Sized {
 
     fn click_cursor(self) -> Self {
         self.cursor(PointerCursor::style())
+    }
+
+    fn dim_when_inactive(self, window: &Window) -> Self {
+        if window.is_window_active() {
+            self
+        } else {
+            self.opacity(INACTIVE_WINDOW_OPACITY)
+        }
     }
 
     font_weight!(font_thin, THIN);

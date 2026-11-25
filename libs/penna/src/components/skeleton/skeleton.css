@@ -1,0 +1,36 @@
+@keyframes penna-skeleton-pulse {
+  0%, 100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.penna-skeleton {
+  display: block;
+  width: 100%;
+  height: 14px;
+  border-radius: 4px;
+  background: var(--penna-control);
+  animation: penna-skeleton-pulse 1400ms ease-in-out infinite;
+}
+
+.penna-skeleton[data-shape="block"] {
+  height: 64px;
+  border-radius: calc(var(--penna-radius) * var(--penna-corner-grow, 1.42));
+  corner-shape: superellipse(var(--penna-window-k, 2));
+}
+
+.penna-skeleton[data-shape="circle"] {
+  width: 28px;
+  height: 28px;
+  border-radius: 9999px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .penna-skeleton {
+    animation: none;
+    opacity: 0.75;
+  }
+}

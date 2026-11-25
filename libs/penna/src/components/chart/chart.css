@@ -1,8 +1,8 @@
 .penna-chart {
-  --penna-series-0: #3183ff;
-  --penna-series-1: #e648a0;
-  --penna-series-2: #ac8000;
-  --penna-series-3: #a366f7;
+  --penna-series-0: var(--penna-data-1, #3183ff);
+  --penna-series-1: var(--penna-data-2, #e648a0);
+  --penna-series-2: var(--penna-data-3, #ac8000);
+  --penna-series-3: var(--penna-data-4, #a366f7);
   display: flex;
   flex-direction: column;
   gap: var(--penna-gap-tight);
@@ -17,10 +17,10 @@
 }
 
 :root[data-penna-mode="light"] .penna-chart {
-  --penna-series-0: #0a64dd;
-  --penna-series-1: #c02a82;
-  --penna-series-2: #876400;
-  --penna-series-3: #8549d1;
+  --penna-series-0: var(--penna-data-1, #0a64dd);
+  --penna-series-1: var(--penna-data-2, #c02a82);
+  --penna-series-2: var(--penna-data-3, #876400);
+  --penna-series-3: var(--penna-data-4, #8549d1);
 }
 
 .penna-chart-body {

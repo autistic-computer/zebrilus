@@ -272,6 +272,216 @@
     renderSmoothDiagram();
   }
 
+  const builderRoot = document.querySelector("[data-look-builder]");
+  if (builderRoot) {
+    const TINT_KEYS = {
+      blue: "default",
+      purple: "purple",
+      pink: "pink",
+      red: "red",
+      orange: "orange",
+      yellow: "yellow",
+      green: "green",
+      graphite: "graphite",
+    };
+    const NEUTRALS = [
+      { id: "pure", look: "neutral-pure", json: { hue: 60, amount: 0 } },
+      { id: "warm", look: "default", json: null },
+      { id: "cool", look: "neutral-cool", json: { hue: 250, amount: 0.5 } },
+    ];
+    const RADII = [4, 12, 20];
+    const SMOOTHS = [2, 3, 4, 5];
+    const GROW = { 2: 1.0, 3: 1.42, 4: 1.84, 5: 2.26 };
+
+    const defaults = {
+      name: "Studio",
+      tint: "blue",
+      neutral: 1,
+      radius: 1,
+      pill: false,
+      smooth: 1,
+      glass: true,
+    };
+    const state = { ...defaults };
+
+    const nameInput = builderRoot.querySelector("[data-lb-name]");
+    const tintButtons = [...builderRoot.querySelectorAll("[data-lb-tint]")];
+    const neutralSeg = builderRoot.querySelector("[data-lb-neutral]");
+    const radiusSeg = builderRoot.querySelector("[data-lb-radius]");
+    const controlsSeg = builderRoot.querySelector("[data-lb-controls]");
+    const smoothSeg = builderRoot.querySelector("[data-lb-smooth]");
+    const glassToggle = builderRoot.querySelector("[data-lb-glass]");
+    const stage = builderRoot.querySelector("[data-lb-stage]");
+    const glassWrap = builderRoot.querySelector("[data-lb-glass-wrap]");
+    const glassNote = builderRoot.querySelector("[data-lb-glass-note]");
+    const previewName = builderRoot.querySelector("[data-lb-preview-name]");
+    const jsonCode = builderRoot.querySelector("[data-lb-json]");
+    const copyBtn = builderRoot.querySelector("[data-lb-copy]");
+    const shareBtn = builderRoot.querySelector("[data-lb-share]");
+    const resetBtn = builderRoot.querySelector("[data-lb-reset]");
+
+    function loadFromHash() {
+      const hash = location.hash || "";
+      const match = hash.match(/theme=([^&]+)/);
+      if (!match) return;
+      try {
+        const parsed = JSON.parse(decodeURIComponent(match[1]));
+        if (typeof parsed.name === "string" && parsed.name.trim()) state.name = parsed.name.trim().slice(0, 32);
+        if (typeof parsed.tint === "string" && TINT_KEYS[parsed.tint]) state.tint = parsed.tint;
+        if (parsed.neutral && typeof parsed.neutral.amount === "number") {
+          state.neutral = parsed.neutral.amount === 0 ? 0 : parsed.neutral.hue >= 180 ? 2 : 1;
+        }
+        if (typeof parsed.radius === "number") {
+          const rIdx = RADII.indexOf(parsed.radius);
+          if (rIdx >= 0) state.radius = rIdx;
+        }
+        state.pill = parsed["control-radius"] === "full";
+        if (typeof parsed.smoothing === "number") {
+          const sIdx = SMOOTHS.indexOf(parsed.smoothing);
+          if (sIdx >= 0) state.smooth = sIdx;
+        }
+        state.glass = parsed.glass !== "none";
+      } catch {}
+    }
+
+    function buildThemeObject() {
+      const obj = {};
+      if (state.name.trim()) obj.name = state.name.trim();
+      if (state.tint !== "blue") obj.tint = state.tint;
+      const neut = NEUTRALS[state.neutral];
+      if (neut?.json) obj.neutral = neut.json;
+      const r = RADII[state.radius];
+      if (r !== 12) obj.radius = r;
+      if (state.pill) obj["control-radius"] = "full";
+      const s = SMOOTHS[state.smooth];
+      if (s !== 3) obj.smoothing = s;
+      if (!state.glass) obj.glass = "none";
+      return obj;
+    }
+
+    function syncBuilderControls() {
+      if (nameInput && nameInput.value !== state.name) nameInput.value = state.name;
+      if (neutralSeg) {
+        neutralSeg.dataset.value = String(state.neutral);
+        window.pennaSegmented?.set?.(neutralSeg, state.neutral);
+      }
+      if (radiusSeg) {
+        radiusSeg.dataset.value = String(state.radius);
+        window.pennaSegmented?.set?.(radiusSeg, state.radius);
+      }
+      if (controlsSeg) {
+        controlsSeg.dataset.value = state.pill ? "1" : "0";
+        window.pennaSegmented?.set?.(controlsSeg, state.pill ? 1 : 0);
+      }
+      if (smoothSeg) {
+        smoothSeg.dataset.value = String(state.smooth);
+        window.pennaSegmented?.set?.(smoothSeg, state.smooth);
+      }
+      if (glassToggle) glassToggle.setAttribute("aria-checked", String(state.glass));
+    }
+
+    function syncBuilder() {
+      const m = mode();
+      const tintKey = TINT_KEYS[state.tint] || "default";
+      const accent = ACCENTS[tintKey] || ACCENTS.default;
+      const r = RADII[state.radius];
+      const s = SMOOTHS[state.smooth];
+      const grow = GROW[s] || 1.42;
+      const neut = NEUTRALS[state.neutral] || NEUTRALS[1];
+
+      tintButtons.forEach((btn) => {
+        const key = TINT_KEYS[btn.dataset.lbTint] || "default";
+        const info = ACCENTS[key];
+        if (info) btn.style.setProperty("--overview-swatch", info[m]);
+        const active = btn.dataset.lbTint === state.tint;
+        btn.setAttribute("aria-pressed", String(active));
+        btn.closest(".docs-ov-ring")?.toggleAttribute("data-selected", active);
+      });
+
+      if (stage) {
+        stage.dataset.look = neut.look;
+        stage.style.setProperty("--penna-accent", accent[m]);
+        stage.style.setProperty("--penna-radius", `${r}px`);
+        stage.style.setProperty("--penna-window-k", String(s));
+        stage.style.setProperty("--penna-corner-grow", String(grow));
+        stage.toggleAttribute("data-lb-pill", state.pill);
+        requestAnimationFrame(() => window.pennaKit?.roundAll?.(stage));
+      }
+      if (glassWrap) glassWrap.dataset.look = state.glass ? "glass-liquid" : "glass-none";
+      if (glassNote) glassNote.textContent = state.glass ? "liquid · blur + rim" : "none · solid popover";
+      if (previewName) previewName.textContent = state.name.trim() || "Untitled";
+      if (jsonCode) jsonCode.textContent = JSON.stringify(buildThemeObject(), null, 2);
+    }
+
+    function flashLabel(btn, nextLabel, origLabel) {
+      const lbl = btn?.querySelector(".penna-label");
+      if (!lbl) return;
+      lbl.textContent = nextLabel;
+      btn.setAttribute("data-copied", "");
+      setTimeout(() => {
+        lbl.textContent = origLabel;
+        btn.removeAttribute("data-copied");
+      }, 1400);
+    }
+
+    nameInput?.addEventListener("input", () => {
+      state.name = nameInput.value;
+      syncBuilder();
+    });
+    tintButtons.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        state.tint = btn.dataset.lbTint || "blue";
+        syncBuilder();
+      });
+    });
+    neutralSeg?.addEventListener("change", (event) => {
+      state.neutral = event.detail.index;
+      syncBuilder();
+    });
+    radiusSeg?.addEventListener("change", (event) => {
+      state.radius = event.detail.index;
+      syncBuilder();
+    });
+    controlsSeg?.addEventListener("change", (event) => {
+      state.pill = event.detail.index === 1;
+      syncBuilder();
+    });
+    smoothSeg?.addEventListener("change", (event) => {
+      state.smooth = event.detail.index;
+      syncBuilder();
+    });
+    glassToggle?.addEventListener("change", (event) => {
+      state.glass = Boolean(event.detail.checked);
+      syncBuilder();
+    });
+    copyBtn?.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(JSON.stringify(buildThemeObject(), null, 2));
+        flashLabel(copyBtn, "Copied", "Copy theme.json");
+      } catch {}
+    });
+    shareBtn?.addEventListener("click", async () => {
+      const encoded = encodeURIComponent(JSON.stringify(buildThemeObject()));
+      const url = `${location.origin}${location.pathname}#theme=${encoded}`;
+      history.replaceState(null, "", `#theme=${encoded}`);
+      try {
+        await navigator.clipboard.writeText(url);
+        flashLabel(shareBtn, "Copied URL", "Copy URL");
+      } catch {}
+    });
+    resetBtn?.addEventListener("click", () => {
+      Object.assign(state, defaults);
+      if (location.hash.startsWith("#theme=")) history.replaceState(null, "", location.pathname);
+      syncBuilderControls();
+      syncBuilder();
+    });
+
+    loadFromHash();
+    syncBuilderControls();
+    syncBuilder();
+    document.addEventListener("penna-theme", syncBuilder);
+  }
+
   function settleAll() {
     requestAnimationFrame(() => {
       window.pennaKit?.roundAll(document);

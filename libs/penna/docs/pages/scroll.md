@@ -49,7 +49,8 @@ The thumb sits `space-2` in from the edge and the track's ends, painted at 28% (
 | --- | --- | --- |
 | `.overflow_y_scrollbar()`, `_x_`, `_scrollbar()` | `.penna-scroll`, `.penna-scroll-viewport` | Scrollable wrapper with bars (`ScrollableElement`) |
 | `.vertical_scrollbar(&handle)`, `.horizontal_scrollbar(&handle)` | `.penna-scrollbar` | Bar overlay over a caller-managed handle |
-| `.top_fade(&h, ground, height)`, `.bottom_fade(&h, ground, height)` | | Soft edge fade on a scrolling region |
+| `.top_fade(&h, ground, height)`, `.bottom_fade(&h, ground, height)` | `[data-fade-top]`, `[data-fade-bottom]` | Soft vertical edge fade on a scrolling region |
+| `.left_fade(&h, ground, width)`, `.right_fade(&h, ground, width)` | `[data-fade-left]`, `[data-fade-right]` | Soft horizontal edge fade on a scrolling region |
 | `Scrollbar::new(&handle)`, `::vertical(&handle)`, `::horizontal(&handle)` | `pennaScroll.mount(el)` | Standalone scrollbar overlay |
 | `Scrollbar::axis(ScrollbarAxis::Both)` | `data-axis` (`vertical`, `horizontal`, `both`) | Active axes |
 | `Scrollbar::scrollbar_show(ScrollbarShow::Hover)` | `data-show` (`scrolling`, `hover`, `always`) | Visibility mode; theme's by default |

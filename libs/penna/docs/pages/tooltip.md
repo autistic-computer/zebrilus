@@ -9,6 +9,7 @@ Names a control on hover, keyboard focus or a long press. For more than a phrase
   <div class="docs-cell"><div class="penna-tooltip" data-penna="tooltip" data-ground role="tooltip" style="margin: 0"><span data-penna-text>Notifications</span></div><span class="docs-note">Label</span></div>
   <div class="docs-cell"><div class="penna-tooltip" data-penna="tooltip" data-ground role="tooltip" style="margin: 0"><span data-penna-text>Split right</span><span class="penna-tooltip-key"><kbd class="penna-kbd" data-penna="keycap" data-size="small" data-kbd="cmd-d"></kbd></span></div><span class="docs-note">Label and key</span></div>
   <div class="docs-cell"><div class="penna-tooltip" data-penna="tooltip" data-ground role="tooltip" style="margin: 0"><span data-penna-text>Split right</span><span class="penna-tooltip-key"><kbd class="penna-kbd" data-penna="keycap" data-size="small" data-kbd="ctrl-a"></kbd><kbd class="penna-kbd" data-penna="keycap" data-size="small" data-kbd="|"></kbd></span></div><span class="docs-note">Prefix, then a key</span></div>
+  <div class="docs-cell"><div class="penna-tooltip" data-penna="tooltip" data-ground data-meta role="tooltip" style="margin: 0"><div class="penna-tooltip-head"><span data-penna-text>Sync clipboard</span><span class="penna-tooltip-key"><kbd class="penna-kbd" data-penna="keycap" data-size="small" data-kbd="cmd-shift-c"></kbd></span></div><span class="penna-tooltip-meta">Sends updates over the active QUIC link</span></div><span class="docs-note">With secondary caption</span></div>
   <div class="docs-cell"><button class="penna-button" data-penna="button.quiet" data-shape="icon" type="button" aria-label="Split right" data-tooltip="Split right" data-tooltip-key="ctrl-a |"><i data-icon="panel-right"></i></button><span class="docs-note">Hover or tab to it</span></div>
 </div>
 ```
@@ -50,6 +51,7 @@ A few words in sentence case, no period. Required on icon-only buttons (doubles 
 | Rust | HTML | Does |
 | --- | --- | --- |
 | `Tooltip::new(text)` | `data-tooltip` | Label |
+| `Tooltip::with_meta(text, meta)` / `.meta(text)` | `.penna-tooltip[data-meta]`, `.penna-tooltip-meta` | Two-row tooltip with muted secondary caption (max 260 px) |
 | `.action(&action, Option<&str>)` | `data-tooltip-key` | Keys bound to an action (overridden by `.keys()`) |
 | `.keys(strokes)`, `.tooltip_keys(strokes)` | `data-tooltip-key="ctrl-a \|"` | Explicit keystroke sequence |
 | `.tooltip(text)` on `Button` or `Switch` | `data-tooltip` | Tooltip on a control; required when icon-only |

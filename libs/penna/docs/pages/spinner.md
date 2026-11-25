@@ -49,6 +49,7 @@ In a control it takes the size of the icon it stands in for.
 ```figure uses=spinner,input
 <div class="docs-show" data-gap="wide">
   <div class="docs-cell"><button class="penna-button" data-penna="button" data-loading type="button"><span class="penna-spinner"><i data-icon="loader"></i></span><span class="penna-label" data-penna-text>Save</span></button><span class="docs-note">Busy button</span></div>
+  <div class="docs-cell"><button class="penna-button" data-penna="button" data-tone="primary" data-prominent type="button"><span class="penna-spinner-cover" data-loading><span class="penna-spinner-content"><span class="penna-label" data-penna-text>Deploy release</span></span><span class="penna-spinner-overlay"><span class="penna-spinner" role="progressbar" aria-label="Loading"><i data-icon="loader"></i></span></span></span></button><span class="docs-note">Layout-preserving cover</span></div>
   <div class="docs-cell"><div class="docs-row"><label class="penna-input" data-penna="field"><input value="Resolving host" aria-label="Host lookup" /><span class="penna-input-suffix"><span class="penna-spinner"><i data-icon="loader"></i></span></span></label></div><span class="docs-note">Checking field</span></div>
 </div>
 ```
@@ -74,4 +75,5 @@ On its own, a spinner doesn't say what is loading. Put a line beside it.
 | `.xsmall()` … `.touch_large()` | `data-size` | Size; medium by default |
 | `.with_size(px(32.))` | `--penna-icon-size` | Size off the ladder |
 | `.color(color)` | `data-color` (`muted`, `accent`, `success`, `warning`, `danger`) | Tint |
+| `.covering(loading, child)` | `.penna-spinner-cover[data-loading]` | Preserves child dimensions at zero opacity while centering the spinner |
 | `.id(id)` | `role="progressbar"`, `aria-label` | Announces it ("Loading" by default, no value) |

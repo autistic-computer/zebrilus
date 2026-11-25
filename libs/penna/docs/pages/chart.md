@@ -180,7 +180,7 @@ With no data, the rules and labels stay and the axis runs from 0 to 1.
 3. **Axis**: `gap-tight` 4 below the plot, up to 12 labels on desktop or 6 under `.touch(true)`, evenly thinned when more are given.
 4. **Legend**: shown only with two or more series, `space-8` under the labels, starting where the plot starts: an 8 swatch rounded by 2, `gap-tight` 4, then the series name in `small` in the ink.
 
-Series colors are fixed by position (`blue`, `pink`, `yellow`, `purple`) regardless of the theme tint, so neighbors stay distinct in light and dark. Series past `MAX_SERIES` 4 are ignored.
+Series colors read from the theme's eight-color perceptual OKLCH data palette (`Theme::data_palette()`, CSS `--penna-data-1`..`--penna-data-8`) regardless of the theme tint, so neighbors stay distinct in light and dark. Series past `MAX_SERIES` 4 are ignored. `ChartCursor` provides clamped keyboard stepping (`step`, `home`, `end`) across bands.
 
 ## Phone
 
@@ -218,5 +218,6 @@ Under `.touch(true)`, ticks and axis labels step up to `body`, the legend to `to
 | `Chart::new(id, kind, labels, series)` | `.penna-chart` | Bar or line chart, up to 4 series |
 | `ChartKind::Bar`, `ChartKind::Line` | `.penna-chart-bars`, `svg.penna-chart-svg` | Plot style |
 | `Series::new(name, values)` | `--penna-series-0..3`, `data-series` | One named series of `f64` |
+| `ChartCursor` (`step`, `home`, `end`) | — | Clamped keyboard index cursor across data bands |
 | `.touch(true)` | `data-touch` | `body` ticks and labels, `touch-small` legend, 6-label cap |
 | `MAX_SERIES` | 4 | Maximum series drawn |

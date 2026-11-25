@@ -212,6 +212,21 @@ impl Theme {
         self.foreground.opacity(color::divider_weight())
     }
 
+    pub fn data_palette(&self) -> [Hsla; 8] {
+        const HUES: [f32; 8] = [255.0, 340.0, 75.0, 295.0, 152.0, 205.0, 35.0, 228.0];
+        let (l, c) = if self.mode.is_dark() {
+            (0.72, 0.16)
+        } else {
+            (0.56, 0.17)
+        };
+        HUES.map(|h| color::oklch(l, c, h))
+    }
+
+    pub fn data_color(&self, index: usize) -> Hsla {
+        let palette = self.data_palette();
+        palette[index % palette.len()]
+    }
+
     pub fn border(&self) -> Hsla {
         if self.window_opacity < 1.0 {
             self.foreground.opacity(color::edge_weight())
@@ -367,7 +382,20 @@ impl From<&ThemeColor> for Theme {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, PartialOrd, Eq, Ord, Hash)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    PartialOrd,
+    Eq,
+    Ord,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+)]
+#[serde(rename_all = "kebab-case")]
 pub enum ThemeMode {
     #[default]
     Light,

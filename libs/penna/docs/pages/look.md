@@ -477,6 +477,123 @@ The look starts from `macos` on Apple platforms and `default` elsewhere. `yaru` 
 | `macos` | blue | 12 | full | 4 | liquid |
 | `yaru` | orange | 8 | 8 | 2 | none |
 
+## Theme builder
+
+Dial any combination of knobs below to preview the resulting surface tokens live and export a ready-to-import `theme.json` or shareable URL.
+
+```figure uses=badge,button,input,menu,segmented,slider,switch looks=default,neutral-pure,neutral-cool,glass-none,glass-liquid
+<div class="docs-lk-builder" data-look-builder>
+  <div class="docs-lk-builder-grid">
+    <div class="docs-lk-builder-knobs" data-penna="settings.card" data-ground>
+      <div class="docs-lk-b-row">
+        <span class="docs-ov-knob-label">Name</span>
+        <label class="penna-input docs-lk-b-name" data-penna="field" data-size="small"><input type="text" value="Studio" aria-label="Theme name" data-lb-name /></label>
+      </div>
+      <div class="docs-lk-b-row">
+        <span class="docs-ov-knob-label">Tint</span>
+        <div class="docs-ov-swatches" role="group" aria-label="Builder accent">
+          <span class="docs-ov-ring" data-selected><button class="docs-ov-swatch" type="button" aria-label="Blue" data-lb-tint="blue"></button></span>
+          <span class="docs-ov-ring"><button class="docs-ov-swatch" type="button" aria-label="Purple" data-lb-tint="purple"></button></span>
+          <span class="docs-ov-ring"><button class="docs-ov-swatch" type="button" aria-label="Pink" data-lb-tint="pink"></button></span>
+          <span class="docs-ov-ring"><button class="docs-ov-swatch" type="button" aria-label="Red" data-lb-tint="red"></button></span>
+          <span class="docs-ov-ring"><button class="docs-ov-swatch" type="button" aria-label="Orange" data-lb-tint="orange"></button></span>
+          <span class="docs-ov-ring"><button class="docs-ov-swatch" type="button" aria-label="Yellow" data-lb-tint="yellow"></button></span>
+          <span class="docs-ov-ring"><button class="docs-ov-swatch" type="button" aria-label="Green" data-lb-tint="green"></button></span>
+          <span class="docs-ov-ring"><button class="docs-ov-swatch" type="button" aria-label="Graphite" data-lb-tint="graphite"></button></span>
+        </div>
+      </div>
+      <div class="docs-lk-b-row">
+        <span class="docs-ov-knob-label">Neutral</span>
+        <div class="penna-segmented" data-penna="field" data-size="small" data-value="1" role="radiogroup" aria-label="Builder neutral" data-lb-neutral>
+          <div class="penna-segments" data-penna="button.quiet" data-state="current">
+            <span class="penna-segment-pill"></span>
+            <span class="penna-segment" role="radio" aria-checked="false"><span class="penna-label" data-penna-text>Pure</span></span>
+            <span class="penna-segment" role="radio" aria-checked="true"><span class="penna-label" data-penna-text>Warm</span></span>
+            <span class="penna-segment" role="radio" aria-checked="false"><span class="penna-label" data-penna-text>Cool</span></span>
+          </div>
+        </div>
+      </div>
+      <div class="docs-lk-b-row">
+        <span class="docs-ov-knob-label">Radius</span>
+        <div class="penna-segmented" data-penna="field" data-size="small" data-value="1" role="radiogroup" aria-label="Builder radius" data-lb-radius>
+          <div class="penna-segments" data-penna="button.quiet" data-state="current">
+            <span class="penna-segment-pill"></span>
+            <span class="penna-segment" role="radio" aria-checked="false"><span class="penna-label" data-penna-text>4</span></span>
+            <span class="penna-segment" role="radio" aria-checked="true"><span class="penna-label" data-penna-text>12</span></span>
+            <span class="penna-segment" role="radio" aria-checked="false"><span class="penna-label" data-penna-text>20</span></span>
+          </div>
+        </div>
+      </div>
+      <div class="docs-lk-b-row">
+        <span class="docs-ov-knob-label">Controls</span>
+        <div class="penna-segmented" data-penna="field" data-size="small" data-value="0" role="radiogroup" aria-label="Builder controls" data-lb-controls>
+          <div class="penna-segments" data-penna="button.quiet" data-state="current">
+            <span class="penna-segment-pill"></span>
+            <span class="penna-segment" role="radio" aria-checked="true"><span class="penna-label" data-penna-text>Rounded</span></span>
+            <span class="penna-segment" role="radio" aria-checked="false"><span class="penna-label" data-penna-text>Pill</span></span>
+          </div>
+        </div>
+      </div>
+      <div class="docs-lk-b-row">
+        <span class="docs-ov-knob-label">Smoothing</span>
+        <div class="penna-segmented" data-penna="field" data-size="small" data-value="1" role="radiogroup" aria-label="Builder smoothing" data-lb-smooth>
+          <div class="penna-segments" data-penna="button.quiet" data-state="current">
+            <span class="penna-segment-pill"></span>
+            <span class="penna-segment" role="radio" aria-checked="false"><span class="penna-label" data-penna-text>2</span></span>
+            <span class="penna-segment" role="radio" aria-checked="true"><span class="penna-label" data-penna-text>3</span></span>
+            <span class="penna-segment" role="radio" aria-checked="false"><span class="penna-label" data-penna-text>4</span></span>
+            <span class="penna-segment" role="radio" aria-checked="false"><span class="penna-label" data-penna-text>5</span></span>
+          </div>
+        </div>
+      </div>
+      <div class="docs-lk-b-row">
+        <span class="docs-ov-knob-label">Liquid glass</span>
+        <button class="penna-toggle" role="switch" data-size="small" aria-checked="true" aria-label="Builder liquid glass" type="button" data-lb-glass></button>
+      </div>
+    </div>
+
+    <div class="docs-lk-builder-out">
+      <div class="docs-lk-b-preview-scope" data-look="default" data-lb-stage>
+        <div class="docs-lk-b-stage" data-penna="panel" data-ground>
+          <div class="docs-lk-b-card" data-penna="card" data-ground>
+            <div class="docs-row">
+              <span class="penna-type" data-type="small" data-strong data-lb-preview-name>Studio</span>
+              <span class="docs-spacer"></span>
+              <span class="penna-badge" data-penna="badge" data-tone="success"><span class="badge-text">Live</span></span>
+            </div>
+            <div class="docs-row">
+              <label class="penna-input" data-penna="field" data-size="small" style="flex: 1; min-width: 0"><input value="studio.local" aria-label="Preview host" /></label>
+              <button class="penna-button" data-penna="button" data-tone="primary" data-prominent data-size="small" type="button"><span class="penna-label">Save</span></button>
+            </div>
+            <div class="docs-row">
+              <button class="penna-toggle" role="switch" data-size="small" aria-checked="true" aria-label="Preview toggle" type="button"></button>
+              <div class="penna-slider" data-size="small" data-min="0" data-max="100" data-value="72" style="flex: 1" aria-label="Preview slider">
+                <div class="penna-rail"><div class="penna-fill"></div><div class="penna-knob"></div></div>
+              </div>
+            </div>
+          </div>
+          <div class="docs-lk-b-glass-wrap" data-look="glass-liquid" data-lb-glass-wrap>
+            <div class="docs-lk-b-float" data-penna="popover" data-ground>
+              <span class="penna-type" data-type="caption" data-strong>Floating surface</span>
+              <span class="penna-type" data-type="caption" data-muted data-lb-glass-note>liquid · blur + rim</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="docs-lk-b-code-wrap">
+        <pre class="docs-lk-b-code" data-penna="card.code" data-ground><code data-lb-json></code></pre>
+        <div class="docs-lk-b-actions">
+          <button class="penna-button" data-penna="button" data-size="small" type="button" data-lb-copy><i data-icon="copy"></i><span class="penna-label" data-penna-text>Copy theme.json</span></button>
+          <button class="penna-button" data-penna="button.quiet" data-size="small" type="button" data-lb-share><i data-icon="external-link"></i><span class="penna-label" data-penna-text>Copy URL</span></button>
+          <button class="penna-button" data-penna="button.quiet" data-size="small" type="button" data-lb-reset><span class="penna-label" data-penna-text>Reset</span></button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+```
+
 ## Theme file
 
 A theme file holds only knobs. Keys it leaves out keep their defaults; keys it doesn't know are ignored. An app that accepts a file through `AppearanceChange::Import` sets every knob a person has from it.
@@ -516,3 +633,9 @@ studio.activate(None, Some(window), cx);
 | | `.activate(mode, window, cx)` | Draws the app in it |
 
 The HTML twin reads the same knobs: `cargo run --example theme_css` writes its tokens.
+
+## Live token inspection
+
+Press `F12` (or `Alt+Shift+I`, or pick **Token inspector** from `⌘K`) on any docs page to open the live Token Inspector HUD. Hovering a surface highlights its bounds and prints its `data-penna` role, enclosing ground, computed `--penna-fill`, `--penna-ink`, radius, smoothing, glass, and tone; clicking pins the surface and copies the JSON snapshot.
+
+In Rust apps, `TokenSnapshot::capture(cx)` captures the active look, density, contrast, data palette, and drawn surface roles as JSON, and `handle_inspect_line(ndjson, cx)` processes NDJSON inspection and live look-switching commands (`snapshot`, `roles`, `set-mode`, `set-density`, `set-motion`, `set-contrast`). Secondary window chrome can dim when unfocused with `.dim_when_inactive(window)` (`INACTIVE_WINDOW_OPACITY`).

@@ -54,3 +54,27 @@
 .penna-spinner[data-color="danger"] {
   color: var(--penna-danger);
 }
+
+.penna-spinner-cover {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.penna-spinner-cover[data-loading] > .penna-spinner-content {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.penna-spinner-cover > .penna-spinner-overlay {
+  display: none;
+}
+
+.penna-spinner-cover[data-loading] > .penna-spinner-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}

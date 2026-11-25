@@ -170,6 +170,7 @@ palette_vim_badge(PaletteVimMode::Normal, Some('g'), cx)
 | `.max_width(px)`, `.input_last()`, `.over_input(el)` | `[data-input-last]` | Width override, bottom input order, overlay above input |
 | `.usage(text)`, `.reserve_usage()` | `.penna-palette-usage` | Mono usage line or fixed placeholder room |
 | `.rows(el)`, `.hints(hints)`, `.keys(PaletteKeys)` | `.penna-palette-rows`, `.penna-palette-footer` | Result list and footer key strip |
+| `.actions(actions)` / `PaletteAction::new(label)` | `.penna-palette-footer` | Clickable footer actions (`.key(...)`, `.destructive()`, `.on_click(...)`) |
 | `.footer_leading(el)` | `.penna-palette-footer-leading` | Leading footer slot (e.g. vim badge) |
 | `PaletteKeys::new(verbs, verb, tabs)` | `.penna-palette-hint`, `.penna-palette-words` | Fixed 4-slot key strip (`.take`, `.copy`, `.inside`, `.complete`, `.back`) |
 | `palette_input(&state, pills, cx)` | `.penna-palette-input`, `.penna-palette-pills` | Input field led by `PalettePill` badges |

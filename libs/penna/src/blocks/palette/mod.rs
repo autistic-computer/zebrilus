@@ -646,26 +646,27 @@ pub fn palette_empty(label: impl Into<SharedString>, cx: &App) -> Div {
         .child(label.into())
 }
 
+fn palette_key_glyphs(keys: &str, cx: &App) -> Div {
+    h_flex()
+        .gap(px(3.0))
+        .text_color(cx.theme().foreground)
+        .children(
+            keys.split([' ', '/'])
+                .filter(|key| !key.is_empty())
+                .map(|key| match Keystroke::parse(key) {
+                    Ok(stroke) => KeyGlyphs::new(stroke).into_any_element(),
+                    Err(_) => key.to_owned().into_any_element(),
+                }),
+        )
+}
+
 pub fn palette_hint(hint: PaletteHint, cx: &App) -> impl IntoElement {
     div()
         .flex()
         .items_center()
         .gap(px(5.0))
         .whitespace_nowrap()
-        .child(
-            h_flex()
-                .gap(px(3.0))
-                .text_color(cx.theme().foreground)
-                .children(
-                    hint.key
-                        .split([' ', '/'])
-                        .filter(|key| !key.is_empty())
-                        .map(|key| match Keystroke::parse(key) {
-                            Ok(stroke) => KeyGlyphs::new(stroke).into_any_element(),
-                            Err(_) => key.to_owned().into_any_element(),
-                        }),
-                ),
-        )
+        .child(palette_key_glyphs(hint.key, cx))
         .child(hint.label)
 }
 
@@ -685,6 +686,45 @@ pub fn palette_key_hint(
         .child(label.into())
 }
 
+type ActionClick = std::rc::Rc<dyn Fn(&mut Window, &mut App)>;
+
+pub struct PaletteAction {
+    pub label: SharedString,
+    pub key: Option<&'static str>,
+    pub destructive: bool,
+    pub on_click: Option<ActionClick>,
+}
+
+impl PaletteAction {
+    #[must_use]
+    pub fn new(label: impl Into<SharedString>) -> Self {
+        Self {
+            label: label.into(),
+            key: None,
+            destructive: false,
+            on_click: None,
+        }
+    }
+
+    #[must_use]
+    pub const fn key(mut self, key: &'static str) -> Self {
+        self.key = Some(key);
+        self
+    }
+
+    #[must_use]
+    pub const fn destructive(mut self) -> Self {
+        self.destructive = true;
+        self
+    }
+
+    #[must_use]
+    pub fn on_click(mut self, handler: impl Fn(&mut Window, &mut App) + 'static) -> Self {
+        self.on_click = Some(std::rc::Rc::new(handler));
+        self
+    }
+}
+
 #[derive(IntoElement)]
 pub struct PaletteSurface {
     input: AnyElement,
@@ -692,6 +732,7 @@ pub struct PaletteSurface {
     reserve_usage: bool,
     rows: Option<AnyElement>,
     hints: Vec<PaletteHint>,
+    actions: Vec<PaletteAction>,
     keys: Option<PaletteKeys>,
     revision: u64,
     input_last: bool,
@@ -708,6 +749,7 @@ impl PaletteSurface {
             reserve_usage: false,
             rows: None,
             hints: Vec::new(),
+            actions: Vec::new(),
             keys: None,
             revision,
             input_last: false,
@@ -715,6 +757,12 @@ impl PaletteSurface {
             footer_leading: None,
             max_width: px(PALETTE_MAX_WIDTH),
         }
+    }
+
+    #[must_use]
+    pub fn actions(mut self, actions: impl IntoIterator<Item = PaletteAction>) -> Self {
+        self.actions = actions.into_iter().collect();
+        self
     }
 
     #[must_use]
@@ -839,7 +887,31 @@ impl RenderOnce for PaletteSurface {
                     }))
                     .children(self.keys)
                     .when(self.keys.is_none(), |footer| {
-                        footer.children(self.hints.into_iter().map(|hint| palette_hint(hint, cx)))
+                        let fg = cx.theme().foreground;
+                        let danger = cx.theme().danger;
+                        let muted = cx.theme().foreground.muted();
+                        footer
+                            .children(self.hints.into_iter().map(|hint| palette_hint(hint, cx)))
+                            .children(self.actions.into_iter().enumerate().map(
+                                |(index, action)| {
+                                    let ink = if action.destructive { danger } else { fg };
+                                    h_flex()
+                                        .id(("palette-action", index))
+                                        .gap(px(5.0))
+                                        .items_center()
+                                        .cursor_pointer()
+                                        .type_style(TextStyle::Micro, cx)
+                                        .text_color(if action.destructive { danger } else { muted })
+                                        .hover(move |s| s.text_color(ink))
+                                        .when_some(action.on_click, |el, handler| {
+                                            el.on_click(move |_, window, cx| handler(window, cx))
+                                        })
+                                        .when_some(action.key, |el, key| {
+                                            el.child(palette_key_glyphs(key, cx))
+                                        })
+                                        .child(action.label)
+                                },
+                            ))
                     }),
             );
         crate::foundation::surface_enter(

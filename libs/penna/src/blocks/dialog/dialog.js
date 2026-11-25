@@ -25,20 +25,24 @@
   }
 
   function close(layer) {
+    if (!layer || layer.hasAttribute("data-still")) return;
     const stage = stages.get(layer);
+    if (!stage) return;
     layer.remove();
     const open = restack(stage);
-    open[open.length - 1]?.querySelector(".penna-dialog").focus({ preventScroll: true });
+    open[open.length - 1]?.querySelector(".penna-dialog")?.focus({ preventScroll: true });
     stage.dispatchEvent(new CustomEvent("penna-dialog-close", { bubbles: true, detail: layer }));
   }
 
   function open(layer) {
+    if (!layer) return;
     const stage = stages.get(layer);
+    if (!stage) return;
     stage.append(layer);
     restack(stage);
     window.pennaKit?.roundAll?.();
     window.pennaKit?.ceilText?.(layer);
-    layer.querySelector(".penna-dialog").focus({ preventScroll: true });
+    layer.querySelector(".penna-dialog")?.focus({ preventScroll: true });
   }
 
   function trap(dialog, event) {
@@ -52,7 +56,9 @@
 
   function setup(layer) {
     const dialog = layer.querySelector(".penna-dialog");
+    if (!dialog) return;
     stages.set(layer, layer.closest(".penna-dialog-stage"));
+    if (layer.hasAttribute("data-still")) return;
     dialog.tabIndex = -1;
     layer.addEventListener("mousedown", (event) => {
       if (event.button !== 0 || dialog.contains(event.target) || !layer.hasAttribute("data-top")) return;
@@ -77,10 +83,22 @@
     });
   }
 
+  const templates = new Map();
+
   function init(root = document) {
-    root.querySelectorAll(".penna-dialog-layer").forEach(setup);
+    root.querySelectorAll(".penna-dialog-layer").forEach((layer) => {
+      if (layer.id) templates.set(layer.id, layer);
+      setup(layer);
+    });
     root.querySelectorAll(".penna-dialog-stage").forEach(restack);
   }
+
+  document.addEventListener("click", (event) => {
+    const trigger = event.target.closest("[data-dialog-open]");
+    if (!trigger) return;
+    const layer = templates.get(trigger.dataset.dialogOpen);
+    if (layer && !layer.isConnected) open(layer);
+  });
 
   init();
   window.pennaDialog = { open, close, top, restack };

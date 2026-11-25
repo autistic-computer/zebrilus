@@ -8,13 +8,14 @@ use ala::{
 };
 
 use crate::{
-    ActiveTheme as _, Sizable as _, StyledExt as _, Surface, SurfaceRole, TextStyle,
-    components::kbd::Kbd, h_flex,
+    ActiveTheme as _, Colorize as _, Sizable as _, StyledExt as _, Surface, SurfaceRole, TextStyle,
+    components::kbd::Kbd, h_flex, v_flex,
 };
 
 pub struct Tooltip {
     style: StyleRefinement,
     text: SharedString,
+    meta: Option<SharedString>,
     action: Option<(Box<dyn Action>, Option<SharedString>)>,
     keys: Vec<Keystroke>,
 }
@@ -25,9 +26,21 @@ impl Tooltip {
         Self {
             style: StyleRefinement::default(),
             text: text.into(),
+            meta: None,
             action: None,
             keys: Vec::new(),
         }
+    }
+
+    #[must_use]
+    pub fn with_meta(text: impl Into<SharedString>, meta: impl Into<SharedString>) -> Self {
+        Self::new(text).meta(meta)
+    }
+
+    #[must_use]
+    pub fn meta(mut self, meta: impl Into<SharedString>) -> Self {
+        self.meta = Some(meta.into());
+        self
     }
 
     #[must_use]
@@ -70,27 +83,52 @@ impl Render for Tooltip {
         };
         let surface = Surface::new(SurfaceRole::TOOLTIP);
         let ground = cx.theme().ground_of(surface);
+        let muted = cx.theme().foreground.muted();
+        let header = h_flex()
+            .gap(Space::S12)
+            .justify_between()
+            .items_center()
+            .child(div().child(self.text.clone()))
+            .when(!keys.is_empty(), |this| {
+                this.child(
+                    h_flex()
+                        .flex_shrink_0()
+                        .gap(Space::GAP_TIGHT)
+                        .children(keys.into_iter().map(|key| Kbd::new(key).small().on(ground))),
+                )
+            });
+
+        if let Some(meta) = self.meta.clone() {
+            return div().child(
+                v_flex()
+                    .m(Space::S12)
+                    .px(Space::S10)
+                    .py(Space::S6)
+                    .gap(Space::S2)
+                    .max_w(ala::px(260.0))
+                    .font_family(cx.theme().font_family.clone())
+                    .type_style(TextStyle::Small, cx)
+                    .surface(surface, cx)
+                    .refine_style(&self.style)
+                    .child(header)
+                    .child(
+                        div()
+                            .type_style(TextStyle::Caption, cx)
+                            .text_color(muted)
+                            .child(meta),
+                    ),
+            );
+        }
 
         div().child(
-            h_flex()
+            header
                 .m(Space::S12)
                 .px(Space::S10)
                 .py(Space::S4)
-                .gap(Space::S12)
-                .justify_between()
                 .font_family(cx.theme().font_family.clone())
                 .type_style(TextStyle::Small, cx)
                 .surface(surface, cx)
-                .refine_style(&self.style)
-                .child(div().child(self.text.clone()))
-                .when(!keys.is_empty(), |this| {
-                    this.child(
-                        h_flex()
-                            .flex_shrink_0()
-                            .gap(Space::GAP_TIGHT)
-                            .children(keys.into_iter().map(|key| Kbd::new(key).small().on(ground))),
-                    )
-                }),
+                .refine_style(&self.style),
         )
     }
 }

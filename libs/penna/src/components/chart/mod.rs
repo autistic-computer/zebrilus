@@ -8,13 +8,11 @@ use ala::{
 
 use crate::{
     ActiveTheme as _, Emphasis, Label, PaintState, Space, TextStyle, Tone,
-    components::tooltip::Tooltip, foundation::interface_theme::accent_color, h_flex, rems_from_px,
-    v_flex,
+    components::tooltip::Tooltip, h_flex, rems_from_px, v_flex,
 };
 
 pub const MAX_SERIES: usize = 4;
 
-const SERIES_COLORS: [&str; MAX_SERIES] = ["blue", "pink", "yellow", "purple"];
 const PLOT_HEIGHT: f32 = 160.0;
 const GUTTER: f32 = 40.0;
 const BAR_MAX: f32 = 24.0;
@@ -160,9 +158,39 @@ fn tabular() -> FontFeatures {
     FontFeatures(Arc::new(vec![("tnum".into(), 1)]))
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ChartCursor {
+    pub index: Option<usize>,
+}
+
+impl ChartCursor {
+    pub fn step(&mut self, delta: isize, len: usize) -> Option<usize> {
+        if len == 0 {
+            self.index = None;
+            return None;
+        }
+        let next = match self.index {
+            Some(at) => (at as isize + delta).clamp(0, len.saturating_sub(1) as isize) as usize,
+            None if delta < 0 => len.saturating_sub(1),
+            None => 0,
+        };
+        self.index = Some(next);
+        self.index
+    }
+
+    pub fn home(&mut self, len: usize) -> Option<usize> {
+        self.index = (len > 0).then_some(0);
+        self.index
+    }
+
+    pub fn end(&mut self, len: usize) -> Option<usize> {
+        self.index = len.checked_sub(1);
+        self.index
+    }
+}
+
 fn series_color(index: usize, cx: &App) -> Hsla {
-    accent_color(SERIES_COLORS[index % MAX_SERIES], cx.theme().mode)
-        .unwrap_or_else(|| cx.theme().accent)
+    cx.theme().data_color(index)
 }
 
 fn told(label: &SharedString, series: &[Series], index: usize) -> SharedString {
@@ -438,5 +466,33 @@ mod tests {
             .map(tick)
             .collect();
         assert_eq!(labels, ["0", "500", "1k", "1.5k", "2k"]);
+    }
+
+    #[test]
+    fn chart_cursor_clamps_navigation_and_theme_provides_eight_distinct_series_colors() {
+        let mut cursor = ChartCursor::default();
+        assert_eq!(cursor.index, None);
+        assert_eq!(cursor.step(1, 4), Some(0));
+        assert_eq!(cursor.step(2, 4), Some(2));
+        assert_eq!(cursor.step(10, 4), Some(3));
+        assert_eq!(cursor.step(-1, 4), Some(2));
+        assert_eq!(cursor.home(4), Some(0));
+        assert_eq!(cursor.end(4), Some(3));
+        assert_eq!(cursor.step(1, 0), None);
+
+        let mut dark_theme = crate::Theme::default();
+        dark_theme.mode = crate::ThemeMode::Dark;
+        let dark = dark_theme.data_palette();
+        let mut light_theme = crate::Theme::default();
+        light_theme.mode = crate::ThemeMode::Light;
+        let light = light_theme.data_palette();
+        assert_eq!(dark.len(), 8);
+        assert_eq!(light.len(), 8);
+        for i in 0..8 {
+            for j in (i + 1)..8 {
+                assert_ne!(crate::to_hex(dark[i]), crate::to_hex(dark[j]));
+                assert_ne!(crate::to_hex(light[i]), crate::to_hex(light[j]));
+            }
+        }
     }
 }

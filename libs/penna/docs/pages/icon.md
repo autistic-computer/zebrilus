@@ -4,11 +4,41 @@ A glyph from the kit's set beside a label, or alone on an icon button in a bar w
 
 ## Set
 
-109 glyphs in 8 groups (chrome, actions, things, navigation, keys, status, people and agents, theme) on a 24 grid with a 1.5 stroke and no fill. Corners follow half the theme radius and redraw when the theme changes.
+111 glyphs in 8 groups on a 24 grid with a 1.5 stroke and no fill. Corners follow half the theme radius and redraw when the theme changes. Search by name, variant, or note, preview sizes live, and click any glyph to copy its Rust or HTML snippet.
 
-```figure uses=icon
-<div class="docs-show" data-gap="wide">
-  <i data-icon="square-terminal" data-size="6"></i><i data-icon="git-branch" data-size="6"></i><i data-icon="folder" data-size="6"></i><i data-icon="server" data-size="6"></i><i data-icon="settings" data-size="6"></i><i data-icon="bell" data-size="6"></i><i data-icon="search" data-size="6"></i><i data-icon="panel-left" data-size="6"></i><i data-icon="sliders" data-size="6"></i><i data-icon="camera" data-size="6"></i><i data-icon="qr-code" data-size="6"></i><i data-icon="laptop" data-size="6"></i>
+```figure uses=chip,icon,input,segmented
+<div class="docs-ic" data-docs-icons>
+  <div class="docs-ic-bar">
+    <label class="penna-input docs-ic-search" data-penna="field" data-size="small"><i data-icon="search"></i><input type="search" placeholder="Search 109 icons…" aria-label="Search icons" data-ic-search /></label>
+    <div class="docs-ic-controls">
+      <div class="penna-segmented" data-penna="field" data-size="small" data-value="1" role="radiogroup" aria-label="Icon size" data-ic-size>
+        <div class="penna-segments" data-penna="button.quiet" data-state="current">
+          <span class="penna-segment-pill"></span>
+          <span class="penna-segment" role="radio" aria-checked="false"><span class="penna-label" data-penna-text>14</span></span>
+          <span class="penna-segment" role="radio" aria-checked="true"><span class="penna-label" data-penna-text>16</span></span>
+          <span class="penna-segment" role="radio" aria-checked="false"><span class="penna-label" data-penna-text>20</span></span>
+          <span class="penna-segment" role="radio" aria-checked="false"><span class="penna-label" data-penna-text>24</span></span>
+        </div>
+      </div>
+      <div class="penna-segmented" data-penna="field" data-size="small" data-value="0" role="radiogroup" aria-label="Copy format" data-ic-copy-fmt>
+        <div class="penna-segments" data-penna="button.quiet" data-state="current">
+          <span class="penna-segment-pill"></span>
+          <span class="penna-segment" role="radio" aria-checked="true"><span class="penna-label" data-penna-text>Rust</span></span>
+          <span class="penna-segment" role="radio" aria-checked="false"><span class="penna-label" data-penna-text>HTML</span></span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="docs-ic-groups" role="group" aria-label="Icon groups" data-ic-groups></div>
+  <div class="docs-ic-detail" data-penna="card" data-ground data-ic-detail>
+    <span class="docs-ic-detail-icon"><i data-icon="bell" data-size="large" data-ic-preview></i></span>
+    <div class="docs-ic-detail-copy">
+      <span class="docs-ic-detail-code" data-ic-code>IconName::Bell</span>
+      <span class="docs-ic-detail-note" data-ic-note>Click any tile below to copy to clipboard.</span>
+    </div>
+    <span class="docs-lk-mono" data-ic-count>109 of 109</span>
+  </div>
+  <div class="docs-ic-grid" data-ic-grid></div>
 </div>
 ```
 

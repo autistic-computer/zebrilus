@@ -15,6 +15,37 @@ use crate::{
 
 type ClickHandler = Rc<dyn Fn(&bool, &mut Window, &mut App)>;
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum CheckState {
+    #[default]
+    Unchecked,
+    Checked,
+    Mixed,
+}
+
+impl CheckState {
+    #[must_use]
+    pub const fn from_counts(checked: usize, total: usize) -> Self {
+        if total == 0 || checked == 0 {
+            Self::Unchecked
+        } else if checked >= total {
+            Self::Checked
+        } else {
+            Self::Mixed
+        }
+    }
+
+    #[must_use]
+    pub const fn is_checked(self) -> bool {
+        matches!(self, Self::Checked)
+    }
+
+    #[must_use]
+    pub const fn is_mixed(self) -> bool {
+        matches!(self, Self::Mixed)
+    }
+}
+
 #[derive(IntoElement)]
 pub struct Checkbox {
     id: ElementId,
@@ -57,6 +88,13 @@ impl Checkbox {
     #[must_use]
     pub fn indeterminate(mut self, mixed: bool) -> Self {
         self.mixed = mixed;
+        self
+    }
+
+    #[must_use]
+    pub const fn state(mut self, state: CheckState) -> Self {
+        self.checked = state.is_checked();
+        self.mixed = state.is_mixed();
         self
     }
 
@@ -139,5 +177,22 @@ impl RenderOnce for Checkbox {
                         )
                     })
             })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CheckState;
+
+    #[test]
+    fn check_state_derives_tri_state_from_selection_counts() {
+        assert_eq!(CheckState::from_counts(0, 0), CheckState::Unchecked);
+        assert_eq!(CheckState::from_counts(0, 5), CheckState::Unchecked);
+        assert_eq!(CheckState::from_counts(2, 5), CheckState::Mixed);
+        assert_eq!(CheckState::from_counts(5, 5), CheckState::Checked);
+        assert_eq!(CheckState::from_counts(7, 5), CheckState::Checked);
+        assert!(CheckState::Checked.is_checked());
+        assert!(CheckState::Mixed.is_mixed());
+        assert!(!CheckState::Mixed.is_checked());
     }
 }

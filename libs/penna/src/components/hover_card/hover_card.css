@@ -1,0 +1,36 @@
+.penna-hover-card {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.penna-hover-card-panel[data-penna="popover"] {
+  position: absolute;
+  top: calc(100% + var(--penna-space-6));
+  left: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: var(--penna-space-6);
+  width: min(280px, calc(100vw - 32px));
+  padding: var(--penna-inset-card);
+  border: 0;
+  box-shadow: var(--penna-rim), inset 0 0 0 var(--penna-bw) var(--penna-edge), var(--penna-shadow);
+  opacity: 0;
+  transform: translateY(4px);
+  pointer-events: none;
+  transition: opacity 140ms cubic-bezier(0.22, 1, 0.36, 1), transform 140ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.penna-hover-card[data-open] > .penna-hover-card-panel[data-penna="popover"] {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .penna-hover-card-panel[data-penna="popover"] {
+    transition: none;
+    transform: none;
+  }
+}
