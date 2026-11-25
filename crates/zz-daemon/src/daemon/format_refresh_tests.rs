@@ -766,6 +766,7 @@ fn default_key_listing_routes_aliases_and_keeps_hook_facts_and_attachment_fresh(
             .shared
             .inner
             .lock()
+            .history
             .message_log
             .iter()
             .any(|message| message.text.contains("route-default"))

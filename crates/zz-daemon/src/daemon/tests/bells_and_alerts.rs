@@ -256,10 +256,10 @@ fn alert_messages_fan_out_with_owned_lifecycle_and_bounded_log() {
                 .client(second_client)
                 .is_some_and(|c| c.message_ignore_keys)
         );
-        inner.message_log.clear();
+        inner.history.message_log.clear();
         push_server_message(&mut inner, "evicted".to_owned());
     }
-    let message_number = shared.inner.lock().next_message_number;
+    let message_number = shared.inner.lock().history.next_message_number;
     take_reliable_messages(&first_mailbox);
     take_reliable_messages(&second_mailbox);
     take_reliable_messages(&control_mailbox);
@@ -305,9 +305,10 @@ fn alert_messages_fan_out_with_owned_lifecycle_and_bounded_log() {
                 .client(second_client)
                 .is_some_and(|c| c.message_ignore_keys)
         );
-        assert_eq!(inner.next_message_number, message_number + 2);
+        assert_eq!(inner.history.next_message_number, message_number + 2);
         assert_eq!(
             inner
+                .history
                 .message_log
                 .iter()
                 .map(|message| message.text.as_str())
@@ -526,7 +527,7 @@ fn bell_activity_and_silence_messages_share_the_client_lifecycle() {
             )
             .expect("configure alert producer");
     }
-    shared.inner.lock().message_log.clear();
+    shared.inner.lock().history.message_log.clear();
     take_reliable_messages(&mailbox);
 
     shared.raise_pane_bell(second);
@@ -579,6 +580,7 @@ fn bell_activity_and_silence_messages_share_the_client_lifecycle() {
         shared
             .inner
             .lock()
+            .history
             .message_log
             .iter()
             .map(|message| message.text.clone())

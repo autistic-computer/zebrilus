@@ -1292,7 +1292,7 @@ fn client_focus_obeys_writable_command_prompt_prequeue() {
                 .expect("numeric prompt pane")
                 .bell
         );
-        assert!(inner.command_history.is_empty());
+        assert!(inner.history.command_history.is_empty());
     }
     open_prompt(
         CommandPromptMode::Numeric,
@@ -1315,7 +1315,7 @@ fn client_focus_obeys_writable_command_prompt_prequeue() {
     {
         let inner = shared.inner.lock();
         assert!(!inner.engine.focus_events());
-        assert!(inner.command_history.is_empty());
+        assert!(inner.history.command_history.is_empty());
     }
     let messages = take_reliable_messages(&mailbox);
     assert!(messages.iter().any(|message| matches!(

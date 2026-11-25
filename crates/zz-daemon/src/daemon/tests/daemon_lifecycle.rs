@@ -1176,7 +1176,7 @@ fn interactive_connection_fires_attach_and_detach_event_hooks() {
             )
             .expect("client event hook");
     }
-    shared.inner.lock().message_log.clear();
+    shared.inner.lock().history.message_log.clear();
 
     let (mut client_stream, server_stream) =
         std::os::unix::net::UnixStream::pair().expect("create paired stream");
@@ -1222,7 +1222,7 @@ fn interactive_connection_fires_attach_and_detach_event_hooks() {
         }
     }
     let deadline = Instant::now() + Duration::from_secs(5);
-    while shared.inner.lock().message_log.len() < 2 {
+    while shared.inner.lock().history.message_log.len() < 2 {
         assert!(Instant::now() < deadline, "attach hooks did not fire");
         thread::sleep(Duration::from_millis(5));
     }
@@ -1230,6 +1230,7 @@ fn interactive_connection_fires_attach_and_detach_event_hooks() {
         shared
             .inner
             .lock()
+            .history
             .message_log
             .iter()
             .map(|message| message.text.as_str())
@@ -1244,6 +1245,7 @@ fn interactive_connection_fires_attach_and_detach_event_hooks() {
         if shared
             .inner
             .lock()
+            .history
             .message_log
             .back()
             .is_some_and(|message| message.text == "detached=hook-client")

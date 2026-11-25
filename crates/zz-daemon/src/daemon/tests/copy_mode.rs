@@ -1362,7 +1362,7 @@ fn copy_mode_scroll_exit_reconciles_the_client_copy_session() {
             matches!(mode, TerminalMode::Copy { .. })
         });
         wait_for_observed_copy_session(&shared, client);
-        shared.inner.lock().message_log.clear();
+        shared.inner.lock().history.message_log.clear();
         let generation = terminal
             .latest_viewport_for(view)
             .expect("copy viewport")
@@ -1392,6 +1392,7 @@ fn copy_mode_scroll_exit_reconciles_the_client_copy_session() {
                 if shared
                     .inner
                     .lock()
+                    .history
                     .message_log
                     .iter()
                     .any(|message| message.text == "pane-mode-changed")
@@ -1424,7 +1425,7 @@ fn copy_mode_scroll_exit_reconciles_the_client_copy_session() {
                     .and_then(KeyEngine::active_table),
                 Some("copy-mode")
             );
-            assert!(inner.message_log.is_empty());
+            assert!(inner.history.message_log.is_empty());
         }
     }
 }

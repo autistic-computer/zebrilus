@@ -443,10 +443,10 @@ fn prompt_history_loads_on_first_use_and_keeps_an_early_entry() {
         )
         .expect("history-file");
     shared.initialize(false).expect("startup");
-    assert!(shared.inner.lock().command_history.is_empty());
+    assert!(shared.inner.lock().history.command_history.is_empty());
     shared.record_prompt_history(CommandPromptType::Command, "early");
     assert_eq!(
-        shared.inner.lock().command_history,
+        shared.inner.lock().history.command_history,
         ["from-file".to_owned(), "early".to_owned()]
     );
     assert_eq!(

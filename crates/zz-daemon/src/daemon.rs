@@ -550,8 +550,8 @@ fn command_log_line(command: &CommandInvocation) -> String {
 }
 
 fn next_timed_message_id(inner: &mut ServerState) -> u64 {
-    inner.next_timed_message_id = inner.next_timed_message_id.wrapping_add(1);
-    inner.next_timed_message_id
+    inner.history.next_timed_message_id = inner.history.next_timed_message_id.wrapping_add(1);
+    inner.history.next_timed_message_id
 }
 
 #[derive(Clone, Copy)]
@@ -930,16 +930,16 @@ fn client_terminal_publication_frozen(inner: &ServerState, client: ClientId) -> 
 }
 
 fn push_server_message(inner: &mut ServerState, text: String) -> u64 {
-    let number = inner.next_message_number;
-    inner.next_message_number = inner.next_message_number.wrapping_add(1);
-    inner.message_log.push_back(ServerMessage {
+    let number = inner.history.next_message_number;
+    inner.history.next_message_number = inner.history.next_message_number.wrapping_add(1);
+    inner.history.message_log.push_back(ServerMessage {
         number,
         time: SystemTime::now(),
         text,
     });
     let limit = inner.engine.message_limit();
-    while inner.message_log.len() > limit {
-        inner.message_log.pop_front();
+    while inner.history.message_log.len() > limit {
+        inner.history.message_log.pop_front();
     }
     number
 }
@@ -19018,6 +19018,7 @@ impl Shared {
         inner.engine.set_format_now(unix_timestamp());
         let context = server_format_context(&inner.engine, &inner.config_files, None, None, None);
         let output = inner
+            .history
             .message_log
             .iter()
             .rev()
@@ -19070,14 +19071,22 @@ impl Shared {
         let mut output = String::new();
         match prompt_type {
             Some(CommandPromptType::Command) => {
-                append_prompt_history_output(&mut output, "command", &inner.command_history);
+                append_prompt_history_output(
+                    &mut output,
+                    "command",
+                    &inner.history.command_history,
+                );
             }
             Some(CommandPromptType::Search) => {
-                append_prompt_history_output(&mut output, "search", &inner.search_history);
+                append_prompt_history_output(&mut output, "search", &inner.history.search_history);
             }
             None => {
-                append_prompt_history_output(&mut output, "command", &inner.command_history);
-                append_prompt_history_output(&mut output, "search", &inner.search_history);
+                append_prompt_history_output(
+                    &mut output,
+                    "command",
+                    &inner.history.command_history,
+                );
+                append_prompt_history_output(&mut output, "search", &inner.history.search_history);
             }
         }
         Ok(Execution {
@@ -23711,8 +23720,8 @@ impl Shared {
                     match input {
                         PaneModeInput::Key(key) => {
                             let history = zz_mux::PromptHistories {
-                                command: &inner.command_history,
-                                search: &inner.search_history,
+                                command: &inner.history.command_history,
+                                search: &inner.history.search_history,
                             };
                             inner
                                 .engine
@@ -26470,8 +26479,8 @@ impl Shared {
             let mut inner = self.inner.lock();
             let limit = inner.engine.prompt_history_limit();
             let history = match prompt_type {
-                CommandPromptType::Command => &mut inner.command_history,
-                CommandPromptType::Search => &mut inner.search_history,
+                CommandPromptType::Command => &mut inner.history.command_history,
+                CommandPromptType::Search => &mut inner.history.search_history,
             };
             add_command_prompt_history(history, input, limit)
         };
@@ -26496,11 +26505,11 @@ impl Shared {
         {
             let mut inner = self.inner.lock();
             match prompt_type {
-                Some(CommandPromptType::Command) => inner.command_history.clear(),
-                Some(CommandPromptType::Search) => inner.search_history.clear(),
+                Some(CommandPromptType::Command) => inner.history.command_history.clear(),
+                Some(CommandPromptType::Search) => inner.history.search_history.clear(),
                 None => {
-                    inner.command_history.clear();
-                    inner.search_history.clear();
+                    inner.history.command_history.clear();
+                    inner.history.search_history.clear();
                 }
             }
         }
@@ -36871,11 +36880,7 @@ struct ServerState {
     panes_mode_frames: BTreeMap<PaneId, PanesModeFrames>,
     silence_deadlines: BTreeMap<WindowId, SilenceDeadline>,
     next_silence_token: u64,
-    command_history: Vec<String>,
-    search_history: Vec<String>,
-    message_log: VecDeque<ServerMessage>,
-    next_message_number: u64,
-    next_timed_message_id: u64,
+    history: History,
     paste_buffers: Vec<PasteBuffer>,
     editors: BTreeMap<PaneId, EditorSession>,
     automatic_paste_buffer_limit: AutomaticPasteBufferLimit,
@@ -36900,6 +36905,15 @@ struct ServerState {
     border_presentations_cache: Mutex<Option<CachedBorderPresentations>>,
     status_parameters_cache: Mutex<Option<CachedStatusParameters>>,
     status_preparation_cache: Mutex<Option<CachedStatusPreparation>>,
+}
+
+#[derive(Default)]
+struct History {
+    command_history: Vec<String>,
+    search_history: Vec<String>,
+    message_log: VecDeque<ServerMessage>,
+    next_message_number: u64,
+    next_timed_message_id: u64,
 }
 
 #[derive(Default)]
@@ -37227,7 +37241,7 @@ impl DiagnosticSample {
                 .filter_map(|(id, client)| client.display_panes.as_ref().map(|_| id))
                 .copied()
                 .collect(),
-            command_history: inner.command_history.clone(),
+            command_history: inner.history.command_history.clone(),
             paste_buffers: inner.paste_buffers.clone(),
             active_copy_pipes: inner.active_copy_pipes,
         }
@@ -40339,8 +40353,8 @@ fn append_prompt_history_output(output: &mut String, prompt_type: &str, history:
 
 fn prompt_history(inner: &ServerState, prompt_type: CommandPromptType) -> &[String] {
     match prompt_type {
-        CommandPromptType::Command => &inner.command_history,
-        CommandPromptType::Search => &inner.search_history,
+        CommandPromptType::Command => &inner.history.command_history,
+        CommandPromptType::Search => &inner.history.search_history,
     }
 }
 

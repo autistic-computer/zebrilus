@@ -148,7 +148,7 @@ fn customize_errors_are_status_messages_that_fire_no_display_hooks_and_answers_a
         },
     );
     assert_eq!(
-        shared.inner.lock().command_history,
+        shared.inner.lock().history.command_history,
         ["C-a nosuchcommand".to_owned()]
     );
     let shown = take_reliable_messages(&mailbox)

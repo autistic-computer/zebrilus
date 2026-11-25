@@ -189,6 +189,7 @@ fn client_event_log(shared: &Shared) -> Vec<String> {
     shared
         .inner
         .lock()
+        .history
         .message_log
         .iter()
         .map(|message| message.text.clone())

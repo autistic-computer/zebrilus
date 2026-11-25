@@ -21,6 +21,7 @@ fn messages(shared: &Shared) -> Vec<String> {
     shared
         .inner
         .lock()
+        .history
         .message_log
         .iter()
         .map(|message| message.text.clone())
@@ -62,7 +63,7 @@ fn read_only_commands_still_fire_their_after_hooks() {
             &["set-hook", "-g", &hook, "display-message 'fired #{hook}'"],
         )
         .expect("set-hook");
-        shared.inner.lock().message_log.clear();
+        shared.inner.lock().history.message_log.clear();
         run(&shared, &mut context, command).expect("read-only command");
         assert_eq!(messages(&shared), [format!("fired {hook}")], "{command:?}");
         run(&shared, &mut context, &["set-hook", "-gu", &hook]).expect("unset hook");
@@ -84,7 +85,7 @@ fn swap_window_fires_the_after_swap_window_hook_the_pin_added() {
         ],
     )
     .expect("set-hook accepts the pinned name");
-    shared.inner.lock().message_log.clear();
+    shared.inner.lock().history.message_log.clear();
     run(&shared, &mut context, &["swap-window", "-t", ":1"]).expect("swap-window");
     assert_eq!(messages(&shared), ["fired after-swap-window"]);
 }
@@ -144,7 +145,7 @@ fn read_only_commands_leave_the_structure_and_its_hooks_alone() {
         )
         .expect("set-hook");
     }
-    shared.inner.lock().message_log.clear();
+    shared.inner.lock().history.message_log.clear();
     shared.settle_pane_locations();
     let generation = shared.inner.lock().engine.state.generation();
     for command in [
@@ -490,7 +491,7 @@ fn record_mux_hooks(shared: &Arc<Shared>, context: &mut ExecutionContext) {
         )
         .expect("set-hook");
     }
-    shared.inner.lock().message_log.clear();
+    shared.inner.lock().history.message_log.clear();
 }
 
 #[test]
@@ -579,7 +580,7 @@ fn an_attached_client_is_detached_by_the_journal_when_its_session_goes() {
         &["new-session", "-d", "-s", "survivor"],
     )
     .expect("survivor");
-    shared.inner.lock().message_log.clear();
+    shared.inner.lock().history.message_log.clear();
     shared
         .execute(
             client,
@@ -950,7 +951,7 @@ fn a_stale_mode_transition_fires_with_the_next_command() {
         assert!(pop_pane_mode(&mut inner, pane));
         assert!(!inner.pane_mode_transitions.is_empty());
     }
-    shared.inner.lock().message_log.clear();
+    shared.inner.lock().history.message_log.clear();
     let mut quiet = context.clone();
     quiet.no_hooks = true;
     run(

@@ -511,8 +511,8 @@ fn command_and_search_prompt_histories_never_mix() {
     submit(&shared, &mut context, &["list-panes"], "ccc");
     {
         let inner = shared.inner.lock();
-        assert_eq!(inner.command_history, ["ccc"]);
-        assert_eq!(inner.search_history, ["needle"]);
+        assert_eq!(inner.history.command_history, ["ccc"]);
+        assert_eq!(inner.history.search_history, ["needle"]);
     }
 
     shared
@@ -749,7 +749,7 @@ fn an_incremental_prompt_fires_on_entry_and_on_every_edit() {
         "-a",
         "Enter records history and closes without running the template again"
     );
-    assert_eq!(shared.inner.lock().command_history, ["a"]);
+    assert_eq!(shared.inner.lock().history.command_history, ["a"]);
 }
 
 #[test]
@@ -804,8 +804,8 @@ fn prompt_history_commands_match_the_pin_and_persist_clears() {
         .expect("set history file");
     {
         let mut inner = shared.inner.lock();
-        inner.command_history = vec!["first".to_owned(), "second".to_owned()];
-        inner.search_history = vec!["needle".to_owned()];
+        inner.history.command_history = vec!["first".to_owned(), "second".to_owned()];
+        inner.history.search_history = vec!["needle".to_owned()];
     }
 
     assert_eq!(
@@ -857,8 +857,8 @@ fn prompt_history_commands_match_the_pin_and_persist_clears() {
         .expect("clear command history");
     {
         let inner = shared.inner.lock();
-        assert!(inner.command_history.is_empty());
-        assert_eq!(inner.search_history, ["needle"]);
+        assert!(inner.history.command_history.is_empty());
+        assert_eq!(inner.history.search_history, ["needle"]);
     }
     assert_eq!(
         fs::read_to_string(&path).expect("read selectively cleared history"),
@@ -887,8 +887,8 @@ fn prompt_history_commands_match_the_pin_and_persist_clears() {
         .expect("clear all history");
     {
         let inner = shared.inner.lock();
-        assert!(inner.command_history.is_empty());
-        assert!(inner.search_history.is_empty());
+        assert!(inner.history.command_history.is_empty());
+        assert!(inner.history.search_history.is_empty());
     }
     assert_eq!(fs::read_to_string(&path).expect("read cleared history"), "");
 }
@@ -910,8 +910,8 @@ fn prompt_history_persistence_serializes_record_and_clear_interleavings() {
 
     {
         let mut inner = shared.inner.lock();
-        inner.command_history = vec!["old".to_owned()];
-        inner.search_history = vec!["needle".to_owned()];
+        inner.history.command_history = vec!["old".to_owned()];
+        inner.history.search_history = vec!["needle".to_owned()];
     }
     let (record_locked_tx, record_locked_rx) = crossbeam_channel::bounded(1);
     let (resume_record_tx, resume_record_rx) = crossbeam_channel::bounded(1);
@@ -945,8 +945,8 @@ fn prompt_history_persistence_serializes_record_and_clear_interleavings() {
         .expect("selective clear reached save lock");
     {
         let inner = shared.inner.lock();
-        assert!(inner.command_history.is_empty());
-        assert_eq!(inner.search_history, ["needle"]);
+        assert!(inner.history.command_history.is_empty());
+        assert_eq!(inner.history.search_history, ["needle"]);
     }
     resume_record_tx.send(()).expect("resume record save");
     record.join().expect("record history worker");
@@ -958,8 +958,8 @@ fn prompt_history_persistence_serializes_record_and_clear_interleavings() {
 
     {
         let mut inner = shared.inner.lock();
-        inner.command_history = vec!["old".to_owned()];
-        inner.search_history = vec!["needle".to_owned()];
+        inner.history.command_history = vec!["old".to_owned()];
+        inner.history.search_history = vec!["needle".to_owned()];
     }
     let (clear_locked_tx, clear_locked_rx) = crossbeam_channel::bounded(1);
     let (resume_clear_tx, resume_clear_rx) = crossbeam_channel::bounded(1);
@@ -999,8 +999,8 @@ fn prompt_history_persistence_serializes_record_and_clear_interleavings() {
         .expect("record reached save lock after clear all");
     {
         let inner = shared.inner.lock();
-        assert_eq!(inner.command_history, ["new"]);
-        assert!(inner.search_history.is_empty());
+        assert_eq!(inner.history.command_history, ["new"]);
+        assert!(inner.history.search_history.is_empty());
     }
     resume_clear_tx.send(()).expect("resume clear-all save");
     clear.join().expect("clear-all worker");
@@ -1363,7 +1363,7 @@ fn native_command_prompt_actions_persist_without_echo_and_submit_final_input() {
                 .client(client)
                 .is_none_or(|c| c.command_prompt.is_none())
         );
-        assert_eq!(inner.command_history.last(), Some(&final_input));
+        assert_eq!(inner.history.command_history.last(), Some(&final_input));
         assert!(
             inner
                 .engine
@@ -2256,7 +2256,7 @@ fn native_command_prompt_precedes_pane_input_and_runs_command_sequences() {
                 .is_none_or(|c| c.command_prompt.is_none())
         );
         assert_eq!(
-            inner.command_history.last().map(String::as_str),
+            inner.history.command_history.last().map(String::as_str),
             Some(command)
         );
     }

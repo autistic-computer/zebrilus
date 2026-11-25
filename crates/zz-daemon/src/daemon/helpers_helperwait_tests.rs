@@ -100,7 +100,7 @@ fn busy_helpers_park_history_without_stopping_another_client() {
             .command_prompt
             .is_some()
     );
-    assert_eq!(shared.inner.lock().command_history, ["from-file"]);
+    assert_eq!(shared.inner.lock().history.command_history, ["from-file"]);
     assert_eq!(shared.connection_threads.worker_count(), 0);
 }
 
@@ -146,7 +146,7 @@ fn busy_helpers_preserve_record_clear_order_and_allow_a_loaded_prompt() {
                 ),
             )
             .unwrap();
-        inner.search_history.push("needle".into());
+        inner.history.search_history.push("needle".into());
         ExecutionContext::for_pane(&inner.engine.state, pane).unwrap()
     };
     let (target, _) = shared.register_subscribed(

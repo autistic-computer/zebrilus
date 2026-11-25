@@ -437,7 +437,7 @@ fn pane_focus_follows_the_pinned_predicate_and_queues_ahead_of_the_client_hooks(
         None,
         OutboundMailbox::new(),
     );
-    shared.inner.lock().message_log.clear();
+    shared.inner.lock().history.message_log.clear();
 
     shared.attach(first, session).expect("attach first client");
     assert_eq!(
@@ -452,7 +452,7 @@ fn pane_focus_follows_the_pinned_predicate_and_queues_ahead_of_the_client_hooks(
     shared
         .attach(second, session)
         .expect("attach second client");
-    shared.inner.lock().message_log.clear();
+    shared.inner.lock().history.message_log.clear();
 
     let report = |client, focused| {
         shared
@@ -488,7 +488,7 @@ fn pane_focus_follows_the_pinned_predicate_and_queues_ahead_of_the_client_hooks(
     assert!(shared.inner.lock().pane_focus.is_empty());
 
     shared.attach(first, session).expect("re-attach");
-    shared.inner.lock().message_log.clear();
+    shared.inner.lock().history.message_log.clear();
     shared.detach(first);
     shared.detach(second);
     assert_eq!(
@@ -570,7 +570,7 @@ fn client_focus_and_activity_hooks_preserve_reports_order_and_latest_changes() {
         )
         .expect("expand client hook context")
         .output;
-    shared.inner.lock().message_log.clear();
+    shared.inner.lock().history.message_log.clear();
 
     for focused in [true, true, false] {
         shared
@@ -636,7 +636,7 @@ fn client_focus_and_activity_hooks_preserve_reports_order_and_latest_changes() {
             &CommandInvocation::new("display-message", ["-N", "-d", "5000", "ignore focus"]),
         )
         .expect("arm ignored focus input");
-    shared.inner.lock().message_log.clear();
+    shared.inner.lock().history.message_log.clear();
     shared
         .input(
             first,
@@ -712,7 +712,7 @@ fn client_resize_and_theme_hooks_fire_for_every_interactive_report() {
         )
         .expect("expand client report context")
         .output;
-    shared.inner.lock().message_log.clear();
+    shared.inner.lock().history.message_log.clear();
 
     for (kind, client, columns, rows) in [
         (ClientKind::Interactive, interactive, 120, 40),
@@ -828,7 +828,7 @@ fn detaching_latest_client_promotes_a_surviving_control_client() {
         )
         .expect("expand promotion context")
         .output;
-    shared.inner.lock().message_log.clear();
+    shared.inner.lock().history.message_log.clear();
 
     shared.detach(departing);
 
@@ -963,8 +963,8 @@ fn show_messages_logs_commands_newest_first_and_bounds_the_ring() {
     }));
 
     let mut inner = shared.inner.lock();
-    inner.message_log.clear();
-    inner.next_message_number = 0;
+    inner.history.message_log.clear();
+    inner.history.next_message_number = 0;
     drop(inner);
     shared
         .execute(
@@ -980,6 +980,7 @@ fn show_messages_logs_commands_newest_first_and_bounds_the_ring() {
     }
     assert_eq!(
         inner
+            .history
             .message_log
             .iter()
             .map(|message| message.text.as_str())
@@ -988,6 +989,7 @@ fn show_messages_logs_commands_newest_first_and_bounds_the_ring() {
     );
     assert_eq!(
         inner
+            .history
             .message_log
             .iter()
             .rev()
@@ -995,8 +997,8 @@ fn show_messages_logs_commands_newest_first_and_bounds_the_ring() {
             .collect::<Vec<_>>(),
         ["message-4", "message-3", "message-2"]
     );
-    inner.message_log.clear();
-    inner.next_message_number = 0;
+    inner.history.message_log.clear();
+    inner.history.next_message_number = 0;
     drop(inner);
 
     shared
@@ -1021,10 +1023,11 @@ fn show_messages_logs_commands_newest_first_and_bounds_the_ring() {
         )
         .unwrap();
     let mut inner = shared.inner.lock();
-    assert_eq!(inner.message_log.len(), 5);
+    assert_eq!(inner.history.message_log.len(), 5);
     push_server_message(&mut inner, "message-5".to_owned());
     assert_eq!(
         inner
+            .history
             .message_log
             .iter()
             .map(|message| message.text.as_str())
@@ -1089,7 +1092,7 @@ fn command_hooks_fire_at_the_daemon_boundary_with_formats_and_nohooks() {
             )
             .unwrap();
     }
-    shared.inner.lock().message_log.clear();
+    shared.inner.lock().history.message_log.clear();
 
     shared
         .execute(
@@ -1103,6 +1106,7 @@ fn command_hooks_fire_at_the_daemon_boundary_with_formats_and_nohooks() {
         shared
             .inner
             .lock()
+            .history
             .message_log
             .iter()
             .map(|message| message.text.clone())
@@ -1112,7 +1116,7 @@ fn command_hooks_fire_at_the_daemon_boundary_with_formats_and_nohooks() {
         )]
     );
 
-    shared.inner.lock().message_log.clear();
+    shared.inner.lock().history.message_log.clear();
     assert!(
         shared
             .execute(
@@ -1127,6 +1131,7 @@ fn command_hooks_fire_at_the_daemon_boundary_with_formats_and_nohooks() {
         shared
             .inner
             .lock()
+            .history
             .message_log
             .iter()
             .map(|message| message.text.as_str())
@@ -1134,7 +1139,7 @@ fn command_hooks_fire_at_the_daemon_boundary_with_formats_and_nohooks() {
         ["command-error|-t missing"]
     );
 
-    shared.inner.lock().message_log.clear();
+    shared.inner.lock().history.message_log.clear();
     shared
         .execute(
             client,
@@ -1147,6 +1152,7 @@ fn command_hooks_fire_at_the_daemon_boundary_with_formats_and_nohooks() {
         shared
             .inner
             .lock()
+            .history
             .message_log
             .back()
             .map(|message| message.text.as_str()),
@@ -1184,7 +1190,7 @@ fn command_hooks_fire_at_the_daemon_boundary_with_formats_and_nohooks() {
             )
             .unwrap();
     }
-    shared.inner.lock().message_log.clear();
+    shared.inner.lock().history.message_log.clear();
     shared
         .execute(
             client,
@@ -1197,6 +1203,7 @@ fn command_hooks_fire_at_the_daemon_boundary_with_formats_and_nohooks() {
         shared
             .inner
             .lock()
+            .history
             .message_log
             .iter()
             .map(|message| message.text.as_str())
@@ -1229,7 +1236,7 @@ fn command_hooks_fire_at_the_daemon_boundary_with_formats_and_nohooks() {
             )
             .unwrap();
     }
-    shared.inner.lock().message_log.clear();
+    shared.inner.lock().history.message_log.clear();
     shared
         .execute(
             client,
@@ -1242,6 +1249,7 @@ fn command_hooks_fire_at_the_daemon_boundary_with_formats_and_nohooks() {
         shared
             .inner
             .lock()
+            .history
             .message_log
             .iter()
             .map(|message| message.text.as_str())
@@ -1823,7 +1831,7 @@ fn event_hooks_are_fully_dropped_inside_hooks() {
             )
             .expect("hook setup");
     }
-    shared.inner.lock().message_log.clear();
+    shared.inner.lock().history.message_log.clear();
     shared
         .execute(
             client,
@@ -1836,6 +1844,7 @@ fn event_hooks_are_fully_dropped_inside_hooks() {
         shared
             .inner
             .lock()
+            .history
             .message_log
             .iter()
             .all(|message| message.text != "event-layout-fired")
@@ -1879,7 +1888,7 @@ fn terminal_events_fire_rename_title_and_bell_hooks() {
             )
             .expect("terminal event hook");
     }
-    shared.inner.lock().message_log.clear();
+    shared.inner.lock().history.message_log.clear();
 
     let (window_activity, window_activity_time, session_activity) = {
         let mut inner = shared.inner.lock();
@@ -1933,6 +1942,7 @@ fn terminal_events_fire_rename_title_and_bell_hooks() {
         shared
             .inner
             .lock()
+            .history
             .message_log
             .iter()
             .map(|message| message.text.as_str())
@@ -2027,7 +2037,7 @@ fn terminal_exit_fires_pane_exited_or_pane_died_by_retention() {
             )
             .expect("pane exit hook");
     }
-    shared.inner.lock().message_log.clear();
+    shared.inner.lock().history.message_log.clear();
 
     shared
         .execute(
@@ -2041,7 +2051,7 @@ fn terminal_exit_fires_pane_exited_or_pane_died_by_retention() {
     let deadline = Instant::now() + Duration::from_secs(30);
     loop {
         let inner = shared.inner.lock();
-        if inner.engine.state.pane(exited).is_none() && inner.message_log.len() == 3 {
+        if inner.engine.state.pane(exited).is_none() && inner.history.message_log.len() == 3 {
             break;
         }
         drop(inner);
@@ -2052,6 +2062,7 @@ fn terminal_exit_fires_pane_exited_or_pane_died_by_retention() {
         shared
             .inner
             .lock()
+            .history
             .message_log
             .iter()
             .map(|message| message.text.clone())
@@ -2062,7 +2073,7 @@ fn terminal_exit_fires_pane_exited_or_pane_died_by_retention() {
             "closed=exit-off".to_owned(),
         ]
     );
-    shared.inner.lock().message_log.clear();
+    shared.inner.lock().history.message_log.clear();
 
     shared
         .execute(
@@ -2086,6 +2097,7 @@ fn terminal_exit_fires_pane_exited_or_pane_died_by_retention() {
         let inner = shared.inner.lock();
         if inner.engine.state.pane(died).is_some_and(|pane| pane.dead)
             && inner
+                .history
                 .message_log
                 .iter()
                 .any(|message| message.text == format!("died={died}"))
@@ -2099,6 +2111,7 @@ fn terminal_exit_fires_pane_exited_or_pane_died_by_retention() {
     let messages = shared
         .inner
         .lock()
+        .history
         .message_log
         .iter()
         .map(|message| message.text.clone())
@@ -2135,7 +2148,7 @@ fn copy_mode_entry_and_exit_fire_pane_mode_changed() {
             ),
         )
         .expect("mode hook");
-    shared.inner.lock().message_log.clear();
+    shared.inner.lock().history.message_log.clear();
     shared
         .execute(
             client,
@@ -2180,6 +2193,7 @@ fn copy_mode_entry_and_exit_fire_pane_mode_changed() {
         shared
             .inner
             .lock()
+            .history
             .message_log
             .iter()
             .map(|message| message.text.clone())
@@ -2223,7 +2237,7 @@ fn terminal_resize_fires_layout_then_window_resized() {
             )
             .expect("resize hook");
     }
-    shared.inner.lock().message_log.clear();
+    shared.inner.lock().history.message_log.clear();
     shared
         .input(
             client,
@@ -2242,6 +2256,7 @@ fn terminal_resize_fires_layout_then_window_resized() {
         shared
             .inner
             .lock()
+            .history
             .message_log
             .iter()
             .map(|message| message.text.as_str())
@@ -2348,7 +2363,7 @@ fn configured_new_window_hooks_run_in_order_in_the_created_context() {
         )
         .expect("hook session");
     let session = context.session.expect("hook session id");
-    shared.inner.lock().message_log.clear();
+    shared.inner.lock().history.message_log.clear();
 
     let response = shared.execute_command_request(
         ClientId(7),
@@ -2595,10 +2610,11 @@ fn failing_commands_log_pin_shaped_message_and_command_pairs() {
     ));
 
     let inner = shared.inner.lock();
-    assert_eq!(inner.message_log.len(), 6);
-    assert_eq!(inner.next_message_number, 6);
+    assert_eq!(inner.history.message_log.len(), 6);
+    assert_eq!(inner.history.next_message_number, 6);
     assert_eq!(
         inner
+            .history
             .message_log
             .iter()
             .map(|message| message.text.as_str())
