@@ -1,10 +1,13 @@
 use ala::{
-    Animation, AnimationExt as _, App, ElementId, Hsla, IntoElement, ParentElement as _,
-    RenderOnce, Role, StatefulInteractiveElement as _, Transformation, Window, div, percentage,
+    App, ElementId, Hsla, IntoElement, ParentElement as _, RenderOnce, Role,
+    StatefulInteractiveElement as _, Transformation, Window, div, percentage,
     prelude::FluentBuilder as _,
 };
 
-use crate::{AuthoredElement as _, Icon, IconName, Sizable, Size, foundation::motion::SPIN};
+use crate::{
+    AuthoredElement as _, Icon, IconName, Sizable, Size,
+    foundation::{motion::SPIN, pulse::pulse_phase},
+};
 
 #[derive(IntoElement)]
 pub struct Spinner {
@@ -50,15 +53,12 @@ impl Sizable for Spinner {
 }
 
 impl RenderOnce for Spinner {
-    fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let phase = pulse_phase(SPIN, window.current_view(), cx);
         let turn = Icon::new(IconName::Loader)
             .with_size(self.size)
             .when_some(self.color, ala::Styled::text_color)
-            .with_animation(
-                "spinner-rotation",
-                Animation::new(SPIN).repeat().with_max_fps(30.0),
-                |this, delta| this.transform(Transformation::rotate(percentage(delta))),
-            );
+            .transform(Transformation::rotate(percentage(phase)));
         match self.id {
             Some(id) => div()
                 .author_id(id)
