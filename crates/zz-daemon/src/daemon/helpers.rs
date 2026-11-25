@@ -518,10 +518,6 @@ fn finish_peer_scan(
     result
 }
 
-#[cfg(all(test, feature = "agent", unix))]
-#[path = "helpers_reviewfixes_tests.rs"]
-mod reviewfixes_tests;
-
 #[cfg(all(feature = "agent", unix))]
 struct PeerKey {
     panes: Vec<(PaneId, String, Option<u32>)>,
@@ -618,12 +614,8 @@ impl JobClient {
 }
 
 #[cfg(test)]
-#[path = "helpers_e19_tests.rs"]
+#[path = "helpers_tests.rs"]
 mod tests;
-
-#[cfg(test)]
-#[path = "helpers_e19fix_tests.rs"]
-mod e19fix_tests;
 
 #[cfg(test)]
 #[path = "helpers_helperwait_tests.rs"]

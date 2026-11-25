@@ -13,10 +13,6 @@ mod tests;
 #[path = "control_stdio_burst_tests.rs"]
 mod burst_tests;
 
-#[cfg(test)]
-#[path = "control_stdio_bytes2_tests.rs"]
-mod bytes2_tests;
-
 const STDOUT_HIGH: usize = 256 * 1024;
 const INPUT_READ_LIMIT: usize = 256 * 1024;
 const INPUT_CHUNK: usize = 8192;

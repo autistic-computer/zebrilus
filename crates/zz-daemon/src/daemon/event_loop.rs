@@ -15,14 +15,6 @@ mod control_stdio;
 #[path = "tty_input.rs"]
 mod tty_input;
 
-#[cfg(test)]
-#[path = "event_loop_e19_tests.rs"]
-mod e19_tests;
-
-#[cfg(test)]
-#[path = "event_loop_e15_tests.rs"]
-mod e15_tests;
-
 const LISTENER: Token = Token(0);
 const WAKE: Token = Token(1);
 const SHUTDOWN_SIGNAL: Token = Token(2);
@@ -258,22 +250,6 @@ struct Connection {
     stdio: Option<Box<control_stdio::ControlStdio>>,
     tty: Option<Box<tty_input::TtyInput>>,
 }
-
-#[cfg(test)]
-#[path = "event_loop_e02_tests.rs"]
-mod e02_tests;
-
-#[cfg(test)]
-#[path = "event_loop_e06_tests.rs"]
-mod e06_tests;
-
-#[cfg(test)]
-#[path = "event_loop_e21_tests.rs"]
-mod e21_tests;
-
-#[cfg(test)]
-#[path = "event_loop_e21fix_tests.rs"]
-mod e21fix_tests;
 
 #[cfg(test)]
 #[path = "hookpanic_tests.rs"]
@@ -2348,49 +2324,33 @@ pub(super) fn start_timer_fixture(shared: &Arc<Shared>) -> Result<(), DaemonErro
 mod io_tests;
 
 #[cfg(test)]
-#[path = "event_loop_b2fix_tests.rs"]
-mod b2fix_tests;
+#[path = "event_loop_connection_tests.rs"]
+mod connection_tests;
 
 #[cfg(test)]
-#[path = "drainfix_tests.rs"]
-mod drainfix_tests;
+#[path = "event_loop_exec_chain_tests.rs"]
+mod exec_chain_tests;
 
 #[cfg(test)]
-#[path = "event_loop_b3_tests.rs"]
-mod b3_tests;
+#[path = "event_loop_worker_tests.rs"]
+mod worker_tests;
 
 #[cfg(test)]
-#[path = "event_loop_b3fix_tests.rs"]
-mod b3fix_tests;
+#[path = "event_loop_query_tests.rs"]
+mod query_tests;
+
+#[cfg(test)]
+#[path = "event_loop_wait_tests.rs"]
+mod wait_tests;
+
+#[cfg(test)]
+#[path = "event_loop_job_tests.rs"]
+mod job_tests;
+
+#[cfg(test)]
+#[path = "event_loop_file_request_tests.rs"]
+mod file_request_tests;
 
 #[cfg(test)]
 #[path = "event_loop_shutdown_tests.rs"]
 mod shutdown_tests;
-
-#[cfg(test)]
-#[path = "event_loop_b4_tests.rs"]
-mod b4_tests;
-
-#[cfg(test)]
-#[path = "event_loop_b5_tests.rs"]
-mod b5_tests;
-
-#[cfg(test)]
-#[path = "event_loop_b5fix_tests.rs"]
-mod b5fix_tests;
-
-#[cfg(test)]
-#[path = "event_loop_e12_tests.rs"]
-mod e12_tests;
-
-#[cfg(test)]
-#[path = "event_loop_e04_tests.rs"]
-mod e04_tests;
-
-#[cfg(test)]
-#[path = "file_commands_e11_tests.rs"]
-mod e11_tests;
-
-#[cfg(test)]
-#[path = "source_queue_e11fix_tests.rs"]
-mod e11fix_tests;

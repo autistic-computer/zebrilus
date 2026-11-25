@@ -238,5 +238,5 @@ impl Shared {
 }
 
 #[cfg(test)]
-#[path = "loopfix_tests.rs"]
+#[path = "loop_handoff_tests.rs"]
 mod tests;
