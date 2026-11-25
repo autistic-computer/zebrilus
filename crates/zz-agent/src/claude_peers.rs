@@ -1,0 +1,1030 @@
+use std::collections::{BTreeMap, BTreeSet};
+use std::ffi::{OsStr, OsString};
+use std::fmt::Write as _;
+use std::fs;
+use std::io::{self, BufRead, BufReader, Write};
+use std::net::Shutdown;
+use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
+use std::os::unix::net::{UnixListener, UnixStream};
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+use parking_lot::Mutex;
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
+
+use zz_daemon_client::unmasked::SpawnUnmasked as _;
+
+use zz_daemon_client::process_info::pid_alive;
+
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct PeerRecord {
+    pub pid: u32,
+    pub session_id: String,
+    pub cwd: String,
+    pub started_at: u64,
+    pub proc_start: String,
+    pub version: String,
+    pub peer_protocol: u32,
+    pub peer_features: Vec<String>,
+    pub kind: String,
+    pub entrypoint: String,
+    pub pid_domain: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub tmux: String,
+    pub messaging_socket_path: PathBuf,
+    pub name: String,
+    pub name_source: String,
+    pub name_since: u64,
+    pub status: String,
+    pub updated_at: u64,
+    pub status_updated_at: u64,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub waiting_for: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub zz: Option<Value>,
+}
+
+pub struct PeerMetadata {
+    pub pid: Option<u32>,
+    pub pane: String,
+    pub name: String,
+    pub cwd: PathBuf,
+    pub tmux: String,
+}
+
+pub fn registry_dir() -> io::Result<PathBuf> {
+    std::env::var_os("CLAUDE_CONFIG_DIR")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".claude")))
+        .map(|root| root.join("sessions"))
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                "Claude configuration directory unavailable",
+            )
+        })
+}
+
+pub fn read_records() -> io::Result<Vec<PeerRecord>> {
+    read_records_in(&registry_dir()?)
+}
+
+pub fn read_records_in(directory: &Path) -> io::Result<Vec<PeerRecord>> {
+    let entries = match fs::read_dir(directory) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(error),
+    };
+    let mut records = Vec::new();
+    for entry in entries {
+        let entry = entry?;
+        let filename = entry.file_name();
+        let Some(pid) = record_file_pid(&filename) else {
+            continue;
+        };
+        if !entry.file_type()?.is_file() {
+            continue;
+        }
+        if let Some(record) = read_record_file(&entry.path(), pid) {
+            records.push(record);
+        }
+    }
+    Ok(records)
+}
+
+fn record_file_pid(filename: &OsStr) -> Option<u32> {
+    let name = filename.to_str()?;
+    let pid = name.strip_suffix(".json")?.parse::<u32>().ok()?;
+    (name == format!("{pid}.json")).then_some(pid)
+}
+
+fn read_record_file(path: &Path, pid: u32) -> Option<PeerRecord> {
+    fs::read(path)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<PeerRecord>(&bytes).ok())
+        .filter(|record| record.pid == pid)
+}
+
+const RACY_WINDOW: Duration = Duration::from_secs(2);
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct FileStamp {
+    modified: Option<SystemTime>,
+    len: u64,
+    inode: u64,
+}
+
+impl FileStamp {
+    fn of(metadata: &fs::Metadata) -> Self {
+        Self {
+            modified: metadata.modified().ok(),
+            len: metadata.len(),
+            inode: metadata.ino(),
+        }
+    }
+
+    fn racy(self, read_at: SystemTime) -> bool {
+        self.modified.is_none_or(|modified| {
+            read_at
+                .duration_since(modified)
+                .map_or(true, |age| age < RACY_WINDOW)
+        })
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct Seen {
+    stamp: FileStamp,
+    racy: bool,
+}
+
+impl Seen {
+    fn fresh(previous: Option<Self>, stamp: Option<FileStamp>) -> bool {
+        previous.is_some_and(|seen| !seen.racy && Some(seen.stamp) == stamp)
+    }
+
+    fn at(stamp: Option<FileStamp>, read_at: SystemTime) -> Option<Self> {
+        stamp.map(|stamp| Self {
+            stamp,
+            racy: stamp.racy(read_at),
+        })
+    }
+}
+
+#[derive(Default)]
+pub struct RegistryCache {
+    directory: Option<PathBuf>,
+    listing: Option<Seen>,
+    files: BTreeMap<OsString, (Option<Seen>, Option<PeerRecord>)>,
+}
+
+impl RegistryCache {
+    pub fn refresh(&mut self) -> io::Result<bool> {
+        let directory = registry_dir()?;
+        self.refresh_in(&directory)
+    }
+
+    fn refresh_in(&mut self, directory: &Path) -> io::Result<bool> {
+        let mut changed = false;
+        if self.directory.as_deref() != Some(directory) {
+            changed = !self.files.is_empty();
+            *self = Self {
+                directory: Some(directory.to_path_buf()),
+                ..Self::default()
+            };
+        }
+        let listing = match fs::metadata(directory) {
+            Ok(metadata) => FileStamp::of(&metadata),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                changed |= !self.files.is_empty();
+                self.files.clear();
+                self.listing = None;
+                return Ok(changed);
+            }
+            Err(error) => return Err(error),
+        };
+        if !Seen::fresh(self.listing, Some(listing)) {
+            let read_at = SystemTime::now();
+            let mut names = BTreeSet::new();
+            for entry in fs::read_dir(directory)? {
+                let entry = entry?;
+                let filename = entry.file_name();
+                if record_file_pid(&filename).is_some() && entry.file_type()?.is_file() {
+                    names.insert(filename);
+                }
+            }
+            self.listing = Seen::at(Some(listing), read_at);
+            let before = self.files.len();
+            self.files.retain(|name, _| names.contains(name));
+            changed |= self.files.len() != before;
+            for name in names {
+                self.files.entry(name).or_insert((None, None));
+            }
+        }
+        for (name, (seen, record)) in &mut self.files {
+            let path = directory.join(name);
+            let read_at = SystemTime::now();
+            let current = fs::metadata(&path)
+                .ok()
+                .map(|metadata| FileStamp::of(&metadata));
+            if Seen::fresh(*seen, current) {
+                continue;
+            }
+            *seen = Seen::at(current, read_at);
+            let next = record_file_pid(name).and_then(|pid| read_record_file(&path, pid));
+            if next != *record {
+                *record = next;
+                changed = true;
+            }
+        }
+        Ok(changed)
+    }
+
+    pub fn records(&self) -> impl Iterator<Item = &PeerRecord> {
+        self.files
+            .values()
+            .filter_map(|(_, record)| record.as_ref())
+    }
+
+    pub fn settled(&self) -> Option<RegistryKey> {
+        let directory = self.directory.clone()?;
+        let files = self
+            .files
+            .iter()
+            .map(|(name, (seen, _))| (directory.join(name), *seen));
+        let mut stamps = Vec::with_capacity(self.files.len() + 1);
+        for (path, seen) in std::iter::once((directory.clone(), self.listing)).chain(files) {
+            if seen.is_some_and(|seen| seen.racy) {
+                return None;
+            }
+            stamps.push((path, seen.map(|seen| seen.stamp)));
+        }
+        Some(RegistryKey { directory, stamps })
+    }
+}
+
+pub struct RegistryKey {
+    directory: PathBuf,
+    stamps: Vec<(PathBuf, Option<FileStamp>)>,
+}
+
+impl RegistryKey {
+    pub fn has_files(&self) -> bool {
+        self.stamps.len() > 1
+    }
+
+    pub fn holds(&self, directory: &Path) -> bool {
+        self.directory == directory
+            && self.stamps.iter().all(|(path, stamp)| {
+                fs::metadata(path)
+                    .ok()
+                    .map(|metadata| FileStamp::of(&metadata))
+                    == *stamp
+            })
+    }
+}
+
+fn socket_dir(records: &[PeerRecord]) -> io::Result<PathBuf> {
+    let directory = records
+        .iter()
+        .find_map(|record| {
+            record
+                .messaging_socket_path
+                .parent()
+                .filter(|path| !path.as_os_str().is_empty())
+        })
+        .unwrap_or_else(|| Path::new("/tmp/cc-socks"))
+        .to_path_buf();
+    fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(&directory)?;
+    Ok(directory)
+}
+
+fn now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}
+
+fn matches_pane(tmux: &str, pane: &str) -> bool {
+    tmux.rsplit_once('.')
+        .is_some_and(|(_, suffix)| suffix == pane)
+}
+
+pub fn record_for_pane<'a>(
+    records: &'a [PeerRecord],
+    pane: &str,
+    pane_pid: Option<u32>,
+) -> Option<&'a PeerRecord> {
+    record_for_pane_with_parents(
+        records,
+        pane,
+        pane_pid,
+        zz_daemon_client::process_info::parent,
+    )
+}
+
+pub fn record_for_pane_with_parents<'a>(
+    records: &'a [PeerRecord],
+    pane: &str,
+    pane_pid: Option<u32>,
+    parent_of: impl Fn(u32) -> Option<u32>,
+) -> Option<&'a PeerRecord> {
+    let pane_pid = pane_pid?;
+    let now = now_ms();
+    records.iter().find(|record| {
+        matches_pane(&record.tmux, pane)
+            && pid_alive(record.pid)
+            && now.abs_diff(record.updated_at) <= 24 * 60 * 60 * 1000
+            && !record.messaging_socket_path.as_os_str().is_empty()
+            && descends_from(record.pid, pane_pid, &parent_of)
+    })
+}
+
+fn descends_from(pid: u32, root: u32, parent_of: impl Fn(u32) -> Option<u32>) -> bool {
+    depth_below(pid, root, parent_of).is_some()
+}
+
+fn depth_below(mut pid: u32, root: u32, parent_of: impl Fn(u32) -> Option<u32>) -> Option<usize> {
+    for depth in 0..64 {
+        if pid == root {
+            return Some(depth);
+        }
+        match parent_of(pid) {
+            Some(parent) if parent != pid && parent != 0 => pid = parent,
+            _ => return None,
+        }
+    }
+    None
+}
+
+pub fn record_in_pane_with(
+    records: &[PeerRecord],
+    pane_pid: u32,
+    parent_of: impl Fn(u32) -> Option<u32>,
+) -> Option<&PeerRecord> {
+    records
+        .iter()
+        .filter_map(|record| {
+            depth_below(record.pid, pane_pid, &parent_of).map(|depth| (depth, record))
+        })
+        .min_by_key(|(depth, _)| *depth)
+        .map(|(_, record)| record)
+}
+
+pub fn pane_process_ids(parents: &[(u32, u32)], pane_pid: u32) -> Vec<u32> {
+    let mut pids = descendants_by_depth(parents, pane_pid);
+    pids.insert(0, pane_pid);
+    pids
+}
+
+pub fn uuid_v4() -> io::Result<String> {
+    let mut bytes = [0u8; 16];
+    getrandom::fill(&mut bytes).map_err(io::Error::other)?;
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    let mut hex = String::with_capacity(32);
+    for byte in bytes {
+        write!(hex, "{byte:02x}").map_err(io::Error::other)?;
+    }
+    Ok(format!(
+        "{}-{}-{}-{}-{}",
+        &hex[..8],
+        &hex[8..12],
+        &hex[12..16],
+        &hex[16..20],
+        &hex[20..]
+    ))
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum PeerEvent {
+    Message {
+        from: Option<String>,
+        content: String,
+    },
+    NotifyWhenIdle {
+        from: String,
+        msg_id: String,
+    },
+    MessageStatus {
+        orig_msg_id: Option<String>,
+        status: String,
+        status_detail: Option<String>,
+        reason: Option<String>,
+        drop_reason: Option<String>,
+        dropped_msg_ids: Vec<String>,
+    },
+}
+
+fn parse_event(value: &Value) -> Option<PeerEvent> {
+    let string = |key: &str| value[key].as_str().map(str::to_owned);
+    match value["action"].as_str() {
+        Some("peer_message_status") => Some(PeerEvent::MessageStatus {
+            orig_msg_id: string("orig_msg_id"),
+            status: string("status").unwrap_or_default(),
+            status_detail: string("status_detail"),
+            reason: string("reason"),
+            drop_reason: string("drop_reason"),
+            dropped_msg_ids: value["dropped_msg_ids"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|id| id.as_str().map(str::to_owned))
+                .collect(),
+        }),
+        Some("notify_when_idle") if value["type"] == "control" => Some(PeerEvent::NotifyWhenIdle {
+            from: string("from")?,
+            msg_id: string("msg_id")?,
+        }),
+        _ if value["type"] == "user" => Some(PeerEvent::Message {
+            from: string("from"),
+            content: value["message"]["content"].as_str()?.to_owned(),
+        }),
+        _ => None,
+    }
+}
+
+fn trimmed_proc_start(output: &[u8]) -> String {
+    String::from_utf8_lossy(output).trim().to_owned()
+}
+
+fn proc_start(pid: u32) -> io::Result<String> {
+    let output = Command::new("ps")
+        .env("TZ", "UTC")
+        .args(["-p", &pid.to_string(), "-o", "lstart="])
+        .output_unmasked()?;
+    let start = trimmed_proc_start(&output.stdout);
+    if !output.status.success() || start.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            "adapter process start time unavailable",
+        ));
+    }
+    Ok(start)
+}
+
+pub(super) fn descendants_by_depth(parents: &[(u32, u32)], root: u32) -> Vec<u32> {
+    let mut ordered = Vec::new();
+    let mut frontier = vec![root];
+    while !frontier.is_empty() {
+        let mut next = Vec::new();
+        for (pid, parent) in parents {
+            if frontier.contains(parent) && !ordered.contains(pid) && *pid != root {
+                ordered.push(*pid);
+                next.push(*pid);
+            }
+        }
+        frontier = next;
+    }
+    ordered
+}
+
+fn env_marks_pane(environment: impl Iterator<Item = Vec<u8>>, pane: &str) -> bool {
+    let expected = format!("ZZ_PANE={pane}");
+    environment
+        .into_iter()
+        .any(|value| value == expected.as_bytes())
+}
+
+#[cfg(target_os = "linux")]
+pub fn process_parents() -> io::Result<Vec<(u32, u32)>> {
+    let mut parents = Vec::new();
+    for entry in fs::read_dir("/proc")? {
+        let entry = entry?;
+        let Some(pid) = entry
+            .file_name()
+            .to_str()
+            .and_then(|name| name.parse::<u32>().ok())
+        else {
+            continue;
+        };
+        let Ok(stat) = fs::read_to_string(entry.path().join("stat")) else {
+            continue;
+        };
+        let Some((_, fields)) = stat.rsplit_once(')') else {
+            continue;
+        };
+        if let Some(parent) = fields
+            .split_whitespace()
+            .nth(1)
+            .and_then(|p| p.parse().ok())
+        {
+            parents.push((pid, parent));
+        }
+    }
+    Ok(parents)
+}
+
+#[cfg(target_os = "linux")]
+fn adapter_pid(pane: &str) -> io::Result<u32> {
+    for pid in descendants_by_depth(&process_parents()?, std::process::id()) {
+        let Ok(environment) = fs::read(format!("/proc/{pid}/environ")) else {
+            continue;
+        };
+        if env_marks_pane(
+            environment.split(|byte| *byte == 0).map(<[u8]>::to_vec),
+            pane,
+        ) {
+            return Ok(pid);
+        }
+    }
+    Err(io::Error::new(
+        io::ErrorKind::NotFound,
+        format!("adapter process for {pane} unavailable"),
+    ))
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn process_parents() -> io::Result<Vec<(u32, u32)>> {
+    let output = Command::new("ps")
+        .args(["-axo", "pid=,ppid="])
+        .output_unmasked()?;
+    let parents: Vec<(u32, u32)> = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(|line| {
+            let mut fields = line.split_whitespace();
+            Some((fields.next()?.parse().ok()?, fields.next()?.parse().ok()?))
+        })
+        .collect();
+    Ok(parents)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn adapter_pid(pane: &str) -> io::Result<u32> {
+    for pid in descendants_by_depth(&process_parents()?, std::process::id()) {
+        let environment = Command::new("ps")
+            .args(["-E", "-o", "command=", "-p", &pid.to_string()])
+            .output_unmasked()?;
+        if env_marks_pane(
+            String::from_utf8_lossy(&environment.stdout)
+                .split_whitespace()
+                .map(|value| value.as_bytes().to_vec()),
+            pane,
+        ) {
+            return Ok(pid);
+        }
+    }
+    Err(io::Error::new(
+        io::ErrorKind::NotFound,
+        format!("adapter process for {pane} unavailable"),
+    ))
+}
+
+fn write_record(path: &Path, record: &PeerRecord) -> io::Result<()> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| io::Error::other("peer record has no directory"))?;
+    fs::create_dir_all(parent)?;
+    let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
+    serde_json::to_writer(&mut temporary, record).map_err(io::Error::other)?;
+    temporary.persist(path).map_err(|error| error.error)?;
+    Ok(())
+}
+
+pub fn sweep_stale_records() -> io::Result<()> {
+    sweep_stale_records_in(&registry_dir()?)
+}
+
+fn should_sweep(record: &PeerRecord) -> bool {
+    record.zz.is_some() && !pid_alive(record.pid)
+}
+
+fn sweep_stale_records_in(directory: &Path) -> io::Result<()> {
+    for record in read_records_in(directory)? {
+        if should_sweep(&record) {
+            let _ = fs::remove_file(&record.messaging_socket_path);
+            fs::remove_file(directory.join(format!("{}.json", record.pid)))?;
+        }
+    }
+    Ok(())
+}
+
+pub struct PeerInbox {
+    record: PeerRecord,
+    record_path: PathBuf,
+    stopped: Arc<AtomicBool>,
+    active: Arc<Mutex<Option<UnixStream>>>,
+    wake: UnixStream,
+}
+
+impl PeerInbox {
+    pub fn register(
+        metadata: PeerMetadata,
+        callback: impl Fn(PeerEvent) + Send + Sync + 'static,
+    ) -> io::Result<Self> {
+        let pid = match metadata.pid {
+            Some(pid) => pid,
+            None => adapter_pid(&metadata.pane)?,
+        };
+        let start = proc_start(pid)?;
+        let socket = socket_dir(&read_records()?)?.join(format!("{pid}.sock"));
+        let record_path = registry_dir()?.join(format!("{pid}.json"));
+        let now = now_ms();
+        let record = PeerRecord {
+            pid,
+            session_id: uuid_v4()?,
+            cwd: metadata.cwd.to_string_lossy().into_owned(),
+            started_at: now,
+            proc_start: start,
+            version: env!("CARGO_PKG_VERSION").to_owned(),
+            peer_protocol: 1,
+            peer_features: Vec::new(),
+            kind: "interactive".to_owned(),
+            entrypoint: "cli".to_owned(),
+            pid_domain: if cfg!(target_os = "linux") {
+                "linux"
+            } else {
+                "darwin"
+            }
+            .to_owned(),
+            tmux: metadata.tmux,
+            messaging_socket_path: socket.clone(),
+            name: metadata.name,
+            name_source: "user".to_owned(),
+            name_since: now,
+            status: "idle".to_owned(),
+            updated_at: now,
+            status_updated_at: now,
+            waiting_for: String::new(),
+            zz: Some(json!({"pane": metadata.pane, "kind":"terminal"})),
+        };
+        let _ = fs::remove_file(&socket);
+        let listener = UnixListener::bind(&socket)?;
+        let (wake_reader, wake) = UnixStream::pair()?;
+        wake.set_nonblocking(true)?;
+        let inbox = Self {
+            record,
+            record_path,
+            stopped: Arc::new(AtomicBool::new(false)),
+            active: Arc::new(Mutex::new(None)),
+            wake,
+        };
+        listener.set_nonblocking(true)?;
+        fs::set_permissions(&socket, fs::Permissions::from_mode(0o600))?;
+        write_record(&inbox.record_path, &inbox.record)?;
+        let stopped = Arc::clone(&inbox.stopped);
+        let active = Arc::clone(&inbox.active);
+        std::thread::Builder::new()
+            .name(format!("zz-peer-{pid}"))
+            .spawn(move || {
+                while !stopped.load(Ordering::Acquire) {
+                    let stream = match listener.accept() {
+                        Ok((stream, _)) => stream,
+                        Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                            let mut fds = [
+                                rustix::event::PollFd::new(&listener, rustix::event::PollFlags::IN),
+                                rustix::event::PollFd::new(
+                                    &wake_reader,
+                                    rustix::event::PollFlags::IN,
+                                ),
+                            ];
+                            match rustix::event::poll(&mut fds, None) {
+                                Ok(_) | Err(rustix::io::Errno::INTR) => continue,
+                                Err(error) => {
+                                    log::debug!("agent peer listener poll failed: {error}");
+                                    break;
+                                }
+                            }
+                        }
+                        Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+                        Err(error) => {
+                            log::debug!("agent peer listener failed: {error}");
+                            break;
+                        }
+                    };
+                    {
+                        let mut current = active.lock();
+                        if stopped.load(Ordering::Acquire) {
+                            break;
+                        }
+                        *current = stream.try_clone().ok();
+                    }
+                    if let Err(error) = serve_connection(stream, &stopped, &callback) {
+                        log::debug!("agent peer inbox connection failed: {error}");
+                    }
+                    active.lock().take();
+                }
+            })?;
+        Ok(inbox)
+    }
+
+    pub fn update(&mut self, busy: bool, name: &str) -> io::Result<()> {
+        let now = now_ms();
+        if self.record.name != name {
+            name.clone_into(&mut self.record.name);
+            self.record.name_since = now;
+        }
+        (if busy { "busy" } else { "idle" }).clone_into(&mut self.record.status);
+        self.record.updated_at = now;
+        self.record.status_updated_at = now;
+        write_record(&self.record_path, &self.record)
+    }
+
+    pub fn socket_path(&self) -> &Path {
+        &self.record.messaging_socket_path
+    }
+}
+
+impl Drop for PeerInbox {
+    fn drop(&mut self) {
+        self.stopped.store(true, Ordering::Release);
+        if let Some(stream) = self.active.lock().take() {
+            let _ = stream.shutdown(Shutdown::Both);
+        }
+        let _ = (&self.wake).write(&[1]);
+        let _ = fs::remove_file(&self.record_path);
+        let _ = fs::remove_file(self.socket_path());
+    }
+}
+
+fn serve_connection(
+    stream: UnixStream,
+    stopped: &AtomicBool,
+    callback: &impl Fn(PeerEvent),
+) -> io::Result<()> {
+    stream.set_nonblocking(false)?;
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(30)));
+    let mut reader = BufReader::new(stream);
+    let mut line = String::new();
+    loop {
+        line.clear();
+        if stopped.load(Ordering::Acquire) || reader.read_line(&mut line)? == 0 {
+            return Ok(());
+        }
+        let Ok(value) = serde_json::from_str::<Value>(&line) else {
+            continue;
+        };
+        let Some(event) = parse_event(&value) else {
+            continue;
+        };
+        if stopped.load(Ordering::Acquire) {
+            return Ok(());
+        }
+        if let PeerEvent::Message { from, content } = &event {
+            log::info!(
+                "agent peer message from={} bytes={}",
+                from.as_deref().unwrap_or("unknown"),
+                content.len()
+            );
+        }
+        callback(event);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn registry_cache_reads_only_changed_records() {
+        let directory = tempfile::tempdir().expect("registry");
+        let record = |status: &str| {
+            serde_json::to_vec(&json!({"pid": 4242, "status": status, "tmux": "s:@0.%1"}))
+                .expect("record JSON")
+        };
+        let path = directory.path().join("4242.json");
+        let settled = SystemTime::now() - Duration::from_hours(1);
+        let rewrite = |status: &str, modified: SystemTime| {
+            let mut file = fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(false)
+                .open(&path)
+                .expect("open record in place");
+            file.write_all(&record(status))
+                .expect("rewrite record in place");
+            file.set_modified(modified).expect("pin mtime");
+        };
+        rewrite("busy", settled);
+        fs::write(directory.path().join("notes.txt"), "ignored").expect("write stray file");
+        let mut cache = RegistryCache::default();
+        assert!(cache.refresh_in(directory.path()).expect("first scan"));
+        let statuses = |cache: &RegistryCache| {
+            cache
+                .records()
+                .map(|record| record.status.clone())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(statuses(&cache), ["busy"]);
+        assert!(!cache.refresh_in(directory.path()).expect("quiet scan"));
+        rewrite("idle", settled);
+        assert!(!cache.refresh_in(directory.path()).expect("settled stamp"));
+        assert_eq!(statuses(&cache), ["busy"]);
+        let recent = SystemTime::now();
+        rewrite("idle", recent);
+        assert!(cache.refresh_in(directory.path()).expect("in-place scan"));
+        assert_eq!(statuses(&cache), ["idle"]);
+        rewrite("busy", recent);
+        assert!(cache.refresh_in(directory.path()).expect("same-stamp scan"));
+        assert_eq!(statuses(&cache), ["busy"]);
+        assert!(!cache.refresh_in(directory.path()).expect("racy quiet scan"));
+        fs::remove_file(&path).expect("remove record");
+        assert!(cache.refresh_in(directory.path()).expect("removal scan"));
+        assert!(statuses(&cache).is_empty());
+        assert!(!cache.refresh_in(directory.path()).expect("empty scan"));
+        fs::remove_dir_all(directory.path()).expect("remove registry");
+        assert!(
+            !cache
+                .refresh_in(directory.path())
+                .expect("missing registry")
+        );
+    }
+
+    #[test]
+    fn inbound_lines_parse_messages_and_controls() {
+        assert_eq!(
+            parse_event(&json!({"type":"user", "from":"uds:/peer", "message":{"content":"hello"}})),
+            Some(PeerEvent::Message {
+                from: Some("uds:/peer".to_owned()),
+                content: "hello".to_owned()
+            })
+        );
+        assert_eq!(
+            parse_event(
+                &json!({"type":"control", "action":"notify_when_idle", "from":"uds:/peer", "msg_id":"notice"})
+            ),
+            Some(PeerEvent::NotifyWhenIdle {
+                from: "uds:/peer".to_owned(),
+                msg_id: "notice".to_owned()
+            })
+        );
+        assert_eq!(
+            parse_event(
+                &json!({"action":"peer_message_status", "orig_msg_id":"sent", "status":"dropped", "status_detail":"refused", "reason":"no", "drop_reason":"policy", "dropped_msg_ids":["other"]})
+            ),
+            Some(PeerEvent::MessageStatus {
+                orig_msg_id: Some("sent".to_owned()),
+                status: "dropped".to_owned(),
+                status_detail: Some("refused".to_owned()),
+                reason: Some("no".to_owned()),
+                drop_reason: Some("policy".to_owned()),
+                dropped_msg_ids: vec!["other".to_owned()]
+            })
+        );
+        assert!(
+            parse_event(
+                &json!({"type":"control", "action":"peer_idle_notice", "orig_msg_id":"notice", "state":"idle"})
+            )
+            .is_none()
+        );
+        assert!(
+            parse_event(
+                &json!({"type":"control", "action":"notify_when_idle", "from":"uds:/peer"})
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn tmux_suffix_matches_the_exact_pane() {
+        assert!(matches_pane("work:@0.%3", "%3"));
+        assert!(!matches_pane("work:@0.%13", "%3"));
+        assert!(!matches_pane("work:@0.%3.extra", "%3"));
+        assert!(!matches_pane("%3", "%3"));
+    }
+
+    #[test]
+    fn pane_records_must_live_inside_the_pane_process_tree() {
+        let me = std::process::id();
+        let record = |pid| PeerRecord {
+            pid,
+            tmux: "other:@0.%0".to_owned(),
+            messaging_socket_path: PathBuf::from("/tmp/cc-socks/peer.sock"),
+            updated_at: now_ms(),
+            ..PeerRecord::default()
+        };
+        let foreign = [record(std::os::unix::process::parent_id())];
+        assert!(record_for_pane(&foreign, "%0", Some(me)).is_none());
+        let own = [record(me)];
+        assert_eq!(
+            record_for_pane(&own, "%0", Some(me)).map(|record| record.pid),
+            Some(me)
+        );
+        assert!(record_for_pane(&own, "%0", None).is_none());
+    }
+
+    #[test]
+    fn the_record_nearest_the_pane_wins_without_a_tmux_field() {
+        let me = std::process::id();
+        let parent = std::os::unix::process::parent_id();
+        let parent_of = zz_daemon_client::process_info::parent;
+        let record = |pid| PeerRecord {
+            pid,
+            updated_at: now_ms(),
+            ..PeerRecord::default()
+        };
+        let records = [record(me), record(parent)];
+        assert_eq!(
+            record_in_pane_with(&records, parent, parent_of).map(|record| record.pid),
+            Some(parent)
+        );
+        assert_eq!(
+            record_in_pane_with(&records, me, parent_of).map(|record| record.pid),
+            Some(me)
+        );
+        assert!(
+            record_in_pane_with(&records[..1], parent.saturating_add(1_000_000), parent_of)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn pane_lookup_walks_parents_only_for_matching_candidates() {
+        let lookups = std::cell::Cell::new(0);
+        let parent_of = |pid| {
+            lookups.set(lookups.get() + 1);
+            zz_daemon_client::process_info::parent(pid)
+        };
+        let me = std::process::id();
+        let records = [PeerRecord {
+            pid: me,
+            tmux: "work:@0.%0".to_owned(),
+            messaging_socket_path: PathBuf::from("/tmp/cc-socks/peer.sock"),
+            updated_at: now_ms(),
+            ..PeerRecord::default()
+        }];
+        assert!(record_for_pane_with_parents(&[], "%0", Some(me), parent_of).is_none());
+        assert!(record_for_pane_with_parents(&records, "%1", Some(me), parent_of).is_none());
+        assert!(record_for_pane_with_parents(&records, "%0", None, parent_of).is_none());
+        assert_eq!(lookups.get(), 0);
+        assert!(record_for_pane_with_parents(&records, "%0", Some(me), parent_of).is_some());
+        assert!(
+            record_for_pane(&records, "%0", Some(std::os::unix::process::parent_id())).is_some()
+        );
+    }
+
+    #[test]
+    fn shared_process_snapshot_keeps_pane_routing_separate() {
+        let me = std::process::id();
+        let parent = std::os::unix::process::parent_id();
+        let table = [(me, 10), (parent, 20)];
+        let processes = |pid| {
+            table
+                .iter()
+                .find_map(|&(child, parent)| (child == pid).then_some(parent))
+        };
+        let record = |pid, pane: &str| PeerRecord {
+            pid,
+            tmux: format!("work:@0.{pane}"),
+            messaging_socket_path: PathBuf::from(format!("/tmp/cc-socks/{pid}.sock")),
+            updated_at: now_ms(),
+            ..PeerRecord::default()
+        };
+        let records = [record(parent, "%0"), record(me, "%0"), record(parent, "%1")];
+        assert_eq!(
+            record_for_pane_with_parents(&records, "%0", Some(10), processes)
+                .map(|record| record.pid),
+            Some(me)
+        );
+        assert_eq!(
+            record_for_pane_with_parents(&records, "%1", Some(20), processes)
+                .map(|record| record.pid),
+            Some(parent)
+        );
+        assert!(record_for_pane_with_parents(&records, "%1", Some(10), processes).is_none());
+    }
+
+    #[test]
+    fn descendants_come_shallowest_first_and_skip_strangers() {
+        let parents = [(10, 1), (20, 10), (30, 20), (40, 10), (50, 2)];
+        assert_eq!(descendants_by_depth(&parents, 10), vec![20, 40, 30]);
+        assert!(env_marks_pane(
+            ["A=1".as_bytes().to_vec(), "ZZ_PANE=%2".as_bytes().to_vec()].into_iter(),
+            "%2"
+        ));
+        assert!(!env_marks_pane(
+            ["ZZ_PANE=%22".as_bytes().to_vec()].into_iter(),
+            "%2"
+        ));
+    }
+
+    #[test]
+    fn process_start_trims_outer_whitespace_only() {
+        assert_eq!(
+            trimmed_proc_start(b"  Thu Sep 10 12:46:03 2026\n"),
+            "Thu Sep 10 12:46:03 2026"
+        );
+    }
+
+    #[test]
+    fn stale_sweep_preserves_foreign_and_live_records() {
+        let directory = tempfile::tempdir().expect("registry directory");
+        for (pid, marker) in [
+            (0, None),
+            (u32::MAX, Some(json!({"pane":"%3"}))),
+            (std::process::id(), Some(json!({"pane":"%4"}))),
+        ] {
+            write_record(
+                &directory.path().join(format!("{pid}.json")),
+                &PeerRecord {
+                    pid,
+                    zz: marker,
+                    ..PeerRecord::default()
+                },
+            )
+            .expect("write record");
+        }
+        sweep_stale_records_in(directory.path()).expect("sweep");
+        assert!(directory.path().join("0.json").exists());
+        assert!(!directory.path().join(format!("{}.json", u32::MAX)).exists());
+        assert!(
+            directory
+                .path()
+                .join(format!("{}.json", std::process::id()))
+                .exists()
+        );
+    }
+}
+
+#[cfg(test)]
+#[path = "claude_peers_peerskip_tests.rs"]
+mod peerskip_tests;

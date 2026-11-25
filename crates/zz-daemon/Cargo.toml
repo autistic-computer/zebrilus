@@ -10,21 +10,9 @@ publish = false
 [features]
 default = ["agent", "tailnet-own"]
 tailnet-own = ["dep:zz-tailnet"]
-agent = [
-    "dep:agent-client-protocol",
-    "dep:sha2",
-    "dep:async-channel",
-    "dep:base64",
-    "dep:futures-lite",
-    "dep:smol",
-    "dep:tungstenite",
-    "dep:zz-machine",
-]
+agent = ["dep:zz-agent", "dep:futures-lite", "dep:zz-machine"]
 
 [dependencies]
-agent-client-protocol = { workspace = true, optional = true }
-async-channel = { workspace = true, optional = true }
-base64 = { workspace = true, optional = true }
 chrono = { workspace = true, features = ["alloc", "std"] }
 futures-lite = { workspace = true, optional = true }
 getrandom.workspace = true
@@ -32,8 +20,6 @@ glob = "0.3"
 ignore.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-sha2 = { version = "0.11", optional = true }
-smol = { workspace = true, optional = true }
 crossbeam-channel.workspace = true
 libc.workspace = true
 log.workspace = true
@@ -42,9 +28,9 @@ regex.workspace = true
 semver.workspace = true
 tempfile.workspace = true
 thiserror.workspace = true
-tungstenite = { version = "0.29.0", default-features = false, features = ["handshake"], optional = true }
 zz-config.workspace = true
 zz-daemon-client.workspace = true
+zz-agent = { workspace = true, optional = true }
 zz-mux.workspace = true
 zz-protocol.workspace = true
 zz-machine = { workspace = true, optional = true }
@@ -63,6 +49,9 @@ windows-registry.workspace = true
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_Pipes", "Win32_System_Threading"] }
 
 [dev-dependencies]
+agent-client-protocol.workspace = true
+async-channel.workspace = true
+zz-agent = { workspace = true, features = ["test-support"] }
 chrono = { workspace = true, features = ["clock"] }
 
 [lints]

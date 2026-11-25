@@ -97,7 +97,7 @@ can show the source of the current value.
 `MuxOptionKey::from_config_key` is the accepted set. Other tmux options can
 be set in `zz/mux.conf`. Agent command overrides accept a command or a JSON
 adapter specification. For the `reads` tier, `tier_approves` in
-`crates/zz-daemon/src/agent/runtime.rs` accepts read, search, fetch and think
+`crates/zz-agent/src/runtime.rs` accepts read, search, fetch and think
 requests. The provider's own approval mode also affects what it asks. [Agent panes](/concepts/agent-panes.md)
 
 ## Editing and importing

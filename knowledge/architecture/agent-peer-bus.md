@@ -2,7 +2,7 @@
 type: Architecture
 title: Named terminal peers
 description: How Claude Code on the same Unix host discovers and sends messages to a named terminal pane.
-resource: crates/zz-daemon/src/agent/claude_peers.rs
+resource: crates/zz-agent/src/claude_peers.rs
 tags: [architecture, agent, messaging, claude-code]
 timestamp: 2026-11-24T00:00:00Z
 ---
@@ -35,7 +35,7 @@ or closing the peer removes the record and socket. Startup sweeps stale zz regis
 The listener passes a user message's content, including its attribution, to
 `Shared::deliver_to_terminal_pane`. Its callback ignores control messages.
 An ordinary recipient receives a paste and submit. For a Codex terminal,
-`agent/codex_queue.rs` resolves the title's thread name and the pane's directory
+`crates/zz-agent/src/codex_queue.rs` resolves the title's thread name and the pane's directory
 against the app server's thread list, then calls `codex queue --thread ID --message TEXT`.
 An unnamed thread gets its first prompt through the terminal. A failed or ambiguous
 lookup for a named thread stops delivery.

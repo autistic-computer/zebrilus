@@ -3,7 +3,7 @@ type: Design Plan
 title: "Shadow terminal for agent panes (superseded)"
 description: "SUPERSEDED: Agent capture reads chat events directly."
 status: "Superseded 2026-10-23"
-resource: crates/zz-daemon/src/agent/capture.rs
+resource: crates/zz-agent/src/capture.rs
 tags:
 - agent
 - terminal

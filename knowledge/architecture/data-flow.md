@@ -39,8 +39,8 @@ The daemon tracks the tab list, selected tab and profile so a client can reopen 
 4. On attach or a gap, `AgentReplay` asks for the stream from a sequence number.
    The daemon serves retained items or rebuilds the missing history for that client.
 
-The driver, replay and reducer live in `crates/zz-daemon/src/agent/host.rs`,
-`crates/zz-daemon/src/agent/fanout.rs` and `crates/zz/src/agent/controller.rs`.
+The driver, replay and reducer live in `crates/zz-agent/src/host.rs`,
+`crates/zz-agent/src/fanout.rs` and `crates/zz/src/agent/controller.rs`.
 A vendor TUI running in a terminal uses the terminal path. [Agent panes](/concepts/agent-panes.md)
 
 ## Commands and configuration

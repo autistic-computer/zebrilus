@@ -1,0 +1,4679 @@
+use std::time::{Duration, Instant};
+use std::{
+    collections::{BTreeMap, VecDeque},
+    future::Future,
+    path::{Path, PathBuf},
+    pin::Pin,
+    sync::{
+        Arc, Weak,
+        atomic::{AtomicBool, AtomicU64, Ordering},
+    },
+    thread::{self, JoinHandle},
+};
+
+use async_channel::{Receiver, Sender};
+use parking_lot::Mutex;
+use serde_json::Value;
+#[cfg(test)]
+use zz_protocol::ClientInstanceId;
+use zz_protocol::agent_stream::agent_verb;
+use zz_protocol::{
+    AgentAutoApprove, AgentGitSummary, AgentProvider, AgentQuestionAnswer, AgentTaskWire, ClientId,
+    MAX_AGENT_PROMPT_BYTES, MAX_AGENT_QUEUED_PROMPTS, MAX_AGENT_TASKS, PaneId, QuotaWindows,
+    agent_mention::{ReportTiming, is_relayed, timed_report},
+};
+
+use crate::{
+    claude::{ClaudeCommand, run_claude_runtime},
+    codex::{CodexCommand, run_codex_runtime},
+    environment::{AgentWorkspaceEnvironment, warm_adapter_cache},
+    git_summary,
+    journal::AgentJournal,
+    runtime::{AgentSpawnConfig, RuntimeCommand, RuntimeControl, run_agent_runtime},
+    stream::{
+        AgentAuthMethod, AgentPrompt, AgentPromptOutcome, AgentQuestion, AgentSessionCapabilities,
+        AgentSessionSummary, AgentStreamItem, AgentStreamPayload,
+    },
+};
+use zz_protocol::agent_stream::AgentBlockPolicy;
+
+const PANE_INBOX_CAPACITY: usize = 64;
+const RUNTIME_COMMAND_CAPACITY: usize = 32;
+const RUNTIME_CONTROL_CAPACITY: usize = 32;
+const RUNTIME_EVENT_CAPACITY: usize = 64;
+
+pub type AgentStreamSink =
+    Box<dyn Fn(PaneId, u64, AgentPaneState, Option<AgentStreamItem>) + Send + Sync>;
+
+#[derive(Debug)]
+pub enum HostCommand {
+    Prompt(QueuedPrompt),
+    Join(AgentTurnWaiter),
+    Steer(AgentPrompt),
+    Cancel,
+    Unqueue,
+    RespondPermission {
+        response: PermissionResponse,
+    },
+    Authenticate {
+        method_id: String,
+    },
+    SetConfigOption {
+        option_id: String,
+        value: String,
+    },
+    SetMode {
+        mode_id: String,
+    },
+    ListSessions {
+        client: ClientId,
+        cwd: Option<PathBuf>,
+        cursor: Option<String>,
+        replace: bool,
+    },
+    NewSession {
+        cwd: PathBuf,
+        reply: Option<zz_daemon_client::reply::Reply<Result<(), String>>>,
+    },
+    SwitchSession {
+        session: AgentSessionSummary,
+    },
+    DeleteSession {
+        client: ClientId,
+        session_id: String,
+    },
+    AnswerQuestion {
+        request_id: u64,
+        answers: Vec<AgentQuestionAnswer>,
+    },
+    StopTask {
+        task_id: String,
+    },
+    RefreshGit,
+}
+
+pub const MAX_AGENT_TURN_REPLY_BYTES: usize = 1024 * 1024;
+const MAX_AGENT_FINAL_REPLY_BYTES: usize = 256 * 1024;
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct AgentTurnReply {
+    pub text: String,
+    pub truncated: bool,
+    pub duration: Duration,
+    pub tool_calls: u32,
+    pub permissions_requested: u32,
+    pub permissions_allowed: u32,
+    pub permissions_denied: u32,
+    pub final_text: String,
+    pub stop_reason: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum AgentTurnFailure {
+    Failed(String),
+    Blocked {
+        permission: zz_protocol::AgentPermissionWire,
+        reply: Box<AgentTurnReply>,
+    },
+    Stopped {
+        reason: String,
+        reply: Box<AgentTurnReply>,
+    },
+    Cancelled,
+    Reclaimed,
+    Closed,
+    NoTurn,
+}
+
+#[derive(Debug)]
+pub enum PermissionResponse {
+    Exact {
+        request_id: u64,
+        option_id: Option<String>,
+    },
+    Select {
+        request_id: Option<u64>,
+        choice: PermissionChoice,
+        reply: zz_daemon_client::reply::Reply<Result<String, String>>,
+    },
+}
+
+#[derive(Debug)]
+pub enum PermissionChoice {
+    Allow,
+    Deny,
+    Option(String),
+}
+
+fn select_permission(
+    pending: &[AgentPendingPermission],
+    request_id: Option<u64>,
+    choice: &PermissionChoice,
+) -> Result<(u64, String), String> {
+    let permission = match request_id {
+        Some(id) => pending
+            .iter()
+            .find(|pending| pending.request_id == id)
+            .ok_or_else(|| "no pending permission".to_owned())?,
+        None => pending
+            .first()
+            .ok_or_else(|| "no pending permission".to_owned())?,
+    };
+    let options = permission
+        .options
+        .as_array()
+        .map(Vec::as_slice)
+        .unwrap_or_default();
+    fn kind(option: &Value) -> Option<&str> {
+        option.get("kind").and_then(Value::as_str)
+    }
+    let selected = match choice {
+        PermissionChoice::Option(id) => options
+            .iter()
+            .find(|option| option.get("optionId").and_then(Value::as_str) == Some(id.as_str())),
+        PermissionChoice::Allow => options
+            .iter()
+            .find(|option| kind(option) == Some("allow_once"))
+            .or_else(|| {
+                options
+                    .iter()
+                    .find(|option| kind(option) == Some("allow_always"))
+            }),
+        PermissionChoice::Deny => options
+            .iter()
+            .find(|option| matches!(kind(option), Some("reject_once" | "reject_always"))),
+    };
+    let id = selected
+        .and_then(|option| option.get("optionId"))
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            let valid = options
+                .iter()
+                .filter_map(|option| option.get("optionId").and_then(Value::as_str))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("unknown or unavailable permission option; valid ids: {valid}")
+        })?;
+    Ok((permission.request_id, id.to_owned()))
+}
+
+pub fn typed_answer(
+    pending: &[AgentPendingPermission],
+    request: Option<u64>,
+    text: &str,
+) -> Result<(u64, Vec<AgentQuestionAnswer>), String> {
+    let permission = match request {
+        Some(id) => pending.iter().find(|pending| pending.request_id == id),
+        None => pending.first(),
+    }
+    .ok_or_else(|| "no pending permission".to_owned())?;
+    let [question] = permission.questions.as_slice() else {
+        return Err(format!(
+            "request {} asks {} questions; --answer answers one",
+            permission.request_id,
+            permission.questions.len()
+        ));
+    };
+    Ok((
+        permission.request_id,
+        vec![AgentQuestionAnswer {
+            id: question.id.clone(),
+            answers: vec![text.to_owned()],
+        }],
+    ))
+}
+
+pub type AgentTurnResult = Result<AgentTurnReply, AgentTurnFailure>;
+#[derive(Debug)]
+pub struct AgentTurnWaiter {
+    pub reply: zz_daemon_client::reply::Reply<AgentTurnResult>,
+    pub on_block: AgentBlockPolicy,
+    pub audit: Arc<Mutex<Vec<String>>>,
+    pub asks: Option<AgentAsks>,
+}
+
+#[derive(Clone)]
+pub struct AgentAsks(pub Arc<dyn Fn(&AgentPendingPermission) + Send + Sync>);
+
+impl std::fmt::Debug for AgentAsks {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("AgentAsks")
+    }
+}
+
+#[derive(Debug)]
+pub struct QueuedPrompt {
+    pub prompt: AgentPrompt,
+    pub waiter: Option<AgentTurnWaiter>,
+    pub source: PromptSource,
+    pub note: Option<String>,
+    pub ask: Option<RelayedAsk>,
+}
+
+#[derive(Debug)]
+pub struct RelayedAsk {
+    pub request: u64,
+    pub asker: Weak<Mutex<AgentPaneState>>,
+}
+
+impl RelayedAsk {
+    fn answered(&self) -> bool {
+        self.asker.upgrade().is_none_or(|state| {
+            !state
+                .lock()
+                .pending_permissions
+                .iter()
+                .any(|pending| pending.request_id == self.request)
+        })
+    }
+}
+
+fn waiting_prompts(queue: &VecDeque<QueuedPrompt>) -> usize {
+    queue
+        .iter()
+        .filter(|queued| queued.source != PromptSource::Injected)
+        .count()
+}
+
+fn own_prompts(queue: &VecDeque<QueuedPrompt>) -> usize {
+    queue
+        .iter()
+        .filter(|queued| queued.source == PromptSource::Composer)
+        .count()
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PromptSource {
+    Composer,
+    Command,
+    Chat,
+    Injected,
+}
+
+impl PromptSource {
+    fn note(self, text: &str, extra: Option<&str>) -> Option<String> {
+        match self {
+            Self::Composer | Self::Command => zz_protocol::agent_mention::hidden_note(text, extra),
+            Self::Chat | Self::Injected => extra.map(str::to_owned),
+        }
+    }
+}
+
+impl QueuedPrompt {
+    pub fn settle(&mut self, result: AgentTurnResult) {
+        if let Some(waiter) = self.waiter.take() {
+            waiter.reply.try_send(result);
+        }
+    }
+
+    fn into_reclaimed(mut self, failure: AgentTurnFailure) -> AgentPrompt {
+        self.settle(Err(failure));
+        self.prompt
+    }
+}
+
+impl From<AgentPrompt> for QueuedPrompt {
+    fn from(prompt: AgentPrompt) -> Self {
+        Self {
+            prompt,
+            waiter: None,
+            source: PromptSource::Composer,
+            note: None,
+            ask: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct AgentPaneSpec {
+    pub provider: AgentProvider,
+    pub cwd: PathBuf,
+    pub resume_session: Option<String>,
+    pub model: Option<String>,
+    pub effort: Option<String>,
+    pub auto_approve: Option<AgentAutoApprove>,
+    pub workspace: AgentWorkspaceEnvironment,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AgentConnectionPhase {
+    Starting,
+    Restoring,
+    Ready,
+    Running,
+    Cancelling,
+    Failed,
+    Disconnected,
+}
+
+impl AgentConnectionPhase {
+    const fn accepts_prompt(self) -> bool {
+        matches!(self, Self::Ready)
+    }
+
+    const fn has_active_turn(self) -> bool {
+        matches!(self, Self::Running | Self::Cancelling)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct AgentPendingPermission {
+    pub request_id: u64,
+    pub tool_call: Value,
+    pub options: Value,
+    pub questions: Vec<AgentQuestion>,
+}
+
+impl AgentPendingPermission {
+    pub fn outlives_turn(&self) -> bool {
+        let zz = &self.tool_call["_meta"]["zz"];
+        zz["background"] == true || zz["backgroundAgent"].is_string()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct AgentPaneState {
+    pub phase: AgentConnectionPhase,
+    pub agent_name: Option<String>,
+    pub agent_key: Option<String>,
+    pub capabilities: AgentSessionCapabilities,
+    pub auth_methods: Vec<AgentAuthMethod>,
+    pub session_id: Option<String>,
+    pub cwd: PathBuf,
+    pub queued_prompts: usize,
+    pub own_prompts: usize,
+    pub waiting_prompts: usize,
+    pub pending_permissions: Vec<AgentPendingPermission>,
+    pub error: Option<String>,
+    pub last_seq: u64,
+    pub git: Option<AgentGitSummary>,
+    pub tasks: Vec<AgentTaskWire>,
+    pub title: Option<String>,
+    pub quota: QuotaWindows,
+}
+
+impl AgentPaneState {
+    fn new(spec: &AgentPaneSpec) -> Self {
+        Self {
+            phase: AgentConnectionPhase::Starting,
+            agent_name: None,
+            agent_key: None,
+            capabilities: AgentSessionCapabilities::default(),
+            auth_methods: Vec::new(),
+            session_id: spec.resume_session.clone(),
+            cwd: spec.cwd.clone(),
+            queued_prompts: 0,
+            own_prompts: 0,
+            waiting_prompts: 0,
+            pending_permissions: Vec::new(),
+            error: None,
+            last_seq: 0,
+            git: None,
+            tasks: Vec::new(),
+            title: None,
+            quota: QuotaWindows::default(),
+        }
+    }
+
+    #[cfg(test)]
+    pub fn for_test() -> Self {
+        Self::new(&AgentPaneSpec {
+            model: None,
+            effort: None,
+            provider: AgentProvider::Codex,
+            cwd: PathBuf::from("/"),
+            resume_session: None,
+            auto_approve: None,
+            workspace: AgentWorkspaceEnvironment::default(),
+        })
+    }
+}
+
+enum PaneInput {
+    Command(HostCommand),
+    Event(AgentStreamPayload),
+    GitSummary {
+        generation: u64,
+        refresh: u64,
+        cwd: PathBuf,
+        summary: Option<AgentGitSummary>,
+    },
+    Finished(Result<(), String>),
+}
+
+struct PaneHandle {
+    inbox: Sender<PaneInput>,
+    control: Sender<HostCommand>,
+    prompts: Sender<QueuedPrompt>,
+    close: Sender<()>,
+    state: Arc<Mutex<AgentPaneState>>,
+    auto_approve: Arc<Mutex<AgentAutoApprove>>,
+    ended: Arc<AtomicBool>,
+    thread: JoinHandle<()>,
+}
+
+#[derive(Default)]
+struct PaneRegistry {
+    panes: Mutex<BTreeMap<PaneId, PaneHandle>>,
+}
+
+pub struct AgentHost {
+    config: Mutex<AgentSpawnConfig>,
+    sink: Arc<AgentStreamSink>,
+    journal: Option<Arc<AgentJournal>>,
+    registry: Arc<PaneRegistry>,
+    permission_ids: Arc<AtomicU64>,
+    #[cfg(any(test, feature = "test-support"))]
+    runner_factory: Mutex<Option<PaneRunnerFactory>>,
+}
+
+pub struct RuntimeChannels {
+    pub auto_approve: Arc<Mutex<AgentAutoApprove>>,
+    pub permission_ids: Arc<AtomicU64>,
+    pub journal: Option<Arc<AgentJournal>>,
+    pub ended: Arc<AtomicBool>,
+    pub commands: Receiver<RuntimeCommand>,
+    pub controls: Receiver<RuntimeControl>,
+    pub events: Sender<AgentStreamPayload>,
+}
+
+pub fn native_claude(config: &AgentSpawnConfig, provider: AgentProvider) -> Option<ClaudeCommand> {
+    (provider == AgentProvider::ClaudeCode)
+        .then(|| ClaudeCommand::parse(config.command_for(provider)))
+        .flatten()
+}
+
+pub fn native_codex(config: &AgentSpawnConfig, provider: AgentProvider) -> Option<CodexCommand> {
+    (provider == AgentProvider::Codex)
+        .then(|| CodexCommand::parse(config.command_for(provider)))
+        .flatten()
+}
+
+pub type PaneRunner = Box<
+    dyn FnOnce(RuntimeChannels) -> Pin<Box<dyn Future<Output = Result<(), String>>>>
+        + Send
+        + 'static,
+>;
+
+pub fn pane_runner(config: AgentSpawnConfig, provider: AgentProvider) -> PaneRunner {
+    if let Some(command) = native_claude(&config, provider) {
+        let workspace = config.workspace;
+        return Box::new(move |channels: RuntimeChannels| {
+            Box::pin(run_claude_runtime(command, workspace, provider, channels))
+        });
+    }
+    if let Some(command) = native_codex(&config, provider) {
+        let workspace = config.workspace;
+        return Box::new(move |channels: RuntimeChannels| {
+            Box::pin(run_codex_runtime(command, workspace, provider, channels))
+        });
+    }
+    match provider {
+        AgentProvider::Antigravity => Box::new(move |channels: RuntimeChannels| {
+            Box::pin(crate::agy::run_agy_runtime(config, provider, channels))
+        }),
+        AgentProvider::Cursor => Box::new(move |channels: RuntimeChannels| {
+            Box::pin(crate::cursor::run_cursor_runtime(
+                config, provider, channels,
+            ))
+        }),
+        AgentProvider::Grok => Box::new(move |channels: RuntimeChannels| {
+            Box::pin(crate::grok::run_grok_runtime(config, provider, channels))
+        }),
+        AgentProvider::ClaudeCode | AgentProvider::Codex => {
+            Box::new(move |channels: RuntimeChannels| {
+                Box::pin(run_agent_runtime(config, provider, channels))
+            })
+        }
+    }
+}
+
+#[cfg(any(test, feature = "test-support"))]
+pub type PaneRunnerFactory = Box<dyn Fn(&AgentPaneSpec) -> PaneRunner + Send + Sync>;
+
+impl AgentHost {
+    pub fn with_journal(
+        config: AgentSpawnConfig,
+        sink: AgentStreamSink,
+        journal: Option<Arc<AgentJournal>>,
+    ) -> Self {
+        Self {
+            config: Mutex::new(config),
+            sink: Arc::new(sink),
+            journal,
+            registry: Arc::new(PaneRegistry::default()),
+            permission_ids: Arc::new(AtomicU64::new(1)),
+            #[cfg(any(test, feature = "test-support"))]
+            runner_factory: Mutex::new(None),
+        }
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn set_runner_factory(&self, factory: PaneRunnerFactory) {
+        *self.runner_factory.lock() = Some(factory);
+    }
+
+    pub fn prewarm(&self) {
+        warm_adapter_cache(&self.config.lock().commands());
+    }
+
+    pub fn reconfigure(&self, config: AgentSpawnConfig) {
+        *self.config.lock() = config;
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn config(&self) -> AgentSpawnConfig {
+        self.config.lock().clone()
+    }
+
+    #[cfg(test)]
+    pub fn pane_count(&self) -> usize {
+        self.registry.panes.lock().len()
+    }
+
+    pub fn contains(&self, pane: PaneId) -> bool {
+        self.registry.panes.lock().contains_key(&pane)
+    }
+
+    pub fn open(&self, pane: PaneId, generation: u64, spec: AgentPaneSpec) -> bool {
+        #[cfg(any(test, feature = "test-support"))]
+        if let Some(runner) = self
+            .runner_factory
+            .lock()
+            .as_ref()
+            .map(|factory| factory(&spec))
+        {
+            return self.open_with(pane, generation, spec, runner);
+        }
+        let mut config = self.config.lock().clone();
+        config.workspace.adopt_pane_identity(&spec.workspace);
+        let runner = pane_runner(config, spec.provider);
+        self.open_with(pane, generation, spec, runner)
+    }
+
+    pub fn open_with(
+        &self,
+        pane: PaneId,
+        generation: u64,
+        spec: AgentPaneSpec,
+        runner: PaneRunner,
+    ) -> bool {
+        let mut panes = self.registry.panes.lock();
+        if panes.contains_key(&pane) {
+            return false;
+        }
+        let runtime_auto_approve = Arc::new(Mutex::new(
+            spec.auto_approve.unwrap_or(self.config.lock().auto_approve),
+        ));
+        let auto_approve = Arc::clone(&runtime_auto_approve);
+        let state = Arc::new(Mutex::new(AgentPaneState::new(&spec)));
+        let pane_state = Arc::clone(&state);
+        let sink = Arc::clone(&self.sink);
+        let permission_ids = Arc::clone(&self.permission_ids);
+        let journal = self.journal.clone();
+        let (inbox_tx, inbox_rx) = async_channel::bounded(PANE_INBOX_CAPACITY);
+        let (control_tx, control_rx) = async_channel::bounded(RUNTIME_CONTROL_CAPACITY);
+        let (prompt_tx, prompt_rx) = async_channel::bounded(MAX_AGENT_QUEUED_PROMPTS);
+        let (close_tx, close_rx) = async_channel::bounded::<()>(1);
+        let inbox = inbox_tx.clone();
+        let pane_close = close_tx.clone();
+        let ended = Arc::new(AtomicBool::new(false));
+        let pane_ended = Arc::clone(&ended);
+        let thread = std::thread::Builder::new()
+            .name(format!("zz-agent-{}", pane.0))
+            .spawn(move || {
+                futures_lite::future::block_on(run_pane(
+                    pane,
+                    generation,
+                    spec,
+                    runtime_auto_approve,
+                    pane_state,
+                    sink,
+                    runner,
+                    permission_ids,
+                    journal,
+                    pane_ended,
+                    inbox,
+                    inbox_rx,
+                    control_rx,
+                    prompt_rx,
+                    pane_close,
+                    close_rx,
+                ));
+            });
+        let thread = match thread {
+            Ok(thread) => thread,
+            Err(error) => {
+                log::error!(target: "zz::agent", "could not start the agent thread for pane {pane}: {error}");
+                return false;
+            }
+        };
+        panes.insert(
+            pane,
+            PaneHandle {
+                inbox: inbox_tx,
+                control: control_tx,
+                prompts: prompt_tx,
+                close: close_tx,
+                state,
+                auto_approve,
+                ended,
+                thread,
+            },
+        );
+        true
+    }
+
+    pub fn command(&self, pane: PaneId, command: HostCommand) -> Result<(), HostCommand> {
+        let panes = self.registry.panes.lock();
+        let Some(handle) = panes.get(&pane) else {
+            return Err(command);
+        };
+        let command = match command {
+            HostCommand::Prompt(prompt) if prompt.source != PromptSource::Injected => {
+                return handle
+                    .prompts
+                    .try_send(prompt)
+                    .map_err(|error| HostCommand::Prompt(error.into_inner()));
+            }
+            command => command,
+        };
+        if matches!(
+            &command,
+            HostCommand::Cancel
+                | HostCommand::RespondPermission { .. }
+                | HostCommand::AnswerQuestion { .. }
+        ) {
+            return handle
+                .control
+                .try_send(command)
+                .map_err(async_channel::TrySendError::into_inner);
+        }
+        handle
+            .inbox
+            .try_send(PaneInput::Command(command))
+            .map_err(|error| match error.into_inner() {
+                PaneInput::Command(command) => command,
+                PaneInput::Event(_) | PaneInput::GitSummary { .. } | PaneInput::Finished(_) => {
+                    unreachable!()
+                }
+            })
+    }
+
+    pub fn pane_state(&self, pane: PaneId) -> Weak<Mutex<AgentPaneState>> {
+        self.registry
+            .panes
+            .lock()
+            .get(&pane)
+            .map_or_else(Weak::new, |handle| Arc::downgrade(&handle.state))
+    }
+
+    pub fn set_auto_approve(&self, pane: PaneId, tier: AgentAutoApprove) {
+        if let Some(handle) = self.registry.panes.lock().get(&pane) {
+            *handle.auto_approve.lock() = tier;
+        }
+    }
+
+    pub fn close(&self, pane: PaneId) -> Option<JoinHandle<()>> {
+        let handle = self.registry.panes.lock().remove(&pane)?;
+        handle.close.close();
+        Some(handle.thread)
+    }
+
+    pub fn end(&self, pane: PaneId) -> Option<JoinHandle<()>> {
+        if let Some(handle) = self.registry.panes.lock().get(&pane) {
+            handle.ended.store(true, Ordering::Release);
+        }
+        self.close(pane)
+    }
+
+    pub fn snapshot_state(&self, pane: PaneId) -> Option<AgentPaneState> {
+        let panes = self.registry.panes.lock();
+        panes.get(&pane).map(|handle| handle.state.lock().clone())
+    }
+
+    pub fn shutdown(&self) {
+        let handles = std::mem::take(&mut *self.registry.panes.lock());
+        for handle in handles.values() {
+            handle.close.close();
+        }
+        for handle in handles.into_values() {
+            let _ = handle.thread.join();
+        }
+        crate::child::join_reapers();
+    }
+}
+
+impl Drop for AgentHost {
+    fn drop(&mut self) {
+        self.shutdown();
+    }
+}
+
+async fn run_pane(
+    pane: PaneId,
+    generation: u64,
+    spec: AgentPaneSpec,
+    auto_approve: Arc<Mutex<AgentAutoApprove>>,
+    state: Arc<Mutex<AgentPaneState>>,
+    sink: Arc<AgentStreamSink>,
+    runner: PaneRunner,
+    permission_ids: Arc<AtomicU64>,
+    journal: Option<Arc<AgentJournal>>,
+    ended: Arc<AtomicBool>,
+    inbox_tx: Sender<PaneInput>,
+    inbox_rx: Receiver<PaneInput>,
+    host_control_rx: Receiver<HostCommand>,
+    prompt_rx: Receiver<QueuedPrompt>,
+    close_tx: Sender<()>,
+    close_rx: Receiver<()>,
+) {
+    let (command_tx, command_rx) = async_channel::bounded(RUNTIME_COMMAND_CAPACITY);
+    let (runtime_control_tx, runtime_control_rx) = async_channel::bounded(RUNTIME_CONTROL_CAPACITY);
+    let (event_tx, event_rx) = async_channel::bounded(RUNTIME_EVENT_CAPACITY);
+    let runtime_close = close_rx.clone();
+    let closer = event_tx.clone();
+    let outcome = Arc::new(Mutex::new(None));
+
+    let runtime_outcome = Arc::clone(&outcome);
+    let runtime = async move {
+        let result = futures_lite::future::race(
+            runner(RuntimeChannels {
+                auto_approve,
+                permission_ids,
+                journal,
+                ended,
+                commands: command_rx,
+                controls: runtime_control_rx,
+                events: event_tx,
+            }),
+            async move {
+                let _ = runtime_close.recv().await;
+                Ok(())
+            },
+        )
+        .await;
+        *runtime_outcome.lock() = Some(result);
+        closer.close();
+    };
+
+    let pump_inbox = inbox_tx.clone();
+    let forward = async move {
+        while let Ok(payload) = event_rx.recv().await {
+            if inbox_tx.send(PaneInput::Event(payload)).await.is_err() {
+                break;
+            }
+        }
+        let result = outcome.lock().take().unwrap_or(Ok(()));
+        let _ = inbox_tx.send(PaneInput::Finished(result)).await;
+        inbox_tx.close();
+    };
+
+    let pump = PanePump {
+        pane,
+        generation,
+        spec,
+        state,
+        sink,
+        inbox: pump_inbox,
+        commands: command_tx,
+        prompts: prompt_rx.clone(),
+        controls: runtime_control_tx,
+        close: close_tx,
+        seq: 0,
+        queue: VecDeque::new(),
+        git_refresh: GitRefreshGate::default(),
+        next_turn_id: 0,
+        active_turn: None,
+        dispatched_prompt: None,
+        active_waiter: None,
+        joined_waiters: Vec::new(),
+        session_waiter: None,
+        new_session_pending: false,
+        turn_reply: AgentTurnReply::default(),
+        turn_started: Instant::now(),
+        closing: false,
+    };
+
+    futures_lite::future::zip(
+        futures_lite::future::zip(runtime, forward),
+        pump.run(inbox_rx, host_control_rx, prompt_rx, close_rx),
+    )
+    .await;
+}
+
+struct PanePump {
+    pane: PaneId,
+    generation: u64,
+    spec: AgentPaneSpec,
+    state: Arc<Mutex<AgentPaneState>>,
+    sink: Arc<AgentStreamSink>,
+    inbox: Sender<PaneInput>,
+    commands: Sender<RuntimeCommand>,
+    prompts: Receiver<QueuedPrompt>,
+    controls: Sender<RuntimeControl>,
+    close: Sender<()>,
+    seq: u64,
+    queue: VecDeque<QueuedPrompt>,
+    git_refresh: GitRefreshGate,
+    next_turn_id: u64,
+    active_turn: Option<u64>,
+    dispatched_prompt: Option<(u64, AgentPrompt)>,
+    active_waiter: Option<AgentTurnWaiter>,
+    joined_waiters: Vec<AgentTurnWaiter>,
+    session_waiter: Option<zz_daemon_client::reply::Reply<Result<(), String>>>,
+    new_session_pending: bool,
+    turn_reply: AgentTurnReply,
+    turn_started: Instant,
+    closing: bool,
+}
+
+#[derive(Default)]
+struct GitRefreshGate {
+    latest: u64,
+    running: Option<u64>,
+    pending: Option<u64>,
+}
+
+impl GitRefreshGate {
+    fn request(&mut self) -> Option<u64> {
+        self.latest = self.latest.saturating_add(1);
+        if self.running.is_some() {
+            self.pending = Some(self.latest);
+            None
+        } else {
+            self.running = Some(self.latest);
+            Some(self.latest)
+        }
+    }
+
+    fn invalidate(&mut self) {
+        self.latest = self.latest.saturating_add(1);
+        self.pending = None;
+    }
+
+    fn complete(&mut self, refresh: u64) -> Option<u64> {
+        if self.running != Some(refresh) {
+            return None;
+        }
+        self.running = self.pending.take();
+        self.running
+    }
+
+    fn spawn_failed(&mut self, refresh: u64) {
+        if self.running == Some(refresh) {
+            self.running = None;
+            self.pending = None;
+        }
+    }
+}
+
+enum FollowUp {
+    None,
+    DrainQueue,
+    ReclaimQueue,
+    Reopen,
+}
+
+impl PanePump {
+    async fn run(
+        mut self,
+        inbox: Receiver<PaneInput>,
+        control: Receiver<HostCommand>,
+        prompts: Receiver<QueuedPrompt>,
+        close: Receiver<()>,
+    ) {
+        let state = self.state.lock().clone();
+        (self.sink)(self.pane, self.generation, state, None);
+        self.send(RuntimeCommand::Open {
+            cwd: self.spec.cwd.clone(),
+            resume_session: self.spec.resume_session.clone(),
+        });
+        loop {
+            let input = futures_lite::future::race(
+                async {
+                    let _ = close.recv().await;
+                    None
+                },
+                futures_lite::future::race(
+                    async { control.recv().await.ok().map(PaneInput::Command) },
+                    futures_lite::future::race(
+                        async {
+                            prompts
+                                .recv()
+                                .await
+                                .ok()
+                                .map(HostCommand::Prompt)
+                                .map(PaneInput::Command)
+                        },
+                        async { inbox.recv().await.ok() },
+                    ),
+                ),
+            )
+            .await;
+            let Some(input) = input else {
+                self.close();
+                self.reclaim_accepted_inputs(&prompts, &inbox);
+                break;
+            };
+            match input {
+                PaneInput::Event(payload) => self.observe(payload),
+                PaneInput::Command(command) => self.command(command),
+                PaneInput::GitSummary {
+                    generation,
+                    refresh,
+                    cwd,
+                    summary,
+                } => self.finish_git_refresh(generation, refresh, &cwd, summary),
+                PaneInput::Finished(result) => {
+                    self.finish(&result);
+                    self.reclaim_accepted_inputs(&prompts, &inbox);
+                    break;
+                }
+            }
+        }
+    }
+
+    fn reclaim_accepted_inputs(
+        &mut self,
+        prompts: &Receiver<QueuedPrompt>,
+        inbox: &Receiver<PaneInput>,
+    ) {
+        while let Ok(queued) = prompts.try_recv() {
+            self.reclaim_prompts(vec![queued], &AgentTurnFailure::Closed);
+        }
+        while let Ok(input) = inbox.try_recv() {
+            match input {
+                PaneInput::Command(HostCommand::Prompt(queued)) => {
+                    self.reclaim_prompts(vec![queued], &AgentTurnFailure::Closed);
+                }
+                PaneInput::Command(HostCommand::Steer(prompt)) => {
+                    self.emit(AgentStreamPayload::PromptsReclaimed {
+                        prompts: vec![prompt],
+                    });
+                }
+                PaneInput::Command(HostCommand::NewSession {
+                    reply: Some(reply), ..
+                }) => {
+                    reply.try_send(Err("agent closed".to_owned()));
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn respond_permission(&mut self, request_id: u64, option_id: Option<String>) -> bool {
+        let kind = self
+            .state
+            .lock()
+            .pending_permissions
+            .iter()
+            .find(|pending| pending.request_id == request_id)
+            .and_then(|pending| pending.options.as_array())
+            .and_then(|options| {
+                options.iter().find(|option| {
+                    option.get("optionId").and_then(Value::as_str) == option_id.as_deref()
+                })
+            })
+            .and_then(|option| option.get("kind").and_then(Value::as_str))
+            .map(str::to_owned);
+        let denied =
+            option_id.is_none() || matches!(kind.as_deref(), Some("reject_once" | "reject_always"));
+        if self.send_control(RuntimeControl::RespondPermission {
+            request_id,
+            option_id,
+        }) {
+            if self.active_waiter.is_some() {
+                if denied {
+                    self.turn_reply.permissions_denied += 1;
+                } else if matches!(kind.as_deref(), Some("allow_once" | "allow_always")) {
+                    self.turn_reply.permissions_allowed += 1;
+                }
+            }
+            true
+        } else {
+            self.fail_control();
+            false
+        }
+    }
+
+    fn command(&mut self, command: HostCommand) {
+        match command {
+            HostCommand::Prompt(prompt) => self.prompt(prompt),
+            HostCommand::Join(waiter) => {
+                if self.active_turn.is_some() {
+                    self.joined_waiters.push(waiter);
+                } else {
+                    waiter.reply.try_send(Err(AgentTurnFailure::NoTurn));
+                }
+            }
+            HostCommand::Steer(prompt) => self.steer(prompt),
+            HostCommand::Cancel => self.cancel(),
+            HostCommand::Unqueue => self.unqueue(),
+            HostCommand::RespondPermission { response } => match response {
+                PermissionResponse::Exact {
+                    request_id,
+                    option_id,
+                } => {
+                    self.respond_permission(request_id, option_id);
+                }
+                PermissionResponse::Select {
+                    request_id,
+                    choice,
+                    reply,
+                } => {
+                    let selected = {
+                        let state = self.state.lock();
+                        let pending = &state.pending_permissions;
+                        select_permission(pending, request_id, &choice)
+                            .map(|(request_id, option_id)| (request_id, Some(option_id)))
+                            .or_else(|error| match choice {
+                                PermissionChoice::Deny => pending
+                                    .iter()
+                                    .find(|permission| {
+                                        request_id.is_none_or(|id| permission.request_id == id)
+                                    })
+                                    .filter(|permission| !permission.questions.is_empty())
+                                    .map(|permission| (permission.request_id, None))
+                                    .ok_or(error),
+                                _ => Err(error),
+                            })
+                    };
+                    let result = selected.and_then(|(request_id, option_id)| {
+                        self.respond_permission(request_id, option_id.clone())
+                            .then(|| option_id.unwrap_or_else(|| "dismissed".to_owned()))
+                            .ok_or_else(|| "agent runtime is busy".to_owned())
+                    });
+                    reply.try_send(result);
+                }
+            },
+            HostCommand::AnswerQuestion {
+                request_id,
+                answers,
+            } => {
+                if self.send_control(RuntimeControl::AnswerQuestion {
+                    request_id,
+                    answers,
+                }) && self.active_waiter.is_some()
+                {
+                    self.turn_reply.permissions_allowed += 1;
+                }
+            }
+            HostCommand::StopTask { task_id } => {
+                self.send(RuntimeCommand::StopTask { task_id });
+            }
+            HostCommand::RefreshGit => self.start_git_refresh(),
+            HostCommand::Authenticate { method_id } => {
+                if !self.send(RuntimeCommand::Authenticate { method_id }) {
+                    self.observe(AgentStreamPayload::AuthenticationFailed {
+                        message: "agent runtime is busy".to_owned(),
+                    });
+                }
+            }
+            HostCommand::SetConfigOption { option_id, value } => {
+                if !self.send(RuntimeCommand::SetConfigOption {
+                    option_id: option_id.clone(),
+                    value,
+                }) {
+                    self.observe(AgentStreamPayload::SettingFailed {
+                        option_id,
+                        message: "agent runtime is busy".to_owned(),
+                    });
+                }
+            }
+            HostCommand::SetMode { mode_id } => {
+                if !self.send(RuntimeCommand::SetMode { mode_id }) {
+                    self.observe(AgentStreamPayload::SettingFailed {
+                        option_id: "legacy-session-mode".to_owned(),
+                        message: "agent runtime is busy".to_owned(),
+                    });
+                }
+            }
+            HostCommand::ListSessions {
+                client,
+                cwd,
+                cursor,
+                replace,
+            } => {
+                if !self.send(RuntimeCommand::ListSessions {
+                    client,
+                    cwd,
+                    cursor,
+                    replace,
+                }) {
+                    self.observe(AgentStreamPayload::SessionListFailed {
+                        client,
+                        message: "agent runtime is busy".to_owned(),
+                    });
+                }
+            }
+            HostCommand::NewSession { cwd, reply } => self.begin_session_change(
+                RuntimeCommand::NewSession { cwd },
+                AgentConnectionPhase::Starting,
+                reply,
+            ),
+            HostCommand::SwitchSession { session } => {
+                self.begin_session_change(
+                    RuntimeCommand::SwitchSession { session },
+                    AgentConnectionPhase::Restoring,
+                    None,
+                );
+            }
+            HostCommand::DeleteSession { client, session_id } => {
+                if !self.send(RuntimeCommand::DeleteSession { client, session_id }) {
+                    self.observe(AgentStreamPayload::SessionDeleteFailed {
+                        client,
+                        message: "agent runtime is busy".to_owned(),
+                    });
+                }
+            }
+        }
+    }
+
+    fn begin_session_change(
+        &mut self,
+        command: RuntimeCommand,
+        phase: AgentConnectionPhase,
+        reply: Option<zz_daemon_client::reply::Reply<Result<(), String>>>,
+    ) {
+        let accepted = {
+            let mut state = self.state.lock();
+            if state.phase != AgentConnectionPhase::Ready
+                || !state
+                    .pending_permissions
+                    .iter()
+                    .all(AgentPendingPermission::outlives_turn)
+                || self.active_turn.is_some()
+            {
+                false
+            } else {
+                state.phase = phase;
+                state.error = None;
+                true
+            }
+        };
+        if !accepted {
+            let message = "finish or cancel the current turn before changing sessions".to_owned();
+            self.emit(AgentStreamPayload::SessionSwitchFailed {
+                message: message.clone(),
+            });
+            if let Some(reply) = reply {
+                reply.try_send(Err(message));
+            }
+            return;
+        }
+        self.session_waiter = reply;
+        self.new_session_pending = matches!(&command, RuntimeCommand::NewSession { .. });
+        let state = self.state.lock().clone();
+        (self.sink)(self.pane, self.generation, state, None);
+        if !self.send(command) {
+            self.observe(AgentStreamPayload::SessionSwitchFailed {
+                message: "agent runtime is unavailable".to_owned(),
+            });
+        }
+    }
+
+    fn observe(&mut self, payload: AgentStreamPayload) {
+        if matches!(&payload, AgentStreamPayload::PromptAccepted { .. }) {
+            return;
+        }
+        if let AgentStreamPayload::TitleChanged { title } = payload {
+            let state = {
+                let mut state = self.state.lock();
+                if state.title == title {
+                    return;
+                }
+                state.title = title;
+                state.clone()
+            };
+            (self.sink)(self.pane, self.generation, state, None);
+            return;
+        }
+        let payload = match payload {
+            AgentStreamPayload::PromptsReclaimed { prompts } => {
+                let prompts = self.requeue_relayed(prompts);
+                if prompts.is_empty() {
+                    return;
+                }
+                AgentStreamPayload::PromptsReclaimed { prompts }
+            }
+            payload => payload,
+        };
+        if let AgentStreamPayload::QuotaChanged { quota } = payload {
+            let state = {
+                let mut state = self.state.lock();
+                if !state.quota.merge(quota) {
+                    return;
+                }
+                state.clone()
+            };
+            (self.sink)(self.pane, self.generation, state, None);
+            return;
+        }
+        if let AgentStreamPayload::PromptFinished { turn_id, .. } = &payload
+            && self.active_turn != Some(*turn_id)
+        {
+            return;
+        }
+        if let AgentStreamPayload::AuthenticationFailed { message }
+        | AgentStreamPayload::PaneFailed { message } = &payload
+        {
+            self.reclaim_dispatched_prompt(AgentTurnFailure::Failed(message.clone()));
+        }
+        if let AgentStreamPayload::Update { update } = &payload {
+            self.record_reply_chunk(update);
+        }
+        if let AgentStreamPayload::TurnStarted { turn_id } = &payload
+            && self.active_turn == Some(*turn_id)
+        {
+            self.turn_started = Instant::now();
+        }
+        if self.active_waiter.is_some()
+            && matches!(&payload, AgentStreamPayload::PermissionRequested { .. })
+        {
+            self.turn_reply.permissions_requested += 1;
+        }
+        self.turn_reply.duration = self.turn_started.elapsed();
+        let mut follow = FollowUp::None;
+        let mut turn_result = None;
+        if matches!(
+            &payload,
+            AgentStreamPayload::SessionReset { .. } | AgentStreamPayload::SessionSwitched { .. }
+        ) {
+            self.active_turn = None;
+            self.reclaim_dispatched_prompt(AgentTurnFailure::Reclaimed);
+        }
+        if matches!(&payload, AgentStreamPayload::SessionReset { .. }) {
+            self.git_refresh.invalidate();
+            if self.new_session_pending {
+                for _ in 0..self.prompts.len() {
+                    let Ok(queued) = self.prompts.try_recv() else {
+                        break;
+                    };
+                    self.reclaim_prompts(vec![queued], &AgentTurnFailure::Reclaimed);
+                }
+                self.reclaim_queue();
+            }
+        }
+        if matches!(&payload, AgentStreamPayload::SessionReady { .. }) {
+            for (option_id, value) in [
+                ("model", self.spec.model.take()),
+                ("effort", self.spec.effort.take()),
+            ] {
+                if let Some(value) = value {
+                    self.send(RuntimeCommand::SetConfigOption {
+                        option_id: option_id.to_owned(),
+                        value,
+                    });
+                }
+            }
+        }
+        let refresh_git = matches!(
+            &payload,
+            AgentStreamPayload::SessionReady { .. }
+                | AgentStreamPayload::SessionSwitched { .. }
+                | AgentStreamPayload::PromptFinished { .. }
+        );
+        {
+            let mut state = self.state.lock();
+            match &payload {
+                AgentStreamPayload::Ready {
+                    agent_name,
+                    agent_key,
+                    auth_methods,
+                    capabilities,
+                } => {
+                    state.agent_name = Some(agent_name.clone());
+                    state.agent_key = Some(agent_key.clone());
+                    state.auth_methods.clone_from(auth_methods);
+                    state.capabilities = *capabilities;
+                }
+                AgentStreamPayload::SessionReset { restoring } => {
+                    state.phase = if *restoring {
+                        AgentConnectionPhase::Restoring
+                    } else {
+                        AgentConnectionPhase::Starting
+                    };
+                    state.error = None;
+                    state.git = None;
+                    state.tasks.clear();
+                    state.pending_permissions.clear();
+                }
+                AgentStreamPayload::SessionReady { session_id, .. } => {
+                    state.session_id = Some(session_id.clone());
+                    state.phase = AgentConnectionPhase::Ready;
+                    state.error = None;
+                    follow = FollowUp::DrainQueue;
+                }
+                AgentStreamPayload::SessionSwitched {
+                    session_id, cwd, ..
+                } => {
+                    state.session_id = Some(session_id.clone());
+                    state.cwd.clone_from(cwd);
+                    state.phase = AgentConnectionPhase::Ready;
+                    state.error = None;
+                    settle_turn(&mut state);
+                    follow = FollowUp::DrainQueue;
+                }
+                AgentStreamPayload::PromptAccepted { .. } => unreachable!(),
+                AgentStreamPayload::SessionSwitchFailed { message } => {
+                    state.phase = AgentConnectionPhase::Ready;
+                    state.error = Some(message.clone());
+                    follow = FollowUp::DrainQueue;
+                }
+                AgentStreamPayload::SettingFailed { message, .. } => {
+                    state.error = Some(message.clone());
+                }
+                AgentStreamPayload::PermissionRequested {
+                    request_id,
+                    tool_call,
+                    options,
+                    questions,
+                } => state.pending_permissions.push(AgentPendingPermission {
+                    request_id: *request_id,
+                    tool_call: tool_call.clone(),
+                    options: options.clone(),
+                    questions: questions.clone(),
+                }),
+                AgentStreamPayload::TasksChanged { tasks } => {
+                    state.tasks = tasks.iter().take(MAX_AGENT_TASKS).cloned().collect();
+                }
+                AgentStreamPayload::Activity { busy } => {
+                    if *busy {
+                        if self.active_turn.is_none() && state.phase == AgentConnectionPhase::Ready
+                        {
+                            state.phase = AgentConnectionPhase::Running;
+                        }
+                    } else if self.active_turn.is_none() && state.phase.has_active_turn() {
+                        state.phase = AgentConnectionPhase::Ready;
+                        follow = FollowUp::DrainQueue;
+                    }
+                }
+                AgentStreamPayload::PermissionResolved { request_id, .. } => state
+                    .pending_permissions
+                    .retain(|pending| pending.request_id != *request_id),
+                AgentStreamPayload::PromptFinished { outcome, .. } => {
+                    self.active_turn = None;
+                    self.dispatched_prompt = None;
+                    match outcome {
+                        AgentPromptOutcome::Finished { stop_reason } => {
+                            state.phase = AgentConnectionPhase::Ready;
+                            settle_turn(&mut state);
+                            let reason = stop_reason
+                                .as_str()
+                                .map_or_else(|| stop_reason.to_string(), str::to_owned);
+                            let cancelled = reason == "cancelled";
+                            self.turn_reply.stop_reason.clone_from(&reason);
+                            let reply = std::mem::take(&mut self.turn_reply);
+                            turn_result = Some(match reason.as_str() {
+                                "cancelled" => Err(AgentTurnFailure::Cancelled),
+                                "end_turn" => Ok(reply),
+                                _ => Err(AgentTurnFailure::Stopped {
+                                    reason,
+                                    reply: Box::new(reply),
+                                }),
+                            });
+                            follow = if cancelled {
+                                FollowUp::ReclaimQueue
+                            } else {
+                                FollowUp::DrainQueue
+                            };
+                        }
+                        AgentPromptOutcome::Failed { message } => {
+                            state.phase = AgentConnectionPhase::Ready;
+                            state.error = Some(message.clone());
+                            settle_turn(&mut state);
+                            turn_result = Some(Err(AgentTurnFailure::Failed(message.clone())));
+                            follow = FollowUp::ReclaimQueue;
+                        }
+                    }
+                }
+                AgentStreamPayload::Authenticated => {
+                    state.error = None;
+                    follow = FollowUp::Reopen;
+                }
+                AgentStreamPayload::AuthenticationFailed { message }
+                | AgentStreamPayload::PaneFailed { message } => {
+                    self.active_turn = None;
+                    state.phase = AgentConnectionPhase::Failed;
+                    state.error = Some(message.clone());
+                    settle_turn(&mut state);
+                    follow = FollowUp::ReclaimQueue;
+                }
+                AgentStreamPayload::ConfigOptionsChanged { .. }
+                | AgentStreamPayload::ModeChanged { .. } => state.error = None,
+                AgentStreamPayload::Update { .. }
+                | AgentStreamPayload::StateSynced { .. }
+                | AgentStreamPayload::TurnStarted { .. }
+                | AgentStreamPayload::SessionsListed { .. }
+                | AgentStreamPayload::SessionListFailed { .. }
+                | AgentStreamPayload::SessionDeleted { .. }
+                | AgentStreamPayload::SessionDeleteFailed { .. }
+                | AgentStreamPayload::PromptsReclaimed { .. }
+                | AgentStreamPayload::PromptsRestored { .. }
+                | AgentStreamPayload::Chat { .. }
+                | AgentStreamPayload::TitleChanged { .. }
+                | AgentStreamPayload::QuotaChanged { .. } => {}
+            }
+        }
+        let permission = if turn_result.is_none()
+            && let AgentStreamPayload::PermissionRequested {
+                request_id,
+                tool_call,
+                options,
+                questions,
+            } = &payload
+        {
+            Some(AgentPendingPermission {
+                request_id: *request_id,
+                tool_call: tool_call.clone(),
+                options: options.clone(),
+                questions: questions.clone(),
+            })
+        } else {
+            None
+        };
+        if let Some(result) = turn_result {
+            self.settle_active_turn(result);
+        }
+        let session_result = match &payload {
+            AgentStreamPayload::SessionSwitched { .. } => Some(Ok(())),
+            AgentStreamPayload::SessionSwitchFailed { message }
+            | AgentStreamPayload::PaneFailed { message }
+            | AgentStreamPayload::AuthenticationFailed { message } => Some(Err(message.clone())),
+            _ => None,
+        };
+        self.emit(payload);
+        if let Some(result) = session_result {
+            self.settle_session_change(result);
+        }
+        if let Some(permission) = permission {
+            self.handle_waited_permission(&permission);
+        }
+        if refresh_git {
+            self.start_git_refresh();
+        }
+        match follow {
+            FollowUp::None => {}
+            FollowUp::DrainQueue => self.dispatch_next(),
+            FollowUp::ReclaimQueue => self.reclaim_queue(),
+            FollowUp::Reopen => {
+                let (cwd, session_id) = {
+                    let state = self.state.lock();
+                    (state.cwd.clone(), state.session_id.clone())
+                };
+                self.send(RuntimeCommand::Open {
+                    cwd,
+                    resume_session: session_id,
+                });
+            }
+        }
+    }
+
+    fn prompt(&mut self, mut queued: QueuedPrompt) {
+        if queued.prompt.is_empty() {
+            queued.settle(Err(AgentTurnFailure::Reclaimed));
+            return;
+        }
+        let (verbs, running) = {
+            let state = self.state.lock();
+            (
+                state.capabilities.verbs,
+                state.phase == AgentConnectionPhase::Running,
+            )
+        };
+        if verbs && let Some((verb, rest)) = agent_verb(&queued.prompt.text) {
+            let idle_steer =
+                (verb == "steer" && !running && !rest.is_empty()).then(|| rest.to_owned());
+            if let Some(text) = idle_steer {
+                queued.prompt.text = text;
+            } else {
+                let prompt = std::mem::take(&mut queued.prompt);
+                if self
+                    .commands
+                    .try_send(RuntimeCommand::Verb { prompt })
+                    .is_err()
+                {
+                    queued.settle(Err(AgentTurnFailure::Failed(
+                        "agent is not accepting commands".to_owned(),
+                    )));
+                    return;
+                }
+                queued.settle(Ok(AgentTurnReply {
+                    stop_reason: "zz_command".to_owned(),
+                    ..AgentTurnReply::default()
+                }));
+                return;
+            }
+        }
+        if self.state.lock().phase.accepts_prompt() {
+            if !self.answered_ask(&queued) {
+                self.dispatch(queued);
+            }
+            return;
+        }
+        let injected = queued.source == PromptSource::Injected;
+        if injected && (self.answered_ask(&queued) || self.deliver_into_turn(&queued.prompt)) {
+            return;
+        }
+        let queued_bytes = self.queue.iter().fold(0usize, |total, queued| {
+            total.saturating_add(queued.prompt.byte_len())
+        });
+        let over_bytes =
+            queued_bytes.saturating_add(queued.prompt.byte_len()) > MAX_AGENT_PROMPT_BYTES;
+        if injected && over_bytes {
+            log::warn!(
+                target: "zz::agent",
+                "{} dropped a {} byte message because its queue is full",
+                self.pane,
+                queued.prompt.byte_len()
+            );
+            return;
+        }
+        let waiting = waiting_prompts(&self.queue);
+        if !injected && (waiting >= MAX_AGENT_QUEUED_PROMPTS || over_bytes) {
+            self.reclaim_prompts(vec![queued], &AgentTurnFailure::Reclaimed);
+            return;
+        }
+        self.queue.push_back(queued);
+        self.publish_queue_depth();
+    }
+
+    fn steerable(&self) -> bool {
+        let state = self.state.lock();
+        state.phase == AgentConnectionPhase::Running
+            && state
+                .pending_permissions
+                .iter()
+                .all(AgentPendingPermission::outlives_turn)
+            && state.capabilities.verbs
+    }
+
+    fn deliver_into_turn(&self, prompt: &AgentPrompt) -> bool {
+        let text = prompt.text.trim();
+        if text.is_empty() || !prompt.images.is_empty() || !self.steerable() {
+            return false;
+        }
+        let in_turn = timed_report(text, ReportTiming::InTurn);
+        let steer = AgentPrompt {
+            text: format!("/steer {}", in_turn.as_deref().unwrap_or(text)),
+            ..prompt.clone()
+        };
+        self.commands
+            .try_send(RuntimeCommand::Verb { prompt: steer })
+            .is_ok()
+    }
+
+    fn steer(&mut self, prompt: AgentPrompt) {
+        let steerable = self.steerable();
+        let text = prompt.text.trim();
+        if !steerable || text.is_empty() || !prompt.images.is_empty() {
+            self.prompt(prompt.into());
+            return;
+        }
+        let steer = AgentPrompt {
+            text: format!("/steer {text}"),
+            ..prompt.clone()
+        };
+        if self
+            .commands
+            .try_send(RuntimeCommand::Verb { prompt: steer })
+            .is_err()
+        {
+            self.emit(AgentStreamPayload::PromptsReclaimed {
+                prompts: vec![prompt],
+            });
+        }
+    }
+
+    fn dispatch(&mut self, queued: QueuedPrompt) {
+        let source = queued.source;
+        let extra = queued.note;
+        let note = source.note(&queued.prompt.text, extra.as_deref());
+        self.next_turn_id = self.next_turn_id.saturating_add(1).max(1);
+        let turn_id = self.next_turn_id;
+        self.active_turn = Some(turn_id);
+        self.active_waiter = queued.waiter;
+        self.turn_reply = AgentTurnReply::default();
+        self.turn_started = Instant::now();
+        {
+            let mut state = self.state.lock();
+            state.phase = AgentConnectionPhase::Running;
+            state.error = None;
+        }
+        let prompt = queued.prompt;
+        let retained = prompt.clone();
+        match self.commands.try_send(RuntimeCommand::Prompt {
+            turn_id,
+            prompt,
+            note,
+        }) {
+            Ok(()) => {
+                self.dispatched_prompt =
+                    (source == PromptSource::Composer).then_some((turn_id, retained));
+                self.emit(AgentStreamPayload::TurnStarted { turn_id });
+            }
+            Err(error) => {
+                self.active_turn = None;
+                {
+                    let mut state = self.state.lock();
+                    state.phase = AgentConnectionPhase::Ready;
+                    settle_turn(&mut state);
+                }
+                let RuntimeCommand::Prompt { prompt, .. } = error.into_inner() else {
+                    return;
+                };
+                self.queue.push_front(QueuedPrompt {
+                    prompt,
+                    waiter: self.active_waiter.take(),
+                    source,
+                    note: extra,
+                    ask: None,
+                });
+                self.reclaim_queue();
+            }
+        }
+    }
+
+    fn dispatch_next(&mut self) {
+        while let Some(queued) = self.queue.pop_front() {
+            if self.answered_ask(&queued) {
+                continue;
+            }
+            self.publish_queue_depth();
+            self.dispatch(queued);
+            return;
+        }
+        self.publish_queue_depth();
+    }
+
+    fn answered_ask(&self, queued: &QueuedPrompt) -> bool {
+        let Some(ask) = queued.ask.as_ref().filter(|ask| ask.answered()) else {
+            return false;
+        };
+        log::info!(
+            target: "zz::agent",
+            "request {} was answered before {} took its ask; dropped it",
+            ask.request,
+            self.pane
+        );
+        true
+    }
+
+    fn reclaim_queue(&mut self) {
+        if self.queue.is_empty() {
+            return;
+        }
+        let queued = self.queue.drain(..).collect::<Vec<_>>();
+        self.publish_queue_depth();
+        self.reclaim_prompts(queued, &AgentTurnFailure::Reclaimed);
+    }
+
+    fn unqueue(&mut self) {
+        let (own, kept): (Vec<_>, Vec<_>) = self
+            .queue
+            .drain(..)
+            .partition(|queued| queued.source == PromptSource::Composer);
+        self.queue = kept.into();
+        if own.is_empty() {
+            return;
+        }
+        self.publish_queue_depth();
+        self.reclaim_prompts(own, &AgentTurnFailure::Reclaimed);
+    }
+
+    fn requeue_relayed(&mut self, prompts: Vec<AgentPrompt>) -> Vec<AgentPrompt> {
+        let (relayed, rest): (Vec<_>, Vec<_>) = prompts
+            .into_iter()
+            .partition(|prompt| is_relayed(&prompt.text));
+        if relayed.is_empty() {
+            return rest;
+        }
+        for mut prompt in relayed.into_iter().rev() {
+            if let Some(text) = timed_report(&prompt.text, ReportTiming::AfterTurn) {
+                prompt.text = text;
+            }
+            self.queue.push_front(QueuedPrompt {
+                prompt,
+                waiter: None,
+                source: PromptSource::Injected,
+                note: None,
+                ask: None,
+            });
+        }
+        if self.state.lock().phase.accepts_prompt() {
+            self.dispatch_next();
+        } else {
+            self.publish_queue_depth();
+        }
+        rest
+    }
+
+    fn reclaim_prompts(&mut self, queued: Vec<QueuedPrompt>, failure: &AgentTurnFailure) {
+        let prompts = queued
+            .into_iter()
+            .filter_map(|queued| {
+                let returned = queued.source == PromptSource::Composer;
+                let prompt = queued.into_reclaimed(failure.clone());
+                returned.then_some(prompt)
+            })
+            .collect::<Vec<_>>();
+        if !prompts.is_empty() {
+            self.emit(AgentStreamPayload::PromptsReclaimed { prompts });
+        }
+    }
+
+    fn settle_active_turn(&mut self, result: AgentTurnResult) {
+        for waiter in self.joined_waiters.drain(..) {
+            waiter.reply.try_send(result.clone());
+        }
+        if let Some(waiter) = self.active_waiter.take() {
+            waiter.reply.try_send(result);
+        }
+    }
+
+    fn handle_waited_permission(&mut self, permission: &AgentPendingPermission) {
+        let blocked = || {
+            zz_protocol::AgentPermissionWire {
+            request_id: permission.request_id,
+            payload: serde_json::json!({ "toolCall": permission.tool_call, "options": permission.options }).to_string(),
+        }
+        };
+        let (failing, waiting): (Vec<_>, Vec<_>) = self
+            .joined_waiters
+            .drain(..)
+            .partition(|waiter| waiter.on_block == AgentBlockPolicy::Fail);
+        self.joined_waiters = waiting;
+        for waiter in failing {
+            let mut reply = self.turn_reply.clone();
+            "blocked".clone_into(&mut reply.stop_reason);
+            waiter.reply.try_send(Err(AgentTurnFailure::Blocked {
+                permission: blocked(),
+                reply: Box::new(reply),
+            }));
+        }
+        let Some(waiter) = &self.active_waiter else {
+            return;
+        };
+        if let Some(asks) = &waiter.asks {
+            (asks.0)(permission);
+        }
+        let policy = waiter.on_block;
+        if policy == AgentBlockPolicy::Fail {
+            "blocked".clone_into(&mut self.turn_reply.stop_reason);
+            let reply = Box::new(std::mem::take(&mut self.turn_reply));
+            if let Some(waiter) = self.active_waiter.take() {
+                waiter.reply.try_send(Err(AgentTurnFailure::Blocked {
+                    permission: blocked(),
+                    reply,
+                }));
+            }
+            return;
+        }
+        let question = serde_json::from_value(permission.options.clone()).map_or(
+            true,
+            |options: Vec<agent_client_protocol::v1::schema::PermissionOption>| {
+                crate::runtime::is_user_question(&options)
+            },
+        );
+        let (choice, action) = match policy {
+            AgentBlockPolicy::Allow if !question => (PermissionChoice::Allow, "allowed"),
+            AgentBlockPolicy::Deny => (PermissionChoice::Deny, "denied"),
+            _ => return,
+        };
+        let selected = select_permission(
+            std::slice::from_ref(permission),
+            Some(permission.request_id),
+            &choice,
+        );
+        let option_id = match selected {
+            Ok((_, option_id)) => Some(option_id),
+            Err(_) if question && policy == AgentBlockPolicy::Deny => None,
+            Err(message) => {
+                self.settle_active_turn(Err(AgentTurnFailure::Failed(message)));
+                return;
+            }
+        };
+        let audit = Arc::clone(&waiter.audit);
+        if self.respond_permission(permission.request_id, option_id) {
+            let kind = permission
+                .tool_call
+                .get("kind")
+                .and_then(Value::as_str)
+                .unwrap_or("?");
+            let title = permission
+                .tool_call
+                .get("title")
+                .or_else(|| permission.tool_call.get("toolCallId"))
+                .and_then(Value::as_str)
+                .unwrap_or("?");
+            audit
+                .lock()
+                .push(format!("agent-send: {action} {kind} {title}"));
+        }
+    }
+
+    fn record_reply_chunk(&mut self, update: &Value) {
+        match update.get("sessionUpdate").and_then(Value::as_str) {
+            Some("tool_call" | "tool_call_update") => {
+                self.turn_reply.final_text.clear();
+                if update.get("sessionUpdate").and_then(Value::as_str) == Some("tool_call") {
+                    self.turn_reply.tool_calls += 1;
+                }
+                return;
+            }
+            Some("agent_message_chunk") => {}
+            _ => return,
+        }
+        let Some(text) = update
+            .get("content")
+            .filter(|content| content.get("type").and_then(Value::as_str) == Some("text"))
+            .and_then(|content| content.get("text"))
+            .and_then(Value::as_str)
+        else {
+            return;
+        };
+        self.turn_reply.truncated |=
+            append_reply_tail(&mut self.turn_reply.text, text, MAX_AGENT_TURN_REPLY_BYTES);
+        self.turn_reply.truncated |= append_reply_tail(
+            &mut self.turn_reply.final_text,
+            text,
+            MAX_AGENT_FINAL_REPLY_BYTES,
+        );
+    }
+
+    fn cancel(&mut self) {
+        if !self.state.lock().phase.has_active_turn() {
+            return;
+        }
+        if self.active_turn.is_none() {
+            let session_id = self.state.lock().session_id.clone();
+            if self.send_control(RuntimeControl::Cancel {
+                turn_id: 0,
+                session_id,
+            }) {
+                self.state.lock().phase = AgentConnectionPhase::Cancelling;
+            }
+            return;
+        }
+        let session_id = self.state.lock().session_id.clone();
+        let Some(turn_id) = self.active_turn else {
+            return;
+        };
+        if !self.send_control(RuntimeControl::Cancel {
+            turn_id,
+            session_id,
+        }) {
+            self.fail_control();
+            return;
+        }
+        self.state.lock().phase = AgentConnectionPhase::Cancelling;
+        self.reclaim_queue();
+    }
+
+    fn start_git_refresh(&mut self) {
+        let Some(refresh) = self.git_refresh.request() else {
+            return;
+        };
+        self.spawn_git_refresh(refresh);
+    }
+
+    fn spawn_git_refresh(&mut self, refresh: u64) {
+        let generation = self.generation;
+        let cwd = self.state.lock().cwd.clone();
+        let capture_cwd = cwd.clone();
+        let inbox = self.inbox.clone();
+        let pane = self.pane;
+        if let Err(error) = thread::Builder::new()
+            .name(format!("zz-agent-git-{}-{refresh}", pane.0))
+            .spawn(move || {
+                let summary = match git_summary::capture_git_summary(&capture_cwd) {
+                    Ok(summary) => Some(summary),
+                    Err(error) => {
+                        log::debug!(target: "zz::agent", "no Git summary for pane {pane}: {error}");
+                        None
+                    }
+                };
+                let _ = inbox.send_blocking(PaneInput::GitSummary {
+                    generation,
+                    refresh,
+                    cwd,
+                    summary,
+                });
+            })
+        {
+            self.git_refresh.spawn_failed(refresh);
+            log::warn!(target: "zz::agent", "could not start Git summary capture for pane {pane}: {error}");
+        }
+    }
+
+    fn finish_git_refresh(
+        &mut self,
+        generation: u64,
+        refresh: u64,
+        cwd: &Path,
+        summary: Option<AgentGitSummary>,
+    ) {
+        let next = self.git_refresh.complete(refresh);
+        self.apply_git_summary(generation, refresh, cwd, summary);
+        if let Some(refresh) = next {
+            self.spawn_git_refresh(refresh);
+        }
+    }
+
+    fn apply_git_summary(
+        &mut self,
+        generation: u64,
+        refresh: u64,
+        cwd: &Path,
+        summary: Option<AgentGitSummary>,
+    ) {
+        if generation != self.generation || refresh != self.git_refresh.latest {
+            return;
+        }
+        let state = {
+            let mut state = self.state.lock();
+            if state.cwd != cwd || state.git == summary {
+                return;
+            }
+            state.git = summary;
+            state.clone()
+        };
+        (self.sink)(self.pane, self.generation, state, None);
+    }
+
+    fn settle_session_change(&mut self, result: Result<(), String>) {
+        self.new_session_pending = false;
+        if let Some(reply) = self.session_waiter.take() {
+            let result = if result.is_ok() && self.close.is_closed() {
+                Err("agent closed".to_owned())
+            } else {
+                result
+            };
+            reply.try_send(result);
+        }
+    }
+
+    fn close(&mut self) {
+        if self.closing {
+            return;
+        }
+        self.closing = true;
+        self.settle_session_change(Err("agent closed".to_owned()));
+        self.resolve_pending_permissions();
+        self.reclaim_dispatched_prompt(AgentTurnFailure::Closed);
+        self.reclaim_queue();
+        self.send(RuntimeCommand::Shutdown);
+        self.close.close();
+    }
+
+    fn resolve_pending_permissions(&mut self) {
+        let pending = std::mem::take(&mut self.state.lock().pending_permissions);
+        for permission in pending {
+            self.emit(AgentStreamPayload::PermissionResolved {
+                request_id: permission.request_id,
+                canceled: true,
+            });
+        }
+    }
+
+    fn reclaim_dispatched_prompt(&mut self, failure: AgentTurnFailure) {
+        self.settle_active_turn(Err(failure));
+        let Some((_, prompt)) = self.dispatched_prompt.take() else {
+            return;
+        };
+        self.emit(AgentStreamPayload::PromptsReclaimed {
+            prompts: vec![prompt],
+        });
+    }
+
+    fn finish(&mut self, result: &Result<(), String>) {
+        let closing = self.closing || self.close.is_closed();
+        let message = result.as_ref().err().map_or_else(
+            || "agent process disconnected unexpectedly".to_owned(),
+            String::clone,
+        );
+        self.settle_session_change(Err(message.clone()));
+        self.resolve_pending_permissions();
+        self.reclaim_dispatched_prompt(if closing {
+            AgentTurnFailure::Closed
+        } else {
+            AgentTurnFailure::Failed(message.clone())
+        });
+        self.reclaim_queue();
+        if closing {
+            self.state.lock().phase = AgentConnectionPhase::Disconnected;
+            return;
+        }
+        {
+            let mut state = self.state.lock();
+            state.phase = AgentConnectionPhase::Failed;
+            state.error = Some(message.clone());
+            settle_turn(&mut state);
+        }
+        self.emit(AgentStreamPayload::PaneFailed { message });
+    }
+
+    fn send(&self, command: RuntimeCommand) -> bool {
+        if self.commands.try_send(command).is_err() {
+            log::debug!(
+                target: "zz::agent",
+                "dropping a command for pane {}: its runtime is gone",
+                self.pane
+            );
+            return false;
+        }
+        true
+    }
+
+    fn send_control(&self, control: RuntimeControl) -> bool {
+        self.controls.try_send(control).is_ok()
+    }
+
+    fn fail_control(&mut self) {
+        let message = "agent runtime control queue is unavailable".to_owned();
+        {
+            let mut state = self.state.lock();
+            state.phase = AgentConnectionPhase::Failed;
+            state.error = Some(message.clone());
+            settle_turn(&mut state);
+        }
+        self.active_turn = None;
+        self.settle_active_turn(Err(AgentTurnFailure::Failed(message.clone())));
+        self.settle_session_change(Err(message.clone()));
+        self.emit(AgentStreamPayload::PaneFailed { message });
+        self.close.close();
+    }
+
+    fn publish_queue_depth(&self) {
+        let state = {
+            let mut state = self.state.lock();
+            state.queued_prompts = self.queue.len();
+            state.own_prompts = own_prompts(&self.queue);
+            state.waiting_prompts = waiting_prompts(&self.queue);
+            state.clone()
+        };
+        (self.sink)(self.pane, self.generation, state, None);
+    }
+
+    fn emit(&mut self, payload: AgentStreamPayload) {
+        let state = {
+            let mut state = self.state.lock();
+            self.seq = self.seq.saturating_add(1);
+            state.last_seq = self.seq;
+            state.clone()
+        };
+        (self.sink)(
+            self.pane,
+            self.generation,
+            state,
+            Some(AgentStreamItem {
+                seq: self.seq,
+                payload,
+            }),
+        );
+    }
+}
+
+fn append_reply_tail(buffer: &mut String, text: &str, cap: usize) -> bool {
+    buffer.push_str(text);
+    if buffer.len() <= cap {
+        return false;
+    }
+    let mut start = buffer.len() - cap;
+    while !buffer.is_char_boundary(start) {
+        start += 1;
+    }
+    buffer.drain(..start);
+    true
+}
+
+fn settle_turn(state: &mut AgentPaneState) {
+    state
+        .pending_permissions
+        .retain(AgentPendingPermission::outlives_turn);
+}
+
+#[cfg(test)]
+mod tests {
+    use agent_client_protocol::v1::schema::{
+        ContentBlock, ContentChunk, MessageId, SessionUpdate, TextContent, ToolKind,
+    };
+
+    use super::*;
+    use crate::{
+        fixture::{Behavior, fixture_runner},
+        journal::AgentJournal,
+        stream::{AgentImage, AgentStreamPayload},
+    };
+    use std::{fs, process::Command};
+
+    const DEADLINE: Duration = Duration::from_secs(10);
+
+    #[test]
+    fn git_refresh_gate_is_single_flight_and_latest_wins() {
+        let mut gate = GitRefreshGate::default();
+
+        assert_eq!(gate.request(), Some(1));
+        assert_eq!(gate.request(), None);
+        assert_eq!(gate.request(), None);
+        assert_eq!(gate.running, Some(1));
+        assert_eq!(gate.pending, Some(3));
+
+        assert_eq!(gate.complete(2), None);
+        assert_eq!(gate.running, Some(1));
+        assert_eq!(gate.complete(1), Some(3));
+        assert_eq!(gate.running, Some(3));
+        assert_eq!(gate.pending, None);
+        assert_eq!(gate.complete(3), None);
+        assert_eq!(gate.running, None);
+    }
+
+    #[test]
+    fn git_refresh_gate_invalidation_discards_only_older_pending_work() {
+        let mut gate = GitRefreshGate::default();
+
+        assert_eq!(gate.request(), Some(1));
+        assert_eq!(gate.request(), None);
+        gate.invalidate();
+        assert_eq!(gate.latest, 3);
+        assert_eq!(gate.pending, None);
+        assert_eq!(gate.complete(1), None);
+        assert_eq!(gate.running, None);
+
+        assert_eq!(gate.request(), Some(4));
+        gate.invalidate();
+        assert_eq!(gate.request(), None);
+        assert_eq!(gate.complete(4), Some(6));
+        assert_eq!(gate.running, Some(6));
+    }
+
+    #[test]
+    fn git_refresh_gate_recovers_after_spawn_failure() {
+        let mut gate = GitRefreshGate::default();
+
+        assert_eq!(gate.request(), Some(1));
+        gate.spawn_failed(2);
+        assert_eq!(gate.running, Some(1));
+        gate.spawn_failed(1);
+        assert_eq!(gate.running, None);
+        assert_eq!(gate.pending, None);
+        assert_eq!(gate.request(), Some(2));
+    }
+
+    fn git_available() -> bool {
+        Command::new("git")
+            .arg("--version")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .is_ok_and(|status| status.success())
+    }
+
+    fn git(root: &Path, args: &[&str]) {
+        let output = Command::new("git")
+            .arg("-C")
+            .arg(root)
+            .args(args)
+            .output()
+            .expect("git should run");
+        assert!(
+            output.status.success(),
+            "git {args:?} failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    fn seeded_git_repo() -> Option<(tempfile::TempDir, PathBuf)> {
+        if !git_available() {
+            return None;
+        }
+        let scratch = tempfile::tempdir().expect("temporary directory");
+        let root = scratch.path().canonicalize().expect("resolved path");
+        git(&root, &["init", "--quiet", "--initial-branch=main"]);
+        git(&root, &["config", "user.email", "git-summary@zz.test"]);
+        git(&root, &["config", "user.name", "zz git summary"]);
+        git(&root, &["config", "commit.gpgsign", "false"]);
+        fs::write(root.join("tracked.txt"), "one\ntwo\n").expect("seed file");
+        git(&root, &["add", "."]);
+        git(&root, &["commit", "--quiet", "-m", "seed"]);
+        Some((scratch, root))
+    }
+
+    #[derive(Clone, Default)]
+    struct Recorder {
+        items: Arc<Mutex<Vec<AgentStreamItem>>>,
+        states: Arc<Mutex<Vec<(AgentPaneState, bool)>>>,
+    }
+
+    impl Recorder {
+        fn sink(&self) -> AgentStreamSink {
+            let items = Arc::clone(&self.items);
+            let states = Arc::clone(&self.states);
+            Box::new(move |_pane, _generation, state, item| {
+                states.lock().push((state, item.is_some()));
+                if let Some(item) = item {
+                    items.lock().push(item);
+                }
+            })
+        }
+
+        fn items(&self) -> Vec<AgentStreamItem> {
+            self.items.lock().clone()
+        }
+
+        fn payloads(&self) -> Vec<AgentStreamPayload> {
+            self.items().into_iter().map(|item| item.payload).collect()
+        }
+
+        fn wait<F>(&self, what: &str, accept: F) -> Vec<AgentStreamPayload>
+        where
+            F: Fn(&AgentStreamPayload) -> bool,
+        {
+            let deadline = Instant::now() + DEADLINE;
+            while Instant::now() < deadline {
+                let payloads = self.payloads();
+                if payloads.iter().any(&accept) {
+                    return payloads;
+                }
+                std::thread::sleep(Duration::from_millis(2));
+            }
+            panic!("timed out waiting for {what}: {:?}", self.payloads());
+        }
+    }
+
+    struct Fixture {
+        host: AgentHost,
+        recorder: Recorder,
+        pane: PaneId,
+    }
+
+    impl Fixture {
+        fn open(behavior: Behavior, auto_approve: AgentAutoApprove) -> Self {
+            Self::build(behavior, auto_approve, true, None, None, None)
+        }
+
+        fn open_with_runner(runner: PaneRunner) -> Self {
+            let recorder = Recorder::default();
+            let host = AgentHost::with_journal(AgentSpawnConfig::default(), recorder.sink(), None);
+            let pane = PaneId(8);
+            assert!(host.open_with(
+                pane,
+                1,
+                AgentPaneSpec {
+                    model: None,
+                    effort: None,
+                    provider: AgentProvider::Codex,
+                    cwd: PathBuf::from("/"),
+                    resume_session: None,
+                    auto_approve: None,
+                    workspace: AgentWorkspaceEnvironment::default(),
+                },
+                runner,
+            ));
+            Self {
+                host,
+                recorder,
+                pane,
+            }
+        }
+
+        fn build(
+            behavior: Behavior,
+            auto_approve: AgentAutoApprove,
+            load: bool,
+            journal: Option<&Arc<AgentJournal>>,
+            resume_session: Option<String>,
+            cwd: Option<PathBuf>,
+        ) -> Self {
+            let recorder = Recorder::default();
+            let host = AgentHost::with_journal(
+                AgentSpawnConfig::default(),
+                recorder.sink(),
+                journal.cloned(),
+            );
+            let pane = PaneId(7);
+            let spec = AgentPaneSpec {
+                model: None,
+                effort: None,
+                provider: AgentProvider::Codex,
+                cwd: cwd.unwrap_or_else(|| PathBuf::from("/")),
+                resume_session,
+                auto_approve: Some(auto_approve),
+                workspace: AgentWorkspaceEnvironment::default(),
+            };
+            let runner = fixture_runner(AgentProvider::Codex, behavior, auto_approve, load);
+            assert!(host.open_with(pane, 1, spec, runner));
+            Self {
+                host,
+                recorder,
+                pane,
+            }
+        }
+
+        fn command(&self, command: HostCommand) {
+            assert!(self.host.command(self.pane, command).is_ok());
+        }
+
+        fn prompt(&self, text: &str) {
+            self.command(HostCommand::Prompt(
+                AgentPrompt {
+                    owner: ClientInstanceId::default(),
+                    text: text.to_owned(),
+                    images: Vec::new(),
+                }
+                .into(),
+            ));
+        }
+
+        fn steer(&self, text: &str) {
+            self.command(HostCommand::Steer(AgentPrompt {
+                owner: ClientInstanceId::default(),
+                text: text.to_owned(),
+                images: Vec::new(),
+            }));
+        }
+
+        fn prompt_waiting(&self, text: &str) -> crossbeam_channel::Receiver<AgentTurnResult> {
+            self.prompt_with_policy(text, AgentBlockPolicy::Wait, Arc::default())
+        }
+
+        fn prompt_with_policy(
+            &self,
+            text: &str,
+            on_block: AgentBlockPolicy,
+            audit: Arc<Mutex<Vec<String>>>,
+        ) -> crossbeam_channel::Receiver<AgentTurnResult> {
+            let (waiter, reply) = crossbeam_channel::bounded(1);
+            self.command(HostCommand::Prompt(QueuedPrompt {
+                prompt: AgentPrompt {
+                    owner: ClientInstanceId::default(),
+                    text: text.to_owned(),
+                    images: Vec::new(),
+                },
+                waiter: Some(AgentTurnWaiter {
+                    reply: waiter.into(),
+                    on_block,
+                    audit,
+                    asks: None,
+                }),
+                source: PromptSource::Composer,
+                note: None,
+                ask: None,
+            }));
+            reply
+        }
+
+        fn state(&self) -> AgentPaneState {
+            self.host.snapshot_state(self.pane).expect("pane state")
+        }
+
+        fn wait_for_session(&self) {
+            self.recorder.wait("the session to be ready", |payload| {
+                matches!(payload, AgentStreamPayload::SessionReady { .. })
+            });
+        }
+
+        fn close(self) {
+            if let Some(thread) = self.host.close(self.pane) {
+                let _ = thread.join();
+            }
+        }
+    }
+
+    fn chunk_texts(payloads: &[AgentStreamPayload]) -> Vec<String> {
+        payloads
+            .iter()
+            .filter_map(|payload| chunk_text(payload).map(ToOwned::to_owned))
+            .collect()
+    }
+
+    fn chunk_text(payload: &AgentStreamPayload) -> Option<&str> {
+        let AgentStreamPayload::Update { update } = payload else {
+            return None;
+        };
+        update
+            .get("content")
+            .and_then(|content| content.get("text"))
+            .and_then(Value::as_str)
+    }
+
+    #[test]
+    fn a_turn_the_agent_starts_itself_holds_prompts_and_stops_on_cancel() {
+        let fixture = Fixture::open_with_runner(Box::new(|channels| {
+            Box::pin(async move {
+                let send = |payload| channels.events.send(payload);
+                send(AgentStreamPayload::SessionReady {
+                    session_id: "s".to_owned(),
+                    modes: None,
+                    config_options: None,
+                })
+                .await
+                .map_err(|error| error.to_string())?;
+                send(AgentStreamPayload::Activity { busy: true })
+                    .await
+                    .map_err(|error| error.to_string())?;
+                let Ok(RuntimeControl::Cancel { turn_id: 0, .. }) = channels.controls.recv().await
+                else {
+                    return Err("expected an interrupt for the agent's own turn".to_owned());
+                };
+                send(AgentStreamPayload::Activity { busy: false })
+                    .await
+                    .map_err(|error| error.to_string())?;
+                while let Ok(command) = channels.commands.recv().await {
+                    match command {
+                        RuntimeCommand::Prompt {
+                            turn_id, prompt, ..
+                        } => {
+                            send(AgentStreamPayload::Update {
+                                update: serde_json::json!({
+                                    "sessionUpdate": "agent_message_chunk",
+                                    "content": { "type": "text", "text": format!("got {}", prompt.text) },
+                                }),
+                            })
+                            .await
+                            .map_err(|error| error.to_string())?;
+                            send(AgentStreamPayload::PromptFinished {
+                                turn_id,
+                                outcome: AgentPromptOutcome::Finished {
+                                    stop_reason: serde_json::json!("end_turn"),
+                                },
+                            })
+                            .await
+                            .map_err(|error| error.to_string())?;
+                        }
+                        RuntimeCommand::Shutdown => break,
+                        _ => {}
+                    }
+                }
+                Ok(())
+            })
+        }));
+        fixture.wait_for_session();
+        let deadline = Instant::now() + DEADLINE;
+        while fixture.state().phase != AgentConnectionPhase::Running {
+            assert!(
+                Instant::now() < deadline,
+                "the pane never showed the agent's own turn"
+            );
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        fixture.prompt("after it");
+        std::thread::sleep(Duration::from_millis(50));
+        assert_eq!(fixture.state().queued_prompts, 1);
+        assert!(!chunk_texts(&fixture.recorder.payloads()).contains(&"got after it".to_owned()));
+        fixture.command(HostCommand::Cancel);
+        fixture.recorder.wait("the queued prompt", |payload| {
+            chunk_text(payload) == Some("got after it")
+        });
+        fixture.close();
+    }
+
+    #[test]
+    fn zz_commands_skip_the_turn_queue_and_idle_steering_becomes_a_prompt() {
+        let fixture = Fixture::open_with_runner(Box::new(|channels| {
+            Box::pin(async move {
+                let send = |text: String| {
+                    channels.events.send(AgentStreamPayload::Update {
+                        update: serde_json::json!({
+                            "sessionUpdate": "agent_message_chunk",
+                            "content": { "type": "text", "text": text },
+                        }),
+                    })
+                };
+                channels
+                    .events
+                    .send(AgentStreamPayload::Ready {
+                        agent_name: "Claude Code".to_owned(),
+                        agent_key: "claude-code".to_owned(),
+                        auth_methods: Vec::new(),
+                        capabilities: AgentSessionCapabilities {
+                            verbs: true,
+                            watch: false,
+                            ..AgentSessionCapabilities::default()
+                        },
+                    })
+                    .await
+                    .map_err(|error| error.to_string())?;
+                channels
+                    .events
+                    .send(AgentStreamPayload::SessionReady {
+                        session_id: "s".to_owned(),
+                        modes: None,
+                        config_options: None,
+                    })
+                    .await
+                    .map_err(|error| error.to_string())?;
+                while let Ok(command) = channels.commands.recv().await {
+                    match command {
+                        RuntimeCommand::Verb { prompt } => {
+                            send(format!("verb {}", prompt.text))
+                                .await
+                                .map_err(|error| error.to_string())?;
+                        }
+                        RuntimeCommand::Prompt {
+                            turn_id, prompt, ..
+                        } => {
+                            send(format!("prompt {}", prompt.text))
+                                .await
+                                .map_err(|error| error.to_string())?;
+                            channels
+                                .events
+                                .send(AgentStreamPayload::PromptFinished {
+                                    turn_id,
+                                    outcome: AgentPromptOutcome::Finished {
+                                        stop_reason: serde_json::json!("end_turn"),
+                                    },
+                                })
+                                .await
+                                .map_err(|error| error.to_string())?;
+                        }
+                        RuntimeCommand::Shutdown => break,
+                        _ => {}
+                    }
+                }
+                Ok(())
+            })
+        }));
+        fixture.wait_for_session();
+        fixture.prompt("/btw what now");
+        fixture.recorder.wait("the side question", |payload| {
+            chunk_text(payload) == Some("verb /btw what now")
+        });
+        assert_eq!(fixture.state().phase, AgentConnectionPhase::Ready);
+        fixture.prompt("/steer go left");
+        let payloads = fixture.recorder.wait("the steer prompt", |payload| {
+            chunk_text(payload) == Some("prompt go left")
+        });
+        assert!(
+            !chunk_texts(&payloads)
+                .iter()
+                .any(|text| text.starts_with("verb /steer"))
+        );
+        fixture.close();
+    }
+
+    #[test]
+    fn a_steer_rides_the_running_turn_and_is_a_prompt_when_idle() {
+        let fixture = Fixture::open_with_runner(Box::new(|channels| {
+            Box::pin(async move {
+                let send = |payload| channels.events.send(payload);
+                let text = |text: String| AgentStreamPayload::Update {
+                    update: serde_json::json!({
+                        "sessionUpdate": "agent_message_chunk",
+                        "content": { "type": "text", "text": text },
+                    }),
+                };
+                send(AgentStreamPayload::Ready {
+                    agent_name: "Claude Code".to_owned(),
+                    agent_key: "claude-code".to_owned(),
+                    auth_methods: Vec::new(),
+                    capabilities: AgentSessionCapabilities {
+                        verbs: true,
+                        ..AgentSessionCapabilities::default()
+                    },
+                })
+                .await
+                .map_err(|error| error.to_string())?;
+                send(AgentStreamPayload::SessionReady {
+                    session_id: "s".to_owned(),
+                    modes: None,
+                    config_options: None,
+                })
+                .await
+                .map_err(|error| error.to_string())?;
+                let mut running = None;
+                while let Ok(command) = channels.commands.recv().await {
+                    let payloads = match command {
+                        RuntimeCommand::Prompt {
+                            turn_id, prompt, ..
+                        } => {
+                            running = Some(turn_id);
+                            vec![text(format!("prompt {}", prompt.text))]
+                        }
+                        RuntimeCommand::Verb { prompt } => {
+                            let mut payloads = vec![text(format!("verb {}", prompt.text))];
+                            payloads.extend(running.take().map(|turn_id| {
+                                AgentStreamPayload::PromptFinished {
+                                    turn_id,
+                                    outcome: AgentPromptOutcome::Finished {
+                                        stop_reason: serde_json::json!("end_turn"),
+                                    },
+                                }
+                            }));
+                            payloads
+                        }
+                        RuntimeCommand::Shutdown => break,
+                        _ => Vec::new(),
+                    };
+                    for payload in payloads {
+                        send(payload).await.map_err(|error| error.to_string())?;
+                    }
+                }
+                Ok(())
+            })
+        }));
+        fixture.wait_for_session();
+        fixture.steer("go left");
+        fixture
+            .recorder
+            .wait("the idle steer as a prompt", |payload| {
+                chunk_text(payload) == Some("prompt go left")
+            });
+        assert_eq!(fixture.state().phase, AgentConnectionPhase::Running);
+        fixture.steer("  go right ");
+        fixture
+            .recorder
+            .wait("the turn the steer finished", |payload| {
+                matches!(payload, AgentStreamPayload::PromptFinished { .. })
+            });
+        let texts = chunk_texts(&fixture.recorder.payloads());
+        assert_eq!(texts, ["prompt go left", "verb /steer go right"]);
+        assert_eq!(fixture.state().queued_prompts, 0);
+        fixture.close();
+    }
+
+    #[test]
+    fn a_report_from_another_chat_rides_the_running_turn_and_a_missed_one_waits_its_turn() {
+        let fixture = Fixture::open_with_runner(Box::new(|channels| {
+            Box::pin(async move {
+                let send = |payload| channels.events.send(payload);
+                let text = |text: String| AgentStreamPayload::Update {
+                    update: serde_json::json!({
+                        "sessionUpdate": "agent_message_chunk",
+                        "content": { "type": "text", "text": text },
+                    }),
+                };
+                send(AgentStreamPayload::Ready {
+                    agent_name: "Codex".to_owned(),
+                    agent_key: "codex".to_owned(),
+                    auth_methods: Vec::new(),
+                    capabilities: AgentSessionCapabilities {
+                        verbs: true,
+                        ..AgentSessionCapabilities::default()
+                    },
+                })
+                .await
+                .map_err(|error| error.to_string())?;
+                send(AgentStreamPayload::SessionReady {
+                    session_id: "s".to_owned(),
+                    modes: None,
+                    config_options: None,
+                })
+                .await
+                .map_err(|error| error.to_string())?;
+                let mut running = None;
+                while let Ok(command) = channels.commands.recv().await {
+                    let payloads = match command {
+                        RuntimeCommand::Prompt {
+                            turn_id, prompt, ..
+                        } => {
+                            running = Some(turn_id);
+                            vec![text(format!("prompt {}", prompt.text))]
+                        }
+                        RuntimeCommand::Verb { prompt } if prompt.text.contains("missed") => {
+                            let missed = AgentPrompt {
+                                text: prompt.text.trim_start_matches("/steer ").to_owned(),
+                                ..prompt
+                            };
+                            let mut payloads = vec![AgentStreamPayload::PromptsReclaimed {
+                                prompts: vec![missed],
+                            }];
+                            payloads.extend(running.take().map(|turn_id| {
+                                AgentStreamPayload::PromptFinished {
+                                    turn_id,
+                                    outcome: AgentPromptOutcome::Finished {
+                                        stop_reason: serde_json::json!("end_turn"),
+                                    },
+                                }
+                            }));
+                            payloads
+                        }
+                        RuntimeCommand::Verb { prompt } => {
+                            vec![text(format!("verb {}", prompt.text))]
+                        }
+                        RuntimeCommand::Shutdown => break,
+                        _ => Vec::new(),
+                    };
+                    for payload in payloads {
+                        send(payload).await.map_err(|error| error.to_string())?;
+                    }
+                }
+                Ok(())
+            })
+        }));
+        let report = |text: &str| {
+            zz_protocol::agent_mention::AgentReport::Finished {
+                pane: PaneId(2),
+                provider: AgentProvider::Codex,
+                text: text.to_owned(),
+            }
+            .to_string()
+        };
+        let inject = |text: String| {
+            fixture.command(HostCommand::Prompt(QueuedPrompt {
+                prompt: AgentPrompt {
+                    owner: ClientInstanceId::default(),
+                    text,
+                    images: Vec::new(),
+                },
+                waiter: None,
+                source: PromptSource::Injected,
+                note: None,
+                ask: None,
+            }));
+        };
+        fixture.wait_for_session();
+        fixture.prompt("busy");
+        fixture.recorder.wait("the running turn", |payload| {
+            chunk_text(payload) == Some("prompt busy")
+        });
+        inject(report("done"));
+        let in_turn = timed_report(&report("done"), ReportTiming::InTurn).expect("a report");
+        assert!(in_turn.contains("Carry on with what you were doing"));
+        assert_eq!(
+            zz_protocol::agent_mention::AgentReport::parse(&in_turn),
+            zz_protocol::agent_mention::AgentReport::parse(&report("done"))
+        );
+        let steered = format!("verb /steer {in_turn}");
+        fixture
+            .recorder
+            .wait("the report inside the turn", |payload| {
+                chunk_text(payload) == Some(steered.as_str())
+            });
+        assert_eq!(fixture.state().queued_prompts, 0);
+        inject(report("missed"));
+        let prompted = format!("prompt {}", report("missed"));
+        let payloads = fixture
+            .recorder
+            .wait("the missed report as a turn", |payload| {
+                chunk_text(payload) == Some(prompted.as_str())
+            });
+        assert_eq!(queued_prompt_texts(&payloads), Vec::<String>::new());
+        fixture.close();
+    }
+
+    fn queued_prompt_texts(payloads: &[AgentStreamPayload]) -> Vec<String> {
+        payloads
+            .iter()
+            .filter_map(|payload| match payload {
+                AgentStreamPayload::PromptsReclaimed { prompts } => Some(prompts),
+                _ => None,
+            })
+            .flatten()
+            .map(|prompt| prompt.text.clone())
+            .collect()
+    }
+
+    #[test]
+    fn a_failed_turn_leaves_the_pane_ready_for_the_next_prompt() {
+        let fixture = Fixture::open(Behavior::FailFirst, AgentAutoApprove::Off);
+        fixture.wait_for_session();
+        fixture.prompt("first");
+        fixture.recorder.wait("the failed turn", |payload| {
+            matches!(
+                payload,
+                AgentStreamPayload::PromptFinished {
+                    outcome: AgentPromptOutcome::Failed { .. },
+                    ..
+                }
+            )
+        });
+        let state = fixture.state();
+        assert_eq!(state.phase, AgentConnectionPhase::Ready);
+        assert!(state.error.is_some());
+        fixture.prompt("second");
+        fixture.recorder.wait("the second turn", |payload| {
+            matches!(
+                payload,
+                AgentStreamPayload::PromptFinished {
+                    outcome: AgentPromptOutcome::Finished { .. },
+                    ..
+                }
+            )
+        });
+        assert_eq!(fixture.state().phase, AgentConnectionPhase::Ready);
+        assert_eq!(fixture.state().error, None);
+        fixture.close();
+    }
+
+    #[test]
+    fn a_pane_streams_from_spawn_through_a_prompt_to_a_finished_turn() {
+        let fixture = Fixture::open(Behavior::Chunk, AgentAutoApprove::Off);
+        fixture.wait_for_session();
+        fixture.prompt("go");
+        let payloads = fixture.recorder.wait("the turn to finish", |payload| {
+            matches!(payload, AgentStreamPayload::PromptFinished { .. })
+        });
+
+        assert!(matches!(payloads[0], AgentStreamPayload::Ready { .. }));
+        assert!(matches!(
+            payloads[1],
+            AgentStreamPayload::SessionReset { restoring: false }
+        ));
+        assert!(
+            matches!(&payloads[2], AgentStreamPayload::SessionReady { session_id, .. } if session_id == "fixture-session")
+        );
+        assert_eq!(chunk_texts(&payloads), ["go", "turn 0"]);
+
+        let seqs = fixture
+            .recorder
+            .items()
+            .into_iter()
+            .map(|item| item.seq)
+            .collect::<Vec<_>>();
+        assert_eq!(seqs, (1..=seqs.len() as u64).collect::<Vec<_>>());
+
+        let state = fixture.state();
+        assert_eq!(state.phase, AgentConnectionPhase::Ready);
+        assert_eq!(state.session_id.as_deref(), Some("fixture-session"));
+        assert_eq!(state.last_seq, seqs.len() as u64);
+        assert_eq!(state.queued_prompts, 0);
+        fixture.close();
+    }
+
+    #[test]
+    fn submitted_prompts_are_streamed_and_journalled_once_with_or_without_adapter_echoes() {
+        for provider in [AgentProvider::Codex, AgentProvider::ClaudeCode] {
+            for behavior in [Behavior::Chunk, Behavior::Echo] {
+                let directory = tempfile::tempdir().expect("journal directory");
+                let journal = Arc::new(AgentJournal::open(directory.path()).expect("journal"));
+                let recorder = Recorder::default();
+                let host = AgentHost::with_journal(
+                    AgentSpawnConfig::default(),
+                    recorder.sink(),
+                    Some(journal.clone()),
+                );
+                let pane = PaneId(7);
+                assert!(host.open_with(
+                    pane,
+                    1,
+                    AgentPaneSpec {
+                        model: None,
+                        effort: None,
+                        provider,
+                        cwd: directory.path().to_owned(),
+                        resume_session: None,
+                        auto_approve: Some(AgentAutoApprove::Off),
+                        workspace: AgentWorkspaceEnvironment::default(),
+                    },
+                    fixture_runner(provider, behavior, AgentAutoApprove::Off, false),
+                ));
+                let fixture = Fixture {
+                    host,
+                    recorder,
+                    pane,
+                };
+                fixture.wait_for_session();
+                for turn_id in 1..=2 {
+                    fixture.command(HostCommand::Prompt(
+                        AgentPrompt {
+                            owner: ClientInstanceId::default(),
+                            text: "look again".to_owned(),
+                            images: vec![AgentImage {
+                                format: "image/png".to_owned(),
+                                data: b"image".to_vec(),
+                            }],
+                        }
+                        .into(),
+                    ));
+                    fixture.recorder.wait("the completed prompt", |payload| {
+                        matches!(payload, AgentStreamPayload::PromptFinished { turn_id: id, .. } if *id == turn_id)
+                    });
+                }
+                let users = fixture
+                    .recorder
+                    .payloads()
+                    .into_iter()
+                    .filter_map(|payload| match payload {
+                        AgentStreamPayload::Update { update }
+                            if update["sessionUpdate"] == "user_message_chunk" =>
+                        {
+                            Some(update)
+                        }
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>();
+                assert_eq!(users.len(), 4, "{provider:?} {behavior:?}");
+                for pair in users.as_chunks::<2>().0 {
+                    assert_eq!(pair[0]["content"]["text"], "look again");
+                    assert_eq!(pair[1]["content"]["data"], "aW1hZ2U=");
+                    assert_eq!(pair[0]["messageId"], pair[1]["messageId"]);
+                }
+                assert_ne!(users[0]["messageId"], users[2]["messageId"]);
+                let replayed_users = journal
+                    .replay_for(provider, "fixture-session")
+                    .expect("replay")
+                    .into_iter()
+                    .filter_map(|(_, entry)| match entry {
+                        crate::journal::JournalEntry::Update(update)
+                            if update["sessionUpdate"] == "user_message_chunk" =>
+                        {
+                            Some(update)
+                        }
+                        crate::journal::JournalEntry::Update(_) => None,
+                    })
+                    .collect::<Vec<_>>();
+                assert_eq!(replayed_users, users);
+                fixture.close();
+            }
+        }
+    }
+
+    fn scripted_reply_fixture(updates: Vec<AgentStreamPayload>, reason: &'static str) -> Fixture {
+        Fixture::open_with_runner(Box::new(move |channels| {
+            Box::pin(async move {
+                channels
+                    .events
+                    .send(AgentStreamPayload::SessionReady {
+                        session_id: "fixture-session".to_owned(),
+                        modes: None,
+                        config_options: None,
+                    })
+                    .await
+                    .map_err(|error| error.to_string())?;
+                while let Ok(command) = channels.commands.recv().await {
+                    match command {
+                        RuntimeCommand::Prompt { turn_id, .. } => {
+                            channels
+                                .events
+                                .send(AgentStreamPayload::TurnStarted { turn_id })
+                                .await
+                                .map_err(|error| error.to_string())?;
+                            for update in &updates {
+                                channels
+                                    .events
+                                    .send(update.clone())
+                                    .await
+                                    .map_err(|error| error.to_string())?;
+                                if let AgentStreamPayload::PermissionRequested {
+                                    request_id, ..
+                                } = update
+                                {
+                                    let RuntimeControl::RespondPermission {
+                                        request_id: answered,
+                                        option_id,
+                                    } = channels
+                                        .controls
+                                        .recv()
+                                        .await
+                                        .map_err(|error| error.to_string())?
+                                    else {
+                                        return Err("expected permission response".to_owned());
+                                    };
+                                    assert_eq!(*request_id, answered);
+                                    channels
+                                        .events
+                                        .send(AgentStreamPayload::PermissionResolved {
+                                            request_id: answered,
+                                            canceled: option_id.is_none(),
+                                        })
+                                        .await
+                                        .map_err(|error| error.to_string())?;
+                                }
+                            }
+                            channels
+                                .events
+                                .send(AgentStreamPayload::PromptFinished {
+                                    turn_id,
+                                    outcome: AgentPromptOutcome::Finished {
+                                        stop_reason: serde_json::json!(reason),
+                                    },
+                                })
+                                .await
+                                .map_err(|error| error.to_string())?;
+                        }
+                        RuntimeCommand::Shutdown => return Ok(()),
+                        _ => {}
+                    }
+                }
+                Ok(())
+            })
+        }))
+    }
+
+    fn reply_chunk(text: &str) -> AgentStreamPayload {
+        AgentStreamPayload::Update {
+            update: serde_json::json!({"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": text}}),
+        }
+    }
+
+    #[test]
+    fn agent_reply_final_text_follows_the_last_tool_update() {
+        let fixture = scripted_reply_fixture(
+            vec![
+                reply_chunk("narration"),
+                AgentStreamPayload::Update {
+                    update: serde_json::json!({"sessionUpdate": "tool_call"}),
+                },
+                reply_chunk("more narration"),
+                AgentStreamPayload::Update {
+                    update: serde_json::json!({"sessionUpdate": "tool_call"}),
+                },
+                reply_chunk("pending"),
+                AgentStreamPayload::Update {
+                    update: serde_json::json!({"sessionUpdate": "tool_call_update"}),
+                },
+                reply_chunk("final "),
+                reply_chunk("answer"),
+            ],
+            "end_turn",
+        );
+        fixture.wait_for_session();
+        let reply = fixture
+            .prompt_waiting("go")
+            .recv_timeout(DEADLINE)
+            .expect("reply")
+            .expect("success");
+        assert_eq!(reply.final_text, "final answer");
+        assert_eq!(reply.text, "narrationmore narrationpendingfinal answer");
+        assert_eq!(reply.tool_calls, 2);
+        assert_eq!(reply.stop_reason, "end_turn");
+        assert!(reply.duration > Duration::ZERO);
+        fixture.close();
+    }
+
+    #[test]
+    fn agent_reply_refusal_and_unknown_stop_reasons_keep_the_reply() {
+        for reason in ["refusal", "max_tokens", "max_turn_requests", "new_reason"] {
+            let fixture = scripted_reply_fixture(vec![reply_chunk("answer")], reason);
+            fixture.wait_for_session();
+            let result = fixture
+                .prompt_waiting("go")
+                .recv_timeout(DEADLINE)
+                .expect("reply");
+            let Err(AgentTurnFailure::Stopped {
+                reason: actual,
+                reply,
+            }) = result
+            else {
+                panic!("expected stopped reply");
+            };
+            assert_eq!(actual, reason);
+            assert_eq!(reply.stop_reason, reason);
+            assert_eq!(reply.text, "answer");
+            assert_eq!(reply.final_text, "answer");
+            fixture.close();
+        }
+    }
+
+    #[test]
+    fn agent_reply_caps_keep_utf8_tails() {
+        let text = format!("{}last", "é".repeat(MAX_AGENT_TURN_REPLY_BYTES));
+        let fixture =
+            scripted_reply_fixture(vec![reply_chunk(&text), reply_chunk("!")], "end_turn");
+        fixture.wait_for_session();
+        let reply = fixture
+            .prompt_waiting("go")
+            .recv_timeout(DEADLINE)
+            .expect("reply")
+            .expect("success");
+        assert!(reply.truncated);
+        assert!(reply.text.len() <= MAX_AGENT_TURN_REPLY_BYTES);
+        assert!(reply.text.len() >= MAX_AGENT_TURN_REPLY_BYTES - 1);
+        assert!(reply.final_text.len() <= MAX_AGENT_FINAL_REPLY_BYTES);
+        assert!(reply.final_text.len() >= MAX_AGENT_FINAL_REPLY_BYTES - 1);
+        assert!(reply.text.ends_with("last!"));
+        assert!(reply.final_text.ends_with("last!"));
+        assert!(text[..text.len() - 4].ends_with(reply.text.trim_end_matches("last!")));
+        fixture.close();
+    }
+
+    #[test]
+    fn agent_reply_allow_and_deny_answer_and_count_permissions() {
+        for (policy, allowed, denied, action) in [
+            (AgentBlockPolicy::Allow, 1, 0, "allowed"),
+            (AgentBlockPolicy::Deny, 0, 1, "denied"),
+        ] {
+            let fixture = Fixture::open(
+                Behavior::AskKindedPermission(ToolKind::Execute),
+                AgentAutoApprove::Off,
+            );
+            fixture.wait_for_session();
+            let audit = Arc::default();
+            let reply = fixture
+                .prompt_with_policy("go", policy, Arc::clone(&audit))
+                .recv_timeout(DEADLINE)
+                .expect("reply")
+                .expect("success");
+            assert_eq!(reply.permissions_requested, 1);
+            assert_eq!(reply.permissions_allowed, allowed);
+            assert_eq!(reply.permissions_denied, denied);
+            assert_eq!(
+                *audit.lock(),
+                [format!("agent-send: {action} execute run it")]
+            );
+            fixture.close();
+        }
+    }
+
+    #[test]
+    fn agent_reply_allow_waits_for_user_questions_and_deny_cancels_them() {
+        for policy in [AgentBlockPolicy::Allow, AgentBlockPolicy::Deny] {
+            let fixture = scripted_reply_fixture(
+                vec![AgentStreamPayload::PermissionRequested {
+                    request_id: 42,
+                    tool_call: serde_json::json!({"toolCallId": "question"}),
+                    options: serde_json::json!([{"optionId": "yes", "name": "Yes", "kind": "answer"}]),
+                    questions: Vec::new(),
+                }],
+                "end_turn",
+            );
+            fixture.wait_for_session();
+            let audit = Arc::default();
+            let reply = fixture.prompt_with_policy("go", policy, Arc::clone(&audit));
+            fixture.recorder.wait("question", |payload| {
+                matches!(payload, AgentStreamPayload::PermissionRequested { .. })
+            });
+            if policy == AgentBlockPolicy::Allow {
+                assert!(matches!(
+                    reply.recv_timeout(Duration::from_millis(30)),
+                    Err(crossbeam_channel::RecvTimeoutError::Timeout)
+                ));
+                assert!(audit.lock().is_empty());
+                fixture.command(HostCommand::RespondPermission {
+                    response: PermissionResponse::Exact {
+                        request_id: 42,
+                        option_id: Some("yes".to_owned()),
+                    },
+                });
+            }
+            let reply = reply
+                .recv_timeout(DEADLINE)
+                .expect("reply")
+                .expect("success");
+            assert_eq!(reply.permissions_requested, 1);
+            assert_eq!(reply.permissions_allowed, 0);
+            assert_eq!(
+                reply.permissions_denied,
+                u32::from(policy == AgentBlockPolicy::Deny)
+            );
+            if policy == AgentBlockPolicy::Deny {
+                assert_eq!(*audit.lock(), ["agent-send: denied ? question"]);
+            }
+            fixture.close();
+        }
+    }
+
+    #[test]
+    fn denying_a_question_card_dismisses_it() {
+        let fixture = scripted_reply_fixture(
+            vec![AgentStreamPayload::PermissionRequested {
+                request_id: 42,
+                tool_call: serde_json::json!({"toolCallId": "question"}),
+                options: serde_json::json!([]),
+                questions: vec![crate::stream::AgentQuestion {
+                    id: "q0".to_owned(),
+                    question: "Which fruit?".to_owned(),
+                    ..Default::default()
+                }],
+            }],
+            "end_turn",
+        );
+        fixture.wait_for_session();
+        fixture.prompt("go");
+        fixture.recorder.wait("question", |payload| {
+            matches!(payload, AgentStreamPayload::PermissionRequested { .. })
+        });
+        let (sender, receiver) = crossbeam_channel::bounded(1);
+        fixture.command(HostCommand::RespondPermission {
+            response: PermissionResponse::Select {
+                request_id: None,
+                choice: PermissionChoice::Deny,
+                reply: zz_daemon_client::reply::Reply::new(move |result| {
+                    let _ = sender.send(result);
+                }),
+            },
+        });
+        assert_eq!(
+            receiver.recv_timeout(DEADLINE).expect("reply"),
+            Some(Ok("dismissed".to_owned()))
+        );
+        fixture.recorder.wait("dismissal", |payload| {
+            matches!(
+                payload,
+                AgentStreamPayload::PermissionResolved {
+                    request_id: 42,
+                    canceled: true
+                }
+            )
+        });
+        fixture.close();
+    }
+
+    #[test]
+    fn a_waiting_prompt_receives_the_turns_text() {
+        let fixture = Fixture::open(Behavior::Chunk, AgentAutoApprove::Off);
+        fixture.wait_for_session();
+        let reply = fixture.prompt_waiting("go");
+        let reply = reply
+            .recv_timeout(DEADLINE)
+            .expect("the turn settles")
+            .expect("successful turn");
+        assert_eq!(reply.text, "turn 0");
+        assert_eq!(reply.final_text, "turn 0");
+        assert_eq!(reply.stop_reason, "end_turn");
+        assert!(!reply.truncated);
+        fixture.close();
+    }
+
+    #[test]
+    fn a_prompt_queued_behind_a_hung_turn_is_handed_back_on_cancel() {
+        let fixture = Fixture::open(Behavior::Hang, AgentAutoApprove::Off);
+        fixture.wait_for_session();
+        let hung = fixture.prompt_waiting("first");
+        fixture.recorder.wait("the turn to start", |payload| {
+            matches!(payload, AgentStreamPayload::TurnStarted { .. })
+        });
+        let queued = fixture.prompt_waiting("second");
+        let deadline = Instant::now() + DEADLINE;
+        while fixture.state().queued_prompts != 1 {
+            assert!(Instant::now() < deadline, "the second prompt queues");
+            thread::sleep(Duration::from_millis(5));
+        }
+        assert!(
+            queued.try_recv().is_err(),
+            "a queued prompt is still pending"
+        );
+
+        fixture.command(HostCommand::Cancel);
+        assert_eq!(
+            queued
+                .recv_timeout(DEADLINE)
+                .expect("cancel hands the queue back"),
+            Err(AgentTurnFailure::Reclaimed)
+        );
+        fixture.close();
+        assert!(matches!(
+            hung.recv_timeout(DEADLINE)
+                .expect("closing settles the hung turn"),
+            Err(AgentTurnFailure::Cancelled | AgentTurnFailure::Closed)
+        ));
+    }
+
+    #[test]
+    fn a_prompt_past_the_queue_limit_settles_as_reclaimed() {
+        let fixture = Fixture::open(Behavior::Hang, AgentAutoApprove::Off);
+        fixture.wait_for_session();
+        let _hung = fixture.prompt_waiting("first");
+        fixture.recorder.wait("the turn to start", |payload| {
+            matches!(payload, AgentStreamPayload::TurnStarted { .. })
+        });
+        let queued = (0..MAX_AGENT_QUEUED_PROMPTS)
+            .map(|index| fixture.prompt_waiting(&format!("queued {index}")))
+            .collect::<Vec<_>>();
+        let deadline = Instant::now() + DEADLINE;
+        while fixture.state().queued_prompts != MAX_AGENT_QUEUED_PROMPTS {
+            assert!(Instant::now() < deadline, "the queue fills");
+            thread::sleep(Duration::from_millis(5));
+        }
+
+        let overflow = fixture.prompt_waiting("one too many");
+        assert_eq!(
+            overflow
+                .recv_timeout(DEADLINE)
+                .expect("overflow settles at once"),
+            Err(AgentTurnFailure::Reclaimed)
+        );
+        let payloads = fixture.recorder.wait("the overflow to be handed back", |payload| {
+            matches!(payload, AgentStreamPayload::PromptsReclaimed { prompts } if prompts.iter().any(|prompt| prompt.text == "one too many"))
+        });
+        assert!(queued_prompt_texts(&payloads).contains(&"one too many".to_owned()));
+        assert!(queued.iter().all(|reply| reply.try_recv().is_err()));
+        fixture.close();
+    }
+
+    #[test]
+    fn dispatch_publishes_running_with_a_turn_boundary_before_the_agent_speaks() {
+        let fixture = Fixture::open(Behavior::Hang, AgentAutoApprove::Off);
+        fixture.wait_for_session();
+        fixture.prompt("think quietly");
+        let deadline = Instant::now() + DEADLINE;
+        while !fixture
+            .recorder
+            .states
+            .lock()
+            .iter()
+            .any(|(state, has_item)| state.phase == AgentConnectionPhase::Running && *has_item)
+            && Instant::now() < deadline
+        {
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert!(
+            fixture
+                .recorder
+                .states
+                .lock()
+                .iter()
+                .any(|(state, has_item)| {
+                    state.phase == AgentConnectionPhase::Running && *has_item
+                })
+        );
+        fixture.close();
+    }
+
+    #[test]
+    fn an_auto_approved_tool_never_reaches_a_client() {
+        let fixture = Fixture::open(Behavior::AskPermission, AgentAutoApprove::All);
+        fixture.wait_for_session();
+        fixture.prompt("go");
+        let payloads = fixture.recorder.wait("the turn to finish", |payload| {
+            matches!(payload, AgentStreamPayload::PromptFinished { .. })
+        });
+
+        assert!(
+            !payloads
+                .iter()
+                .any(|payload| matches!(payload, AgentStreamPayload::PermissionRequested { .. })),
+            "an auto-approved tool is answered daemon-side: {payloads:?}"
+        );
+        assert!(
+            payloads.iter().any(|payload| matches!(
+                payload,
+                AgentStreamPayload::Update { update } if update.get("sessionUpdate")
+                    .and_then(Value::as_str) == Some("tool_call_update")
+            )),
+            "the approved tool call still reaches the transcript: {payloads:?}"
+        );
+        assert!(fixture.state().pending_permissions.is_empty());
+        fixture.close();
+    }
+
+    #[test]
+    fn the_reads_tier_answers_a_read_tool_daemon_side() {
+        let fixture = Fixture::open(
+            Behavior::AskKindedPermission(ToolKind::Read),
+            AgentAutoApprove::Reads,
+        );
+        fixture.wait_for_session();
+        fixture.prompt("go");
+        let payloads = fixture.recorder.wait("the turn to finish", |payload| {
+            matches!(payload, AgentStreamPayload::PromptFinished { .. })
+        });
+
+        assert!(
+            !payloads
+                .iter()
+                .any(|payload| matches!(payload, AgentStreamPayload::PermissionRequested { .. })),
+            "a read-only kind is answered daemon-side: {payloads:?}"
+        );
+        assert!(fixture.state().pending_permissions.is_empty());
+        fixture.close();
+    }
+
+    #[test]
+    fn the_reads_tier_sends_an_execute_tool_to_the_wizard() {
+        let fixture = Fixture::open(
+            Behavior::AskKindedPermission(ToolKind::Execute),
+            AgentAutoApprove::Reads,
+        );
+        fixture.wait_for_session();
+        fixture.prompt("go");
+        fixture.recorder.wait("the permission request", |payload| {
+            matches!(payload, AgentStreamPayload::PermissionRequested { .. })
+        });
+
+        assert_eq!(fixture.state().pending_permissions.len(), 1);
+        assert!(
+            !fixture
+                .recorder
+                .payloads()
+                .iter()
+                .any(|payload| matches!(payload, AgentStreamPayload::PromptFinished { .. })),
+            "running a command waits for the human"
+        );
+        fixture.close();
+    }
+
+    #[test]
+    fn permission_selection_uses_advertised_ids_and_kinds() {
+        let pending = vec![
+            AgentPendingPermission {
+                request_id: 7,
+                tool_call: serde_json::json!({}),
+                options: serde_json::json!([
+                    { "optionId": "always", "kind": "allow_always" },
+                    { "optionId": "once", "kind": "allow_once" },
+                    { "optionId": "reject", "kind": "reject_once" },
+                    { "optionId": "later", "kind": "allow_once" }
+                ]),
+                questions: Vec::new(),
+            },
+            AgentPendingPermission {
+                request_id: 8,
+                tool_call: serde_json::json!({}),
+                options: serde_json::json!([{ "optionId": "other", "kind": "allow_always" }]),
+                questions: Vec::new(),
+            },
+        ];
+        assert_eq!(
+            select_permission(&pending, None, &PermissionChoice::Allow),
+            Ok((7, "once".to_owned()))
+        );
+        assert_eq!(
+            select_permission(&pending, None, &PermissionChoice::Deny),
+            Ok((7, "reject".to_owned()))
+        );
+        assert_eq!(
+            select_permission(&pending, Some(8), &PermissionChoice::Allow),
+            Ok((8, "other".to_owned()))
+        );
+        assert_eq!(
+            select_permission(
+                &pending,
+                None,
+                &PermissionChoice::Option("always".to_owned())
+            ),
+            Ok((7, "always".to_owned()))
+        );
+        let error = select_permission(
+            &pending,
+            None,
+            &PermissionChoice::Option("missing".to_owned()),
+        )
+        .expect_err("unknown option");
+        assert!(error.contains("valid ids: always, once, reject, later"));
+        assert_eq!(
+            select_permission(&[], None, &PermissionChoice::Allow),
+            Err("no pending permission".to_owned())
+        );
+        assert_eq!(
+            select_permission(&pending, Some(99), &PermissionChoice::Allow),
+            Err("no pending permission".to_owned())
+        );
+    }
+
+    #[test]
+    fn a_typed_answer_fills_the_one_question_of_a_request() {
+        let question = |id: &str| AgentQuestion {
+            id: id.to_owned(),
+            header: None,
+            question: "Which color?".to_owned(),
+            options: Vec::new(),
+            multi_select: false,
+            allow_other: true,
+            secret: false,
+        };
+        let pending = |questions| AgentPendingPermission {
+            request_id: 7,
+            tool_call: Value::Null,
+            options: Value::Array(Vec::new()),
+            questions,
+        };
+        assert_eq!(
+            typed_answer(&[pending(vec![question("q1")])], None, "blue"),
+            Ok((
+                7,
+                vec![AgentQuestionAnswer {
+                    id: "q1".to_owned(),
+                    answers: vec!["blue".to_owned()],
+                }]
+            ))
+        );
+        assert_eq!(
+            typed_answer(
+                &[pending(vec![question("q1"), question("q2")])],
+                Some(7),
+                "blue"
+            ),
+            Err("request 7 asks 2 questions; --answer answers one".to_owned())
+        );
+        assert_eq!(
+            typed_answer(&[], None, "blue"),
+            Err("no pending permission".to_owned())
+        );
+    }
+
+    #[test]
+    fn unqueueing_hands_back_what_the_user_queued_and_keeps_the_rest_waiting() {
+        let fixture = Fixture::open(Behavior::Hang, AgentAutoApprove::Off);
+        fixture.wait_for_session();
+        let queued = |text: &str, source| {
+            HostCommand::Prompt(QueuedPrompt {
+                prompt: AgentPrompt {
+                    owner: ClientInstanceId::default(),
+                    text: text.to_owned(),
+                    images: Vec::new(),
+                },
+                waiter: None,
+                source,
+                note: None,
+                ask: None,
+            })
+        };
+        fixture.prompt("busy");
+        let deadline = Instant::now() + DEADLINE;
+        while fixture.state().phase != AgentConnectionPhase::Running {
+            assert!(Instant::now() < deadline, "the first turn never ran");
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        fixture.command(queued(
+            "[zz] %2 (codex) finished:\nok",
+            PromptSource::Injected,
+        ));
+        fixture.command(queued("sent by a command", PromptSource::Command));
+        fixture.command(queued("mine", PromptSource::Composer));
+        while fixture.state().queued_prompts != 3 {
+            assert!(Instant::now() < deadline, "the prompts never queued");
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        fixture.command(HostCommand::Unqueue);
+        let reclaimed = fixture
+            .recorder
+            .wait("the reclaimed prompt", |payload| {
+                matches!(payload, AgentStreamPayload::PromptsReclaimed { .. })
+            })
+            .into_iter()
+            .filter_map(|payload| match payload {
+                AgentStreamPayload::PromptsReclaimed { prompts } => Some(prompts),
+                _ => None,
+            })
+            .flatten()
+            .map(|prompt| prompt.text)
+            .collect::<Vec<_>>();
+        assert_eq!(reclaimed, ["mine"]);
+        let state = fixture.state();
+        assert_eq!((state.queued_prompts, state.own_prompts), (2, 0));
+    }
+
+    #[test]
+    fn blocked_waiter_returns_without_settling_the_turn() {
+        let fixture = Fixture::open(Behavior::AskPermission, AgentAutoApprove::Off);
+        fixture.wait_for_session();
+        let (reply, result) = crossbeam_channel::bounded(1);
+        fixture.command(HostCommand::Prompt(QueuedPrompt {
+            prompt: AgentPrompt {
+                owner: ClientInstanceId::default(),
+                text: "first".to_owned(),
+                images: Vec::new(),
+            },
+            waiter: Some(AgentTurnWaiter {
+                reply: reply.into(),
+                on_block: AgentBlockPolicy::Fail,
+                audit: Arc::default(),
+                asks: None,
+            }),
+            source: PromptSource::Composer,
+            note: None,
+            ask: None,
+        }));
+        let Err(AgentTurnFailure::Blocked { permission, reply }) =
+            result.recv_timeout(DEADLINE).expect("blocked waiter")
+        else {
+            panic!("expected blocked permission");
+        };
+        assert_eq!(reply.stop_reason, "blocked");
+        assert_eq!(reply.permissions_requested, 1);
+        assert_eq!(fixture.state().phase, AgentConnectionPhase::Running);
+        assert_eq!(
+            fixture.state().pending_permissions[0].request_id,
+            permission.request_id
+        );
+        let second = fixture.prompt_waiting("second");
+        fixture.command(HostCommand::RespondPermission {
+            response: PermissionResponse::Exact {
+                request_id: permission.request_id,
+                option_id: Some("allow".to_owned()),
+            },
+        });
+        let deadline = Instant::now() + DEADLINE;
+        let next = loop {
+            if let Some(next) = fixture.state().pending_permissions.first()
+                && next.request_id != permission.request_id
+            {
+                break next.request_id;
+            }
+            assert!(Instant::now() < deadline, "second permission");
+            thread::sleep(Duration::from_millis(2));
+        };
+        assert!(matches!(
+            second.try_recv(),
+            Err(crossbeam_channel::TryRecvError::Empty)
+        ));
+        fixture.command(HostCommand::RespondPermission {
+            response: PermissionResponse::Exact {
+                request_id: next,
+                option_id: Some("allow".to_owned()),
+            },
+        });
+        assert_eq!(
+            second
+                .recv_timeout(DEADLINE)
+                .expect("second waiter")
+                .expect("second turn")
+                .text,
+            "turn 1"
+        );
+        fixture.close();
+    }
+
+    #[test]
+    fn a_surfaced_permission_waits_for_an_answer_and_then_resolves() {
+        let fixture = Fixture::open(Behavior::AskPermission, AgentAutoApprove::Off);
+        fixture.wait_for_session();
+        fixture.prompt("go");
+        let payloads = fixture.recorder.wait("the permission request", |payload| {
+            matches!(payload, AgentStreamPayload::PermissionRequested { .. })
+        });
+
+        let AgentStreamPayload::PermissionRequested {
+            request_id,
+            options,
+            ..
+        } = payloads
+            .iter()
+            .find(|payload| matches!(payload, AgentStreamPayload::PermissionRequested { .. }))
+            .expect("permission request")
+            .clone()
+        else {
+            unreachable!()
+        };
+        assert_eq!(options.as_array().map(Vec::len), Some(2));
+        let pending = fixture.state().pending_permissions;
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].request_id, request_id);
+        assert!(
+            !fixture
+                .recorder
+                .payloads()
+                .iter()
+                .any(|payload| matches!(payload, AgentStreamPayload::PromptFinished { .. })),
+            "the turn waits for the human"
+        );
+
+        fixture.command(HostCommand::RespondPermission {
+            response: PermissionResponse::Exact {
+                request_id,
+                option_id: Some("allow".to_owned()),
+            },
+        });
+        let payloads = fixture.recorder.wait("the turn to finish", |payload| {
+            matches!(payload, AgentStreamPayload::PromptFinished { .. })
+        });
+        assert!(payloads.iter().any(|payload| matches!(
+            payload,
+            AgentStreamPayload::PermissionResolved { request_id: resolved, canceled: false }
+                if *resolved == request_id
+        )));
+        assert!(fixture.state().pending_permissions.is_empty());
+        fixture.close();
+    }
+
+    #[test]
+    fn a_prompt_typed_during_a_turn_queues_and_dispatches_when_it_settles() {
+        let fixture = Fixture::open(Behavior::AskPermission, AgentAutoApprove::Off);
+        fixture.wait_for_session();
+        fixture.prompt("first");
+        let payloads = fixture.recorder.wait("the permission request", |payload| {
+            matches!(payload, AgentStreamPayload::PermissionRequested { .. })
+        });
+        fixture.prompt("second");
+
+        let deadline = Instant::now() + DEADLINE;
+        while fixture.state().queued_prompts == 0 && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert_eq!(fixture.state().queued_prompts, 1);
+        assert_eq!(
+            chunk_texts(&fixture.recorder.payloads()),
+            ["first", "turn 0"]
+        );
+
+        let AgentStreamPayload::PermissionRequested { request_id, .. } = payloads
+            .iter()
+            .find(|payload| matches!(payload, AgentStreamPayload::PermissionRequested { .. }))
+            .expect("permission request")
+            .clone()
+        else {
+            unreachable!()
+        };
+        fixture.command(HostCommand::RespondPermission {
+            response: PermissionResponse::Exact {
+                request_id,
+                option_id: Some("allow".to_owned()),
+            },
+        });
+
+        let payloads = fixture.recorder.wait("the queued turn", |payload| {
+            matches!(
+                payload,
+                AgentStreamPayload::Update { update }
+                    if update.get("content").and_then(|content| content.get("text"))
+                        .and_then(Value::as_str) == Some("turn 1")
+            )
+        });
+        assert_eq!(
+            chunk_texts(&payloads),
+            ["first", "turn 0", "second", "turn 1"]
+        );
+        assert_eq!(fixture.state().queued_prompts, 0);
+        fixture.close();
+    }
+
+    #[test]
+    fn a_new_agent_session_waiter_finishes_after_session_switched() {
+        let fixture = Fixture::open(Behavior::Chunk, AgentAutoApprove::Off);
+        fixture.wait_for_session();
+        let previous = fixture.state().session_id;
+        let (reply, result) = crossbeam_channel::bounded(1);
+        fixture.command(HostCommand::NewSession {
+            cwd: PathBuf::from("/other"),
+            reply: Some(reply.into()),
+        });
+        assert_eq!(result.recv_timeout(DEADLINE).unwrap(), Ok(()));
+        let state = fixture.state();
+        assert_eq!(state.phase, AgentConnectionPhase::Ready);
+        assert_ne!(state.session_id, previous);
+        assert_eq!(state.cwd, PathBuf::from("/other"));
+        assert!(
+            fixture
+                .recorder
+                .payloads()
+                .iter()
+                .any(|payload| matches!(payload, AgentStreamPayload::SessionSwitched { .. }))
+        );
+        assert!(
+            fixture
+                .prompt_waiting("fresh")
+                .recv_timeout(DEADLINE)
+                .unwrap()
+                .is_ok()
+        );
+        fixture.close();
+    }
+
+    #[test]
+    fn a_new_agent_session_reclaims_queued_prompts_before_becoming_ready() {
+        let (started, received) = crossbeam_channel::bounded(1);
+        let (release, resume) = async_channel::bounded(1);
+        let runner: PaneRunner = Box::new(move |channels| {
+            Box::pin(async move {
+                assert!(matches!(
+                    channels.commands.recv().await.unwrap(),
+                    RuntimeCommand::Open { .. }
+                ));
+                channels
+                    .events
+                    .send(AgentStreamPayload::SessionReady {
+                        session_id: "before".to_owned(),
+                        modes: None,
+                        config_options: None,
+                    })
+                    .await
+                    .unwrap();
+                assert!(matches!(
+                    channels.commands.recv().await.unwrap(),
+                    RuntimeCommand::NewSession { .. }
+                ));
+                started.send(()).unwrap();
+                resume.recv().await.unwrap();
+                channels
+                    .events
+                    .send(AgentStreamPayload::SessionReset { restoring: true })
+                    .await
+                    .unwrap();
+                channels
+                    .events
+                    .send(AgentStreamPayload::SessionSwitched {
+                        session_id: "after".to_owned(),
+                        cwd: PathBuf::from("/"),
+                        modes: None,
+                        config_options: None,
+                        replay: Vec::new(),
+                    })
+                    .await
+                    .unwrap();
+                if let Ok(command) = channels.commands.recv().await {
+                    assert!(matches!(command, RuntimeCommand::Shutdown));
+                }
+                Ok(())
+            })
+        });
+        let fixture = Fixture::open_with_runner(runner);
+        fixture.wait_for_session();
+        let (reply, result) = crossbeam_channel::bounded(1);
+        fixture.command(HostCommand::NewSession {
+            cwd: PathBuf::from("/"),
+            reply: Some(reply.into()),
+        });
+        received.recv_timeout(DEADLINE).unwrap();
+        let prompt = fixture.prompt_waiting("old session prompt");
+        let deadline = Instant::now() + DEADLINE;
+        while fixture.state().queued_prompts == 0 && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert_eq!(fixture.state().queued_prompts, 1);
+        release.try_send(()).unwrap();
+        assert_eq!(result.recv_timeout(DEADLINE).unwrap(), Ok(()));
+        assert_eq!(
+            prompt.recv_timeout(DEADLINE).unwrap(),
+            Err(AgentTurnFailure::Reclaimed)
+        );
+        assert_eq!(fixture.state().queued_prompts, 0);
+        assert_eq!(
+            queued_prompt_texts(&fixture.recorder.payloads()),
+            ["old session prompt"]
+        );
+        fixture.close();
+    }
+
+    #[test]
+    fn a_new_agent_session_reset_reclaims_prompts_still_in_the_mailbox() {
+        let recorder = Recorder::default();
+        let spec = AgentPaneSpec {
+            model: None,
+            effort: None,
+            provider: AgentProvider::Codex,
+            cwd: PathBuf::from("/"),
+            resume_session: None,
+            auto_approve: None,
+            workspace: AgentWorkspaceEnvironment::default(),
+        };
+        let (inbox, _inbox_rx) = async_channel::bounded(1);
+        let (commands, command_rx) = async_channel::bounded(1);
+        let (prompts, prompt_rx) = async_channel::bounded(MAX_AGENT_QUEUED_PROMPTS);
+        let (controls, _control_rx) = async_channel::bounded(1);
+        let (close, _close_rx) = async_channel::bounded(1);
+        let mut pump = PanePump {
+            pane: PaneId(7),
+            generation: 1,
+            state: Arc::new(Mutex::new(AgentPaneState::new(&spec))),
+            spec,
+            sink: Arc::new(recorder.sink()),
+            inbox,
+            commands,
+            prompts: prompt_rx,
+            controls,
+            close,
+            seq: 0,
+            queue: VecDeque::new(),
+            git_refresh: GitRefreshGate::default(),
+            next_turn_id: 0,
+            active_turn: None,
+            dispatched_prompt: None,
+            active_waiter: None,
+            joined_waiters: Vec::new(),
+            session_waiter: None,
+            new_session_pending: true,
+            turn_reply: AgentTurnReply::default(),
+            turn_started: Instant::now(),
+            closing: false,
+        };
+        let (reply, result) = crossbeam_channel::bounded(1);
+        prompts
+            .try_send(QueuedPrompt {
+                prompt: AgentPrompt {
+                    owner: ClientInstanceId::default(),
+                    text: "still in mailbox".to_owned(),
+                    images: Vec::new(),
+                },
+                waiter: Some(AgentTurnWaiter {
+                    reply: reply.into(),
+                    on_block: AgentBlockPolicy::Wait,
+                    audit: Arc::new(Mutex::new(Vec::new())),
+                    asks: None,
+                }),
+                source: PromptSource::Composer,
+                note: None,
+                ask: None,
+            })
+            .unwrap();
+        pump.observe(AgentStreamPayload::SessionReset { restoring: true });
+        assert_eq!(result.try_recv().unwrap(), Err(AgentTurnFailure::Reclaimed));
+        assert!(pump.prompts.is_empty());
+        assert!(command_rx.is_empty());
+        assert_eq!(
+            queued_prompt_texts(&recorder.payloads()),
+            ["still in mailbox"]
+        );
+    }
+
+    #[test]
+    fn a_new_agent_session_waiter_reports_adapter_failure() {
+        let runner: PaneRunner = Box::new(|channels| {
+            Box::pin(async move {
+                assert!(matches!(
+                    channels.commands.recv().await.unwrap(),
+                    RuntimeCommand::Open { .. }
+                ));
+                channels
+                    .events
+                    .send(AgentStreamPayload::SessionReady {
+                        session_id: "before".to_owned(),
+                        modes: None,
+                        config_options: None,
+                    })
+                    .await
+                    .unwrap();
+                assert!(matches!(
+                    channels.commands.recv().await.unwrap(),
+                    RuntimeCommand::NewSession { .. }
+                ));
+                Err("fixture adapter exited".to_owned())
+            })
+        });
+        let fixture = Fixture::open_with_runner(runner);
+        fixture.wait_for_session();
+        let (reply, result) = crossbeam_channel::bounded(1);
+        fixture.command(HostCommand::NewSession {
+            cwd: PathBuf::from("/"),
+            reply: Some(reply.into()),
+        });
+        assert_eq!(
+            result.recv_timeout(DEADLINE).unwrap(),
+            Err("fixture adapter exited".to_owned())
+        );
+        fixture.close();
+    }
+
+    #[test]
+    fn a_concurrent_new_agent_session_keeps_the_first_waiter_until_close() {
+        let (started, received) = crossbeam_channel::bounded(1);
+        let runner: PaneRunner = Box::new(move |channels| {
+            Box::pin(async move {
+                assert!(matches!(
+                    channels.commands.recv().await.unwrap(),
+                    RuntimeCommand::Open { .. }
+                ));
+                channels
+                    .events
+                    .send(AgentStreamPayload::SessionReady {
+                        session_id: "before".to_owned(),
+                        modes: None,
+                        config_options: None,
+                    })
+                    .await
+                    .unwrap();
+                assert!(matches!(
+                    channels.commands.recv().await.unwrap(),
+                    RuntimeCommand::NewSession { .. }
+                ));
+                started.send(()).unwrap();
+                std::future::pending::<Result<(), String>>().await
+            })
+        });
+        let fixture = Fixture::open_with_runner(runner);
+        fixture.wait_for_session();
+        let (first, first_result) = crossbeam_channel::bounded(1);
+        fixture.command(HostCommand::NewSession {
+            cwd: PathBuf::from("/"),
+            reply: Some(first.into()),
+        });
+        received.recv_timeout(DEADLINE).unwrap();
+        let (second, second_result) = crossbeam_channel::bounded(1);
+        fixture.command(HostCommand::NewSession {
+            cwd: PathBuf::from("/"),
+            reply: Some(second.into()),
+        });
+        assert_eq!(
+            second_result.recv_timeout(DEADLINE).unwrap(),
+            Err("finish or cancel the current turn before changing sessions".to_owned())
+        );
+        assert_eq!(
+            first_result.try_recv(),
+            Err(crossbeam_channel::TryRecvError::Empty)
+        );
+        fixture.close();
+        assert!(first_result.recv_timeout(DEADLINE).unwrap().is_err());
+    }
+
+    #[test]
+    fn a_session_change_cannot_cross_an_active_turn() {
+        let fixture = Fixture::open(Behavior::Hang, AgentAutoApprove::Off);
+        fixture.wait_for_session();
+        fixture.prompt("running");
+        fixture
+            .recorder
+            .wait("the turn", |payload| chunk_text(payload) == Some("turn 0"));
+        fixture.command(HostCommand::NewSession {
+            cwd: PathBuf::from("/other"),
+            reply: None,
+        });
+        fixture.command(HostCommand::SwitchSession {
+            session: AgentSessionSummary {
+                session_id: "other".to_owned(),
+                cwd: PathBuf::from("/other"),
+                additional_directories: Vec::new(),
+                title: None,
+                updated_at: None,
+            },
+        });
+        let deadline = Instant::now() + DEADLINE;
+        loop {
+            let payloads = fixture.recorder.payloads();
+            if payloads
+                .iter()
+                .filter(|payload| matches!(payload, AgentStreamPayload::SessionSwitchFailed { .. }))
+                .count()
+                == 2
+            {
+                assert!(!payloads.iter().any(|payload| {
+                    matches!(payload, AgentStreamPayload::SessionSwitched { .. })
+                }));
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "session commands were not rejected"
+            );
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert_eq!(fixture.state().phase, AgentConnectionPhase::Running);
+        fixture.close();
+    }
+
+    #[test]
+    fn close_preempts_a_runner_that_never_reads_shutdown() {
+        let recorder = Recorder::default();
+        let host = AgentHost::with_journal(AgentSpawnConfig::default(), recorder.sink(), None);
+        let pane = PaneId(30);
+        let runner: PaneRunner = Box::new(|_| Box::pin(std::future::pending()));
+        assert!(host.open_with(
+            pane,
+            1,
+            AgentPaneSpec {
+                model: None,
+                effort: None,
+                provider: AgentProvider::Codex,
+                cwd: PathBuf::from("/"),
+                resume_session: None,
+                auto_approve: None,
+                workspace: AgentWorkspaceEnvironment::default(),
+            },
+            runner,
+        ));
+        let thread = host.close(pane).expect("pane thread");
+        let (finished, wait) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = finished.send(thread.join().is_ok());
+        });
+        assert_eq!(wait.recv_timeout(Duration::from_secs(1)), Ok(true));
+    }
+
+    #[test]
+    fn close_reclaims_a_prompt_the_runtime_has_not_accepted() {
+        let runner: PaneRunner = Box::new(|channels| {
+            Box::pin(async move {
+                channels
+                    .events
+                    .send(AgentStreamPayload::Ready {
+                        agent_name: "fixture".to_owned(),
+                        agent_key: "fixture".to_owned(),
+                        auth_methods: Vec::new(),
+                        capabilities: AgentSessionCapabilities::default(),
+                    })
+                    .await
+                    .map_err(|error| error.to_string())?;
+                channels
+                    .events
+                    .send(AgentStreamPayload::SessionReady {
+                        session_id: "fixture-session".to_owned(),
+                        modes: None,
+                        config_options: None,
+                    })
+                    .await
+                    .map_err(|error| error.to_string())?;
+                std::future::pending::<Result<(), String>>().await
+            })
+        });
+        let fixture = Fixture::open_with_runner(runner);
+        fixture.wait_for_session();
+        fixture.prompt("keep me");
+        let deadline = Instant::now() + DEADLINE;
+        while fixture.state().phase != AgentConnectionPhase::Running && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(2));
+        }
+
+        let recorder = fixture.recorder.clone();
+        let thread = fixture.host.close(fixture.pane).expect("the pane thread");
+        thread.join().expect("the pane thread should settle");
+        assert_eq!(queued_prompt_texts(&recorder.payloads()), ["keep me"]);
+    }
+
+    #[test]
+    fn a_pane_rejects_commands_beyond_its_bounded_backlog() {
+        let recorder = Recorder::default();
+        let host = AgentHost::with_journal(AgentSpawnConfig::default(), recorder.sink(), None);
+        let pane = PaneId(31);
+        let (entered_tx, entered_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let runner: PaneRunner = Box::new(move |_| {
+            Box::pin(async move {
+                let _ = entered_tx.send(());
+                let _ = release_rx.recv();
+                std::future::pending().await
+            })
+        });
+        assert!(host.open_with(
+            pane,
+            1,
+            AgentPaneSpec {
+                model: None,
+                effort: None,
+                provider: AgentProvider::Codex,
+                cwd: PathBuf::from("/"),
+                resume_session: None,
+                auto_approve: None,
+                workspace: AgentWorkspaceEnvironment::default(),
+            },
+            runner,
+        ));
+        entered_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("runner entered");
+        for text in ["first", "second"] {
+            assert!(
+                host.command(
+                    pane,
+                    HostCommand::Prompt(
+                        AgentPrompt {
+                            owner: ClientInstanceId::default(),
+                            text: text.to_owned(),
+                            images: Vec::new(),
+                        }
+                        .into()
+                    )
+                )
+                .is_ok()
+            );
+        }
+        for request_id in 0..PANE_INBOX_CAPACITY {
+            assert!(
+                host.command(
+                    pane,
+                    HostCommand::SetMode {
+                        mode_id: request_id.to_string(),
+                    }
+                )
+                .is_ok()
+            );
+        }
+        assert!(
+            host.command(
+                pane,
+                HostCommand::SetMode {
+                    mode_id: PANE_INBOX_CAPACITY.to_string(),
+                }
+            )
+            .is_err()
+        );
+        assert!(host.command(pane, HostCommand::Cancel).is_ok());
+        assert!(
+            host.command(
+                pane,
+                HostCommand::RespondPermission {
+                    response: PermissionResponse::Exact {
+                        request_id: 9,
+                        option_id: None,
+                    }
+                },
+            )
+            .is_ok()
+        );
+
+        let thread = host.close(pane).expect("pane thread");
+        release_tx.send(()).expect("release runner");
+        let (finished, wait) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = finished.send(thread.join().is_ok());
+        });
+        assert_eq!(wait.recv_timeout(Duration::from_secs(1)), Ok(true));
+        assert_eq!(
+            queued_prompt_texts(&recorder.payloads()),
+            ["first", "second"]
+        );
+    }
+
+    #[test]
+    fn unqueueing_hands_the_queued_prompts_back_with_their_images() {
+        let fixture = Fixture::open(Behavior::Hang, AgentAutoApprove::Off);
+        fixture.wait_for_session();
+        fixture.prompt("running");
+        fixture.command(HostCommand::Prompt(
+            AgentPrompt {
+                owner: ClientInstanceId::default(),
+                text: "queued".to_owned(),
+                images: vec![AgentImage {
+                    format: "image/png".to_owned(),
+                    data: b"zz".to_vec(),
+                }],
+            }
+            .into(),
+        ));
+        let deadline = Instant::now() + DEADLINE;
+        while fixture.state().queued_prompts == 0 && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(2));
+        }
+
+        fixture.command(HostCommand::Unqueue);
+        let payloads = fixture.recorder.wait("the reclaimed prompts", |payload| {
+            matches!(payload, AgentStreamPayload::PromptsReclaimed { .. })
+        });
+        assert_eq!(queued_prompt_texts(&payloads), ["queued"]);
+        let AgentStreamPayload::PromptsReclaimed { prompts } = payloads
+            .iter()
+            .find(|payload| matches!(payload, AgentStreamPayload::PromptsReclaimed { .. }))
+            .expect("reclaimed prompts")
+            .clone()
+        else {
+            unreachable!()
+        };
+        assert_eq!(prompts[0].images[0].data, b"zz");
+        assert_eq!(fixture.state().queued_prompts, 0);
+        fixture.close();
+    }
+
+    #[test]
+    fn queued_prompts_stay_inside_one_reclaim_frame() {
+        let fixture = Fixture::open(Behavior::Hang, AgentAutoApprove::Off);
+        fixture.wait_for_session();
+        fixture.prompt("running");
+        fixture.command(HostCommand::Prompt(
+            AgentPrompt {
+                owner: ClientInstanceId::default(),
+                text: "queued".to_owned(),
+                images: vec![AgentImage {
+                    format: "image/png".to_owned(),
+                    data: vec![0; MAX_AGENT_PROMPT_BYTES - 1024],
+                }],
+            }
+            .into(),
+        ));
+        let deadline = Instant::now() + DEADLINE;
+        while fixture.state().queued_prompts == 0 && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(2));
+        }
+
+        fixture.command(HostCommand::Prompt(
+            AgentPrompt {
+                owner: ClientInstanceId::default(),
+                text: "returned".to_owned(),
+                images: vec![AgentImage {
+                    format: "image/png".to_owned(),
+                    data: vec![0; 2048],
+                }],
+            }
+            .into(),
+        ));
+        let payloads = fixture.recorder.wait("the overflow prompt", |payload| {
+            matches!(payload, AgentStreamPayload::PromptsReclaimed { .. })
+        });
+        assert_eq!(queued_prompt_texts(&payloads), ["returned"]);
+        assert_eq!(fixture.state().queued_prompts, 1);
+        fixture.command(HostCommand::Unqueue);
+        fixture.close();
+    }
+
+    #[test]
+    fn a_session_the_agent_cannot_load_is_replayed_out_of_the_journal() {
+        let directory = tempfile::tempdir().expect("journal directory");
+        let journal = Arc::new(AgentJournal::open(directory.path()).expect("open journal"));
+        for (index, text) in ["first restored", "second restored"]
+            .into_iter()
+            .enumerate()
+        {
+            let mut chunk = ContentChunk::new(ContentBlock::Text(TextContent::new(text)));
+            chunk.message_id = Some(MessageId::new(format!("restored-{index}")));
+            let update = serde_json::to_value(SessionUpdate::AgentMessageChunk(chunk))
+                .expect("encode update");
+            journal.append("stale-session", &update).expect("append");
+        }
+
+        let fixture = Fixture::build(
+            Behavior::Chunk,
+            AgentAutoApprove::Off,
+            false,
+            Some(&journal),
+            Some("stale-session".to_owned()),
+            None,
+        );
+        let payloads = fixture.recorder.wait("the restored session", |payload| {
+            matches!(payload, AgentStreamPayload::SessionReady { .. })
+        });
+
+        assert!(matches!(
+            payloads[1],
+            AgentStreamPayload::SessionReset { restoring: true }
+        ));
+        let AgentStreamPayload::SessionReady { session_id, .. } = payloads
+            .iter()
+            .find(|payload| matches!(payload, AgentStreamPayload::SessionReady { .. }))
+            .expect("restored session")
+            .clone()
+        else {
+            unreachable!()
+        };
+        assert_eq!(session_id, "fixture-session");
+        assert_eq!(
+            chunk_texts(&payloads),
+            ["first restored", "second restored"]
+        );
+        assert!(
+            journal.replay("stale-session").expect("replay").is_empty(),
+            "the superseded journal is not left behind to be restored twice"
+        );
+        assert_eq!(fixture.state().phase, AgentConnectionPhase::Ready);
+        fixture.close();
+    }
+
+    #[test]
+    fn adapter_user_history_survives_loading_after_a_locally_submitted_prompt() {
+        let fixture = Fixture::build(
+            Behavior::Echo,
+            AgentAutoApprove::Off,
+            true,
+            None,
+            Some("prior-session".to_owned()),
+            None,
+        );
+        fixture.wait_for_session();
+        assert_eq!(
+            chunk_texts(&fixture.recorder.payloads()),
+            ["loaded user history"]
+        );
+        fixture.prompt("new user message");
+        fixture.recorder.wait("the completed prompt", |payload| {
+            matches!(payload, AgentStreamPayload::PromptFinished { .. })
+        });
+        assert_eq!(
+            chunk_texts(&fixture.recorder.payloads()),
+            ["loaded user history", "new user message", "turn 0"],
+        );
+        fixture.command(HostCommand::SwitchSession {
+            session: AgentSessionSummary {
+                session_id: "other-session".to_owned(),
+                cwd: PathBuf::from("/"),
+                additional_directories: Vec::new(),
+                title: None,
+                updated_at: None,
+            },
+        });
+        let switched = fixture.recorder.wait("loaded session history", |payload| {
+            matches!(payload, AgentStreamPayload::SessionSwitched { session_id, .. } if session_id == "other-session")
+        });
+        assert_eq!(
+            chunk_texts(&switched),
+            [
+                "loaded user history",
+                "new user message",
+                "turn 0",
+                "loaded user history"
+            ]
+        );
+        fixture.close();
+    }
+
+    #[test]
+    fn pane_outside_git_has_no_summary_on_session_ready() {
+        let scratch = tempfile::tempdir().expect("temporary directory");
+        let fixture = Fixture::build(
+            Behavior::Chunk,
+            AgentAutoApprove::Off,
+            true,
+            None,
+            None,
+            Some(scratch.path().to_path_buf()),
+        );
+        fixture.wait_for_session();
+
+        assert_eq!(fixture.state().git, None);
+        fixture.close();
+    }
+
+    #[test]
+    fn git_summary_refreshes_on_session_ready_and_prompt_finished() {
+        let Some((_scratch, root)) = seeded_git_repo() else {
+            return;
+        };
+        let fixture = Fixture::build(
+            Behavior::AskPermission,
+            AgentAutoApprove::Off,
+            true,
+            None,
+            None,
+            Some(root.clone()),
+        );
+        fixture.wait_for_session();
+        let deadline = Instant::now() + DEADLINE;
+        while fixture.state().git.is_none() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert_eq!(
+            fixture.state().git,
+            Some(AgentGitSummary {
+                branch: Some("main".to_owned()),
+                changed_files: 0,
+                additions: 0,
+                deletions: 0,
+            })
+        );
+        let states = fixture.recorder.states.lock();
+        let ready = states
+            .iter()
+            .position(|(state, has_item)| {
+                *has_item && state.phase == AgentConnectionPhase::Ready && state.git.is_none()
+            })
+            .expect("session readiness was published before Git capture");
+        let summarized = states
+            .iter()
+            .position(|(state, has_item)| {
+                !*has_item
+                    && state
+                        .git
+                        .as_ref()
+                        .is_some_and(|git| git.branch.as_deref() == Some("main"))
+            })
+            .expect("Git summary was published as a state-only update");
+        assert!(ready < summarized);
+        drop(states);
+
+        fs::write(root.join("tracked.txt"), "one\nchanged\n").expect("tracked edit");
+        fs::write(root.join("fresh.txt"), "new\nfile\n").expect("untracked file");
+        let state_marker = fixture.recorder.states.lock().len();
+        fixture.prompt("inspect the changes");
+        let payloads = fixture.recorder.wait("the permission request", |payload| {
+            matches!(payload, AgentStreamPayload::PermissionRequested { .. })
+        });
+        let request_id = payloads
+            .iter()
+            .find_map(|payload| match payload {
+                AgentStreamPayload::PermissionRequested { request_id, .. } => Some(*request_id),
+                _ => None,
+            })
+            .expect("permission request");
+        fixture.command(HostCommand::RespondPermission {
+            response: PermissionResponse::Exact {
+                request_id,
+                option_id: Some("allow".to_owned()),
+            },
+        });
+        fixture.recorder.wait("the turn to finish", |payload| {
+            matches!(payload, AgentStreamPayload::PromptFinished { .. })
+        });
+        let deadline = Instant::now() + DEADLINE;
+        while fixture
+            .state()
+            .git
+            .as_ref()
+            .is_none_or(|git| git.changed_files != 2)
+            && Instant::now() < deadline
+        {
+            std::thread::sleep(Duration::from_millis(2));
+        }
+
+        assert_eq!(
+            fixture.state().git,
+            Some(AgentGitSummary {
+                branch: Some("main".to_owned()),
+                changed_files: 2,
+                additions: 3,
+                deletions: 1,
+            })
+        );
+        let states = fixture.recorder.states.lock();
+        let settled = states[state_marker..]
+            .iter()
+            .position(|(state, has_item)| {
+                *has_item
+                    && state.phase == AgentConnectionPhase::Ready
+                    && state.git.as_ref().is_some_and(|git| git.changed_files == 0)
+            })
+            .expect("turn settlement was published with the previous summary");
+        let refreshed = states[state_marker..]
+            .iter()
+            .position(|(state, has_item)| {
+                !*has_item && state.git.as_ref().is_some_and(|git| git.changed_files == 2)
+            })
+            .expect("Git refresh was published as a state-only update");
+        assert!(settled < refreshed);
+        drop(states);
+        fixture.close();
+    }
+
+    #[test]
+    fn git_refresh_command_follows_a_branch_switched_outside_the_agent() {
+        let Some((_scratch, root)) = seeded_git_repo() else {
+            return;
+        };
+        let fixture = Fixture::build(
+            Behavior::AskPermission,
+            AgentAutoApprove::Off,
+            true,
+            None,
+            None,
+            Some(root.clone()),
+        );
+        fixture.wait_for_session();
+        let branch = || fixture.state().git.and_then(|git| git.branch);
+        let wait_for = |expected: &str| {
+            let deadline = Instant::now() + DEADLINE;
+            while branch().as_deref() != Some(expected) && Instant::now() < deadline {
+                std::thread::sleep(Duration::from_millis(2));
+            }
+        };
+        wait_for("main");
+        assert_eq!(branch().as_deref(), Some("main"));
+
+        git(&root, &["switch", "--quiet", "-c", "feature"]);
+        fixture.command(HostCommand::RefreshGit);
+        wait_for("feature");
+
+        assert_eq!(branch().as_deref(), Some("feature"));
+        fixture.close();
+    }
+
+    #[test]
+    fn stale_git_summary_results_are_dropped_by_generation_token_and_cwd() {
+        let Some((_scratch, root)) = seeded_git_repo() else {
+            return;
+        };
+        let fixture = Fixture::build(
+            Behavior::Hang,
+            AgentAutoApprove::Off,
+            true,
+            None,
+            None,
+            Some(root.clone()),
+        );
+        fixture.wait_for_session();
+        let deadline = Instant::now() + DEADLINE;
+        while fixture.state().git.is_none() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        let marker = fixture.recorder.states.lock().len();
+        let inbox = fixture
+            .host
+            .registry
+            .panes
+            .lock()
+            .get(&fixture.pane)
+            .expect("pane")
+            .inbox
+            .clone();
+        for (generation, refresh, cwd, branch) in [
+            (0, 2, root.clone(), "wrong-generation"),
+            (1, 1, root.clone(), "wrong-token"),
+            (1, 2, root.join("elsewhere"), "wrong-cwd"),
+            (1, 2, root.clone(), "accepted"),
+        ] {
+            inbox
+                .send_blocking(PaneInput::GitSummary {
+                    generation,
+                    refresh,
+                    cwd,
+                    summary: Some(AgentGitSummary {
+                        branch: Some(branch.to_owned()),
+                        changed_files: 0,
+                        additions: 0,
+                        deletions: 0,
+                    }),
+                })
+                .expect("Git result reaches pane");
+        }
+        let deadline = Instant::now() + DEADLINE;
+        while fixture
+            .state()
+            .git
+            .as_ref()
+            .and_then(|git| git.branch.as_deref())
+            != Some("accepted")
+            && Instant::now() < deadline
+        {
+            std::thread::sleep(Duration::from_millis(2));
+        }
+
+        let states = fixture.recorder.states.lock();
+        let branches = states[marker..]
+            .iter()
+            .filter_map(|(state, _)| state.git.as_ref()?.branch.as_deref())
+            .collect::<Vec<_>>();
+        assert_eq!(branches, ["accepted"]);
+        drop(states);
+        fixture.close();
+    }
+
+    #[test]
+    fn closing_a_pane_cancels_what_it_still_owed() {
+        let fixture = Fixture::open(Behavior::AskPermission, AgentAutoApprove::Off);
+        fixture.wait_for_session();
+        fixture.prompt("go");
+        fixture.recorder.wait("the permission request", |payload| {
+            matches!(payload, AgentStreamPayload::PermissionRequested { .. })
+        });
+        fixture.command(HostCommand::Prompt(
+            AgentPrompt {
+                owner: ClientInstanceId::default(),
+                text: "queued".to_owned(),
+                images: Vec::new(),
+            }
+            .into(),
+        ));
+        let deadline = Instant::now() + DEADLINE;
+        while fixture.state().queued_prompts == 0 && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(2));
+        }
+
+        let recorder = fixture.recorder.clone();
+        let pane = fixture.pane;
+        let thread = fixture.host.close(pane).expect("the pane thread");
+        thread.join().expect("the pane thread should settle");
+
+        let payloads = recorder.payloads();
+        assert_eq!(queued_prompt_texts(&payloads), ["go", "queued"]);
+        assert!(
+            payloads.iter().any(|payload| matches!(
+                payload,
+                AgentStreamPayload::PermissionResolved { canceled: true, .. }
+            )),
+            "a closed pane owes no permission answer: {payloads:?}"
+        );
+        assert!(
+            !payloads
+                .iter()
+                .any(|payload| matches!(payload, AgentStreamPayload::PaneFailed { .. })),
+            "closing on purpose is not a failure: {payloads:?}"
+        );
+        assert!(fixture.host.snapshot_state(pane).is_none());
+    }
+}

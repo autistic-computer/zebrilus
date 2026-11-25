@@ -3,7 +3,7 @@ type: Design Plan
 title: Native agent drivers
 description: The daemon's native drivers speak each vendor's own protocol (they drove the Agent pane until it was removed on 2026-10-23). Claude Code runs over stream-json and its control protocol, Codex over a private `codex app-server` per pane, and ACP stays for the agents that speak it natively, all emitting the stream the shared reducer already renders.
 status: Live (2026-11-01, agent panes run the drivers again; Claude Code and Codex drivers landed 2026-10-07)
-resource: crates/zz-daemon/src/agent/claude/mod.rs
+resource: crates/zz-agent/src/claude/mod.rs
 tags:
 - agent
 - claude-code
@@ -41,7 +41,7 @@ work flattened. The native drivers speak each vendor's own protocol.
 
 # Shape
 
-The driver boundary is the existing `PaneRunner` in `crates/zz-daemon/src/agent/host.rs`. A runner
+The driver boundary is the existing `PaneRunner` in `crates/zz-agent/src/host.rs`. A runner
 takes `RuntimeCommand` and `RuntimeControl` and emits `AgentStreamPayload`. The Claude runner keeps
 the ACP runtime's contract, so the host queue, fanout, journal, text projection (deleted
 2026-10-23), hooks, and all four clients work unchanged.
@@ -55,7 +55,7 @@ churn about 12k lines of reducers and views with no visible change.
 
 # Claude Code driver
 
-`crates/zz-daemon/src/agent/claude/`: `mod.rs` is the process loop, `translate.rs` maps frames to
+`crates/zz-agent/src/claude/`: `mod.rs` is the process loop, `translate.rs` maps frames to
 updates, `sessions.rs` reads Claude's own session files.
 
 - **Launch.** The user's `claude`, found on the repaired login-shell PATH, with the flags
@@ -95,7 +95,7 @@ updates, `sessions.rs` reads Claude's own session files.
   subagent text stays out of the main thread.
 - **Peer bus.** The CLI registers its own session record, so the daemon no longer registers a
   `PeerInbox` for a native Claude pane.
-- **Tests.** The translator replays four scrubbed real recordings in `agent/claude/fixtures`
+- **Tests.** The translator replays four scrubbed real recordings in `crates/zz-agent/src/claude/fixtures`
   (CLI 2.1.292, 2026-10-07; `resume.ndjson` on 2.1.330, 2026-11-21). An end-to-end test runs the
   loop against a fake `claude` script.
 
@@ -156,7 +156,7 @@ the daemon echoes the command itself and never queues it.
 
 # Tool rows
 
-The drivers emit ACP tool updates and the chat bridge (`agent/chat_bridge.rs`) turns each into a
+The drivers emit ACP tool updates and the chat bridge (`crates/zz-agent/src/chat_bridge.rs`) turns each into a
 chat item: `ItemKind` from `tool_kind`, `body.title`, `body.target` (the row's label and the object
 of the live line's verb), `body.activity` (`_meta.zz.activity`), `body.exit_code`
 (`_meta.zz.exitCode`) and the end status.
@@ -283,7 +283,7 @@ drivers turn into an interrupt.
 
 # Codex driver
 
-`crates/zz-daemon/src/agent/codex/`, sharing the process plumbing in `agent/child.rs` with the
+`crates/zz-agent/src/codex/`, sharing the process plumbing in `crates/zz-agent/src/child.rs` with the
 Claude driver. One `codex app-server` child per pane over stdio, with
 `experimentalApi: true`. `agent-command` defaults to `codex`; extra arguments go after
 `app-server`.
