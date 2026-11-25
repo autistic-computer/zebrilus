@@ -190,7 +190,7 @@ impl PanePicker {
             ChatAgentStatus::Ready => {}
             ChatAgentStatus::Installable | ChatAgentStatus::Failed { .. } => {
                 self.connection.update(cx, |connection, cx| {
-                    connection.update_provider(agent.provider(), cx)
+                    connection.update_provider(agent.provider(), cx);
                 });
                 return;
             }
