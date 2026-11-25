@@ -186,6 +186,7 @@ ala-macros = { path = "libs/ala/crates/ala-macros" }
 ala-platform = { path = "libs/ala/crates/ala-platform", default-features = false }
 
 zz = { path = "crates/zz" }
+zz-agent = { path = "crates/zz-agent" }
 zz-app = { path = "clients/app" }
 zz-cli = { path = "crates/zz-cli" }
 zz-client = { path = "crates/zz-client" }

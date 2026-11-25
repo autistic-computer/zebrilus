@@ -1,0 +1,2030 @@
+use std::{
+    collections::{HashMap, HashSet},
+    path::{Path, PathBuf},
+};
+
+use std::fmt::Write as _;
+
+use serde_json::{Value, json};
+
+use crate::chat_bridge::attach_images;
+
+const MAX_TITLE_CHARS: usize = 500;
+pub const INTERRUPTED: &str = "[Request interrupted";
+
+#[derive(Clone, Debug, Default, PartialEq)]
+struct PlanItem {
+    content: String,
+    active_form: Option<String>,
+    status: String,
+}
+
+impl PlanItem {
+    fn entry(&self) -> Value {
+        let content = match (&self.active_form, self.status.as_str()) {
+            (Some(active), "in_progress") if !active.is_empty() => active,
+            _ => &self.content,
+        };
+        json!({ "content": content, "priority": "medium", "status": self.status })
+    }
+}
+
+struct Ended {
+    failed: bool,
+    output: Option<String>,
+    code: Option<i64>,
+}
+
+#[derive(Default)]
+pub struct Translator {
+    cwd: PathBuf,
+    current_message: HashMap<String, String>,
+    open_blocks: HashMap<String, u64>,
+    whole_blocks: HashMap<String, u64>,
+    streamed: HashSet<String>,
+    tools: HashMap<String, String>,
+    labels: HashMap<String, String>,
+    hidden_tools: HashSet<String>,
+    summaries: HashMap<String, String>,
+    task_tools: HashMap<String, String>,
+    background: HashSet<String>,
+    settled: HashSet<String>,
+    ended_early: HashMap<String, Ended>,
+    asked: HashMap<String, Value>,
+    todos: Vec<PlanItem>,
+    tasks: Vec<(String, PlanItem)>,
+    pending_tasks: HashMap<String, PlanItem>,
+}
+
+impl Translator {
+    pub fn new(cwd: PathBuf) -> Self {
+        Self {
+            cwd,
+            ..Self::default()
+        }
+    }
+
+    pub fn frame(&mut self, frame: &Value) -> Vec<Value> {
+        match frame["type"].as_str() {
+            Some("stream_event") => self.stream_event(frame),
+            Some("assistant") => self.assistant(frame),
+            Some("user") => self.user(frame),
+            Some("system") => self.system(frame),
+            Some("result") => self.result(frame),
+            Some("tool_use_summary") => self.tool_summary(frame),
+            _ => Vec::new(),
+        }
+    }
+
+    fn tool_summary(&self, frame: &Value) -> Vec<Value> {
+        let Some(summary) = frame["summary"]
+            .as_str()
+            .map(str::trim)
+            .filter(|summary| !summary.is_empty())
+        else {
+            return Vec::new();
+        };
+        let ids = frame["preceding_tool_use_ids"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .filter(|id| self.tools.contains_key(*id) && !self.hidden_tools.contains(*id))
+            .collect::<Vec<_>>();
+        if ids.is_empty() {
+            return Vec::new();
+        }
+        vec![json!({
+            "sessionUpdate": "session_info_update",
+            "_meta": { "zz": { "summary": summary, "toolCallIds": ids } },
+        })]
+    }
+
+    pub fn history_entry(&mut self, entry: &Value) -> Vec<Value> {
+        if entry["isSidechain"] == true || entry["isMeta"] == true {
+            return Vec::new();
+        }
+        match entry["type"].as_str() {
+            Some("assistant") => self.assistant(entry),
+            Some("user") => {
+                if let Some(frame) = task_notification(&message_text(entry)) {
+                    return self.system(&frame);
+                }
+                let mut updates = self.user_text(entry);
+                updates.extend(self.tool_results(entry));
+                updates
+            }
+            Some("attachment") => self.queued(entry),
+            _ => Vec::new(),
+        }
+    }
+
+    pub fn sidechain_entry(&mut self, entry: &Value, parent: &str) -> Vec<Value> {
+        if entry["isMeta"] == true {
+            return Vec::new();
+        }
+        match entry["type"].as_str() {
+            Some("assistant") => self.blocks(entry, Some(parent)),
+            Some("user") => self.tool_results(entry),
+            _ => Vec::new(),
+        }
+    }
+
+    fn queued(&mut self, entry: &Value) -> Vec<Value> {
+        let attachment = &entry["attachment"];
+        if attachment["type"] != "queued_command" {
+            return Vec::new();
+        }
+        match attachment["commandMode"].as_str() {
+            Some("task-notification") => attachment["prompt"]
+                .as_str()
+                .and_then(task_notification)
+                .map(|frame| self.system(&frame))
+                .unwrap_or_default(),
+            Some("prompt") if attachment["origin"]["kind"] == "human" => self.user_text(&json!({
+                "uuid": entry["uuid"],
+                "message": { "content": attachment["prompt"] },
+            })),
+            _ => Vec::new(),
+        }
+    }
+
+    pub fn task_tool_call(&self, task_id: &str) -> Option<String> {
+        self.task_tools.get(task_id).cloned()
+    }
+
+    fn task_tool(&self, frame: &Value) -> Option<String> {
+        frame["tool_use_id"]
+            .as_str()
+            .map(str::to_owned)
+            .or_else(|| {
+                frame["task_id"]
+                    .as_str()
+                    .and_then(|task| self.task_tools.get(task).cloned())
+            })
+    }
+
+    fn system(&mut self, frame: &Value) -> Vec<Value> {
+        match frame["subtype"].as_str() {
+            Some("task_started") => {
+                if let (Some(task), Some(tool)) =
+                    (frame["task_id"].as_str(), frame["tool_use_id"].as_str())
+                {
+                    self.task_tools.insert(task.to_owned(), tool.to_owned());
+                    if frame["is_backgrounded"] == true {
+                        let update = self.backgrounded(tool);
+                        self.background.insert(tool.to_owned());
+                        return update;
+                    }
+                }
+                Vec::new()
+            }
+            Some("task_updated") => {
+                if frame["patch"]["is_backgrounded"] == true
+                    && let Some(tool) = self.task_tool(frame)
+                {
+                    let update = self.backgrounded(&tool);
+                    self.background.insert(tool);
+                    return update;
+                }
+                Vec::new()
+            }
+            Some("task_progress") => {
+                let summary = frame["summary"]
+                    .as_str()
+                    .filter(|text| !text.trim().is_empty());
+                match (self.task_tool(frame), summary) {
+                    (Some(tool), Some(summary)) if self.tools.contains_key(&tool) => {
+                        vec![json!({
+                            "sessionUpdate": "tool_call_update",
+                            "toolCallId": tool,
+                            "status": "in_progress",
+                            "content": [text_content(summary)],
+                        })]
+                    }
+                    _ => Vec::new(),
+                }
+            }
+            Some("task_notification") => {
+                let Some(tool) = self.task_tool(frame) else {
+                    return Vec::new();
+                };
+                let summary = frame["handback_report"]["text"]
+                    .as_str()
+                    .filter(|report| !report.trim().is_empty())
+                    .or_else(|| frame["summary"].as_str())
+                    .filter(|summary| !summary.is_empty())
+                    .map(str::to_owned);
+                let failed = matches!(
+                    frame["status"].as_str(),
+                    Some("failed" | "stopped" | "killed")
+                );
+                let code = summary.as_deref().and_then(summary_exit_code);
+                if !self.settled.contains(&tool) {
+                    if self.background.contains(&tool) {
+                        let output = self.task_output(&tool, frame, summary.clone());
+                        self.ended_early.insert(
+                            tool.clone(),
+                            Ended {
+                                failed,
+                                output,
+                                code,
+                            },
+                        );
+                    }
+                    if let Some(summary) = summary {
+                        self.summaries.insert(tool, summary);
+                    }
+                    return Vec::new();
+                }
+                self.background.remove(&tool);
+                let output = self.task_output(&tool, frame, summary);
+                let mut update = json!({
+                    "sessionUpdate": "tool_call_update",
+                    "toolCallId": tool,
+                    "status": if failed { "failed" } else { "completed" },
+                });
+                if let Some(code) = code {
+                    update["_meta"]["zz"]["exitCode"] = Value::from(code);
+                }
+                if let Some(output) = output.filter(|output| !output.trim().is_empty()) {
+                    update["content"] = json!([text_content(&output)]);
+                }
+                vec![update]
+            }
+            Some("task_summary") => vec![json!({
+                "sessionUpdate": "session_info_update",
+                "_meta": { "zz": { "activity": frame["detail"]
+                    .as_str()
+                    .map(str::trim)
+                    .filter(|detail| !detail.is_empty()) } },
+            })],
+            Some("local_command_output") => frame["content"]
+                .as_str()
+                .filter(|text| !text.trim().is_empty())
+                .map(|text| {
+                    let id = frame["uuid"].as_str().unwrap_or("local-command");
+                    vec![chunk("agent_message_chunk", id, text)]
+                })
+                .unwrap_or_default(),
+            _ => Vec::new(),
+        }
+    }
+
+    fn stream_event(&mut self, frame: &Value) -> Vec<Value> {
+        let parent = parent_key(frame);
+        let event = &frame["event"];
+        match event["type"].as_str() {
+            Some("message_start") => {
+                if let Some(id) = event["message"]["id"].as_str() {
+                    self.current_message.insert(parent, id.to_owned());
+                }
+                Vec::new()
+            }
+            Some("content_block_start") => {
+                if let (Some(message), Some(index)) =
+                    (self.current_message.get(&parent), event["index"].as_u64())
+                {
+                    self.open_blocks.insert(message.clone(), index);
+                }
+                Vec::new()
+            }
+            Some("content_block_delta") if parent.is_empty() => {
+                let (Some(message), Some(index)) =
+                    (self.current_message.get(&parent), event["index"].as_u64())
+                else {
+                    return Vec::new();
+                };
+                let delta = &event["delta"];
+                let (kind, text) = match delta["type"].as_str() {
+                    Some("text_delta") => ("agent_message_chunk", delta["text"].as_str()),
+                    Some("thinking_delta") => ("agent_thought_chunk", delta["thinking"].as_str()),
+                    _ => return Vec::new(),
+                };
+                let Some(text) = text.filter(|text| !text.is_empty()) else {
+                    return Vec::new();
+                };
+                let key = format!("{message}:{index}");
+                let update = chunk(kind, &key, text);
+                self.streamed.insert(key);
+                vec![update]
+            }
+            _ => Vec::new(),
+        }
+    }
+
+    fn backgrounded(&self, tool: &str) -> Vec<Value> {
+        if self.settled.contains(tool)
+            || self.background.contains(tool)
+            || !self.tools.contains_key(tool)
+        {
+            return Vec::new();
+        }
+        vec![json!({
+            "sessionUpdate": "tool_call_update",
+            "toolCallId": tool,
+            "_meta": { "zz": { "background": true } },
+        })]
+    }
+
+    fn block_key(&mut self, message_id: &str) -> String {
+        if let Some(index) = self.open_blocks.remove(message_id) {
+            return format!("{message_id}:{index}");
+        }
+        let next = self.whole_blocks.entry(message_id.to_owned()).or_default();
+        *next += 1;
+        format!("{message_id}#{next}")
+    }
+
+    fn assistant(&mut self, frame: &Value) -> Vec<Value> {
+        let parent = frame["parent_tool_use_id"].as_str().map(|parent| {
+            frame["agent_id"]
+                .as_str()
+                .and_then(|agent| self.task_tools.get(agent))
+                .map_or(parent, String::as_str)
+                .to_owned()
+        });
+        self.blocks(frame, parent.as_deref())
+    }
+
+    fn blocks(&mut self, frame: &Value, parent: Option<&str>) -> Vec<Value> {
+        let message = &frame["message"];
+        let message_id = message["id"]
+            .as_str()
+            .or_else(|| frame["uuid"].as_str())
+            .unwrap_or("assistant")
+            .to_owned();
+        let mut updates = Vec::new();
+        for block in message["content"].as_array().into_iter().flatten() {
+            let key = self.block_key(&message_id);
+            match block["type"].as_str() {
+                Some("text") if parent.is_none() => {
+                    if !self.streamed.remove(&key)
+                        && let Some(text) = block["text"].as_str().filter(|text| !text.is_empty())
+                    {
+                        updates.push(chunk("agent_message_chunk", &key, text));
+                    }
+                }
+                Some("thinking") if parent.is_none() => {
+                    if !self.streamed.remove(&key)
+                        && let Some(text) =
+                            block["thinking"].as_str().filter(|text| !text.is_empty())
+                    {
+                        updates.push(chunk("agent_thought_chunk", &key, text));
+                    }
+                }
+                Some("tool_use" | "server_tool_use" | "mcp_tool_use") => {
+                    updates.extend(self.tool_use(block, parent));
+                }
+                Some(kind @ ("text" | "thinking")) => {
+                    let (session_update, field) = if kind == "text" {
+                        ("agent_message_chunk", "text")
+                    } else {
+                        ("agent_thought_chunk", "thinking")
+                    };
+                    if let (Some(parent), Some(text)) = (
+                        parent,
+                        block[field].as_str().filter(|text| !text.is_empty()),
+                    ) {
+                        let mut update = chunk(session_update, &key, text);
+                        update["_meta"] = json!({ "zz": { "parent": parent } });
+                        updates.push(update);
+                    }
+                }
+                _ => {}
+            }
+        }
+        updates
+    }
+
+    fn tool_use(&mut self, block: &Value, parent: Option<&str>) -> Vec<Value> {
+        let Some(id) = block["id"].as_str() else {
+            return Vec::new();
+        };
+        let name = block["name"].as_str().unwrap_or("Tool").to_owned();
+        let input = block["input"].clone();
+        let resumed = input["to"]
+            .as_str()
+            .filter(|_| name == "SendMessage")
+            .and_then(|agent| self.task_tools.get(agent))
+            .filter(|tool| {
+                matches!(
+                    self.tools.get(*tool).map(String::as_str),
+                    Some("Agent" | "Task")
+                ) && self.settled.contains(*tool)
+                    && !self.background.contains(*tool)
+            })
+            .and_then(|tool| self.labels.get(tool))
+            .cloned();
+        let name = if resumed.is_some() {
+            "Agent".to_owned()
+        } else {
+            name
+        };
+        self.tools.insert(id.to_owned(), name.clone());
+        match name.as_str() {
+            "TodoWrite" => {
+                self.hidden_tools.insert(id.to_owned());
+                self.todos = input["todos"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .map(|todo| PlanItem {
+                        content: todo["content"].as_str().unwrap_or_default().to_owned(),
+                        active_form: todo["activeForm"].as_str().map(str::to_owned),
+                        status: plan_status(todo["status"].as_str()),
+                    })
+                    .collect();
+                return vec![plan(self.todos.iter())];
+            }
+            "TaskCreate" => {
+                self.hidden_tools.insert(id.to_owned());
+                self.pending_tasks.insert(
+                    id.to_owned(),
+                    PlanItem {
+                        content: input["subject"].as_str().unwrap_or_default().to_owned(),
+                        active_form: input["activeForm"].as_str().map(str::to_owned),
+                        status: "pending".to_owned(),
+                    },
+                );
+                return Vec::new();
+            }
+            "TaskUpdate" => {
+                self.hidden_tools.insert(id.to_owned());
+                let task_id = input["taskId"]
+                    .as_str()
+                    .map(str::to_owned)
+                    .or_else(|| input["taskId"].as_u64().map(|id| id.to_string()));
+                let Some(task_id) = task_id else {
+                    return Vec::new();
+                };
+                if input["status"].as_str() == Some("deleted") {
+                    self.tasks.retain(|(id, _)| *id != task_id);
+                } else if let Some((_, task)) = self.tasks.iter_mut().find(|(id, _)| *id == task_id)
+                {
+                    if let Some(status) = input["status"].as_str() {
+                        task.status = plan_status(Some(status));
+                    }
+                    if let Some(subject) = input["subject"].as_str() {
+                        subject.clone_into(&mut task.content);
+                    }
+                    if let Some(active) = input["activeForm"].as_str() {
+                        task.active_form = Some(active.to_owned());
+                    }
+                } else {
+                    return Vec::new();
+                }
+                return vec![plan(self.tasks.iter().map(|(_, task)| task))];
+            }
+            "TaskList" | "TaskGet" => {
+                self.hidden_tools.insert(id.to_owned());
+                return Vec::new();
+            }
+            _ => {}
+        }
+        if name == "AskUserQuestion" {
+            self.asked
+                .insert(id.to_owned(), json!(super::question_list(&input)));
+        }
+        let mut info = tool_info(&name, &input, &self.cwd);
+        if let Some(label) = &resumed {
+            info.title.clone_from(label);
+            info.target = input["message"].as_str().map(str::to_owned);
+        }
+        if matches!(name.as_str(), "TaskStop" | "KillShell" | "KillBash")
+            && let Some(label) = input["task_id"]
+                .as_str()
+                .or_else(|| input["shell_id"].as_str())
+                .and_then(|task| self.task_tools.get(task))
+                .and_then(|tool| self.labels.get(tool))
+        {
+            info.title = clip_title(&format!("Stop {label}"));
+        }
+        self.labels.insert(id.to_owned(), info.title.clone());
+        let mut call = json!({
+            "sessionUpdate": "tool_call",
+            "toolCallId": id,
+            "title": info.title,
+            "kind": info.kind,
+            "status": "in_progress",
+            "rawInput": input,
+            "_meta": {
+                "claudeCode": { "toolName": name },
+                "zz": { "target": info.target },
+            },
+        });
+        if !info.content.is_empty() {
+            call["content"] = Value::Array(info.content);
+        }
+        if !info.locations.is_empty() {
+            call["locations"] = Value::Array(info.locations);
+        }
+        if let Some(parent) = parent {
+            call["_meta"]["claudeCode"]["parentToolUseId"] = Value::from(parent);
+            call["_meta"]["zz"]["parent"] = Value::from(parent);
+        }
+        let activity = if resumed.is_some() {
+            &input["summary"]
+        } else {
+            &input["description"]
+        };
+        if let Some(activity) = activity
+            .as_str()
+            .map(str::trim)
+            .filter(|text| !text.is_empty())
+            .filter(|_| {
+                matches!(
+                    name.as_str(),
+                    "Bash" | "PowerShell" | "Monitor" | "Agent" | "Task"
+                )
+            })
+        {
+            call["_meta"]["zz"]["activity"] = Value::from(clip_title(activity));
+        }
+        vec![call]
+    }
+
+    fn user(&mut self, frame: &Value) -> Vec<Value> {
+        let mut updates = Vec::new();
+        if frame["isReplay"] != true
+            && frame["parent_tool_use_id"].is_null()
+            && frame["isSynthetic"] != true
+        {
+            updates.extend(self.user_text(frame));
+        }
+        updates.extend(self.tool_results(frame));
+        updates
+    }
+
+    fn user_text(&self, frame: &Value) -> Vec<Value> {
+        if !frame["parent_tool_use_id"].is_null() && frame["parent_tool_use_id"].is_string() {
+            return Vec::new();
+        }
+        let id = frame["uuid"].as_str().unwrap_or("user");
+        user_prompt(frame)
+            .map(|(text, images)| {
+                let mut update = chunk("user_message_chunk", id, &text);
+                attach_images(&mut update, images);
+                update
+            })
+            .into_iter()
+            .collect()
+    }
+
+    fn tool_results(&mut self, frame: &Value) -> Vec<Value> {
+        let structured = frame
+            .get("tool_use_result")
+            .or_else(|| frame.get("toolUseResult"));
+        let rejected = frame["toolDenialKind"] == "user-rejected";
+        frame["message"]["content"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|block| block["type"] == "tool_result")
+            .flat_map(|block| self.tool_result(block, structured, rejected))
+            .collect()
+    }
+
+    fn task_output(&self, tool: &str, frame: &Value, summary: Option<String>) -> Option<String> {
+        match self.tools.get(tool).map(String::as_str) {
+            Some("Bash" | "PowerShell") => frame["output_file"]
+                .as_str()
+                .and_then(|path| output_tail(Path::new(path)))
+                .or(summary),
+            _ => summary,
+        }
+    }
+
+    fn tool_result(
+        &mut self,
+        block: &Value,
+        structured: Option<&Value>,
+        rejected: bool,
+    ) -> Vec<Value> {
+        let Some(id) = block["tool_use_id"].as_str() else {
+            return Vec::new();
+        };
+        let is_error = block["is_error"] == true;
+        let text = result_text(&block["content"]);
+        if self.hidden_tools.contains(id) {
+            if let Some(mut task) = self.pending_tasks.remove(id).filter(|_| !is_error) {
+                let task_id = structured
+                    .and_then(|structured| structured["task"]["id"].as_str().map(str::to_owned))
+                    .or_else(|| created_task_id(&text));
+                if let Some(task_id) = task_id {
+                    if task.content.is_empty()
+                        && let Some(subject) =
+                            structured.and_then(|structured| structured["task"]["subject"].as_str())
+                    {
+                        subject.clone_into(&mut task.content);
+                    }
+                    self.tasks.push((task_id, task));
+                    return vec![plan(self.tasks.iter().map(|(_, task)| task))];
+                }
+            }
+            return Vec::new();
+        }
+        let name = self.tools.get(id).cloned().unwrap_or_default();
+        if !is_error
+            && let Some(launch) = structured.filter(|result| {
+                result["isAsync"] == true
+                    || result["status"] == "async_launched"
+                    || result["resumedAgentId"].is_string()
+            })
+        {
+            self.background.insert(id.to_owned());
+            if let Some(agent) = launch["agentId"]
+                .as_str()
+                .or_else(|| launch["resumedAgentId"].as_str())
+            {
+                self.task_tools.insert(agent.to_owned(), id.to_owned());
+            }
+        }
+        if !is_error
+            && let Some(task) = structured.and_then(|result| result["backgroundTaskId"].as_str())
+        {
+            self.background.insert(id.to_owned());
+            self.task_tools.insert(task.to_owned(), id.to_owned());
+        }
+        let output = if is_error {
+            Some(error_text(&text))
+        } else {
+            match name.as_str() {
+                "Edit" | "Write" | "MultiEdit" | "NotebookEdit" => None,
+                "Agent" | "Task" => Some(
+                    self.summaries
+                        .remove(id)
+                        .or_else(|| structured.and_then(agent_report))
+                        .unwrap_or(text),
+                ),
+                "Bash" | "PowerShell" => Some(structured.and_then(command_output).unwrap_or(text)),
+                _ => Some(text),
+            }
+        };
+        self.settled.insert(id.to_owned());
+        let early = self.ended_early.remove(id);
+        if early.is_some() {
+            self.background.remove(id);
+        }
+        let running = !is_error && self.background.contains(id) && early.is_none();
+        let failed = is_error || early.as_ref().is_some_and(|ended| ended.failed);
+        let status = match (failed, running) {
+            (true, _) => "failed",
+            (false, true) => "in_progress",
+            (false, false) => "completed",
+        };
+        let command = matches!(name.as_str(), "Bash" | "PowerShell");
+        let code = early.as_ref().and_then(|ended| ended.code).or_else(|| {
+            (is_error && command)
+                .then(|| exit_code(output.as_deref().unwrap_or_default()))
+                .flatten()
+        });
+        let output = early
+            .and_then(|ended| ended.output)
+            .or(output)
+            .filter(|_| !(running && matches!(name.as_str(), "Agent" | "Task")));
+        let mut update = json!({
+            "sessionUpdate": "tool_call_update",
+            "toolCallId": id,
+            "status": status,
+        });
+        if let Some(code) = code {
+            update["_meta"]["zz"]["exitCode"] = Value::from(code);
+        }
+        if running {
+            update["_meta"]["zz"]["background"] = Value::from(true);
+        }
+        let asked = self.asked.remove(id);
+        if rejected && is_error {
+            update["_meta"]["zz"]["declined"] = Value::from(true);
+            if let Some(questions) = asked {
+                update["_meta"]["zz"]["questions"] = questions;
+            }
+        }
+        if name == "AskUserQuestion"
+            && !is_error
+            && let Some(answered) = structured.and_then(answered_questions)
+        {
+            update["_meta"]["zz"]["answered"] = answered;
+        }
+        if let Some(output) = output.filter(|output| !output.trim().is_empty()) {
+            update["content"] = json!([text_content(&output)]);
+        }
+        vec![update]
+    }
+
+    fn result(&mut self, frame: &Value) -> Vec<Value> {
+        if frame["num_turns"] == 0 {
+            return Vec::new();
+        }
+        let size = frame["modelUsage"].as_object().and_then(|models| {
+            models
+                .values()
+                .filter_map(|model| model["contextWindow"].as_u64())
+                .max()
+        });
+        let Some(size) = size else {
+            return Vec::new();
+        };
+        let usage = &frame["usage"];
+        let last = usage["iterations"]
+            .as_array()
+            .and_then(|iterations| iterations.last())
+            .unwrap_or(usage);
+        let used = [
+            "input_tokens",
+            "cache_read_input_tokens",
+            "cache_creation_input_tokens",
+            "output_tokens",
+        ]
+        .iter()
+        .filter_map(|key| last[*key].as_u64())
+        .sum::<u64>();
+        let mut update = json!({ "sessionUpdate": "usage_update", "used": used, "size": size });
+        if let Some(cost) = frame["total_cost_usd"].as_f64() {
+            update["cost"] = json!({ "amount": cost, "currency": "USD" });
+        }
+        vec![update]
+    }
+}
+
+fn parent_key(frame: &Value) -> String {
+    frame["parent_tool_use_id"]
+        .as_str()
+        .unwrap_or_default()
+        .to_owned()
+}
+
+pub fn chunk(kind: &str, message_id: &str, text: &str) -> Value {
+    json!({
+        "sessionUpdate": kind,
+        "messageId": message_id,
+        "content": { "type": "text", "text": text },
+    })
+}
+
+fn exit_code(output: &str) -> Option<i64> {
+    output
+        .lines()
+        .next()?
+        .trim()
+        .strip_prefix("Exit code ")?
+        .parse()
+        .ok()
+}
+
+fn summary_exit_code(summary: &str) -> Option<i64> {
+    let (_, rest) = summary.rsplit_once("exit code ")?;
+    let end = rest
+        .char_indices()
+        .find(|(at, ch)| !(ch.is_ascii_digit() || (*at == 0 && *ch == '-')))
+        .map_or(rest.len(), |(at, _)| at);
+    rest[..end].parse().ok()
+}
+
+fn error_text(text: &str) -> String {
+    let text = text.trim();
+    text.strip_prefix("<tool_use_error>")
+        .and_then(|inner| inner.strip_suffix("</tool_use_error>"))
+        .unwrap_or(text)
+        .trim()
+        .to_owned()
+}
+
+fn text_content(text: &str) -> Value {
+    json!({ "type": "content", "content": { "type": "text", "text": text } })
+}
+
+fn plan<'a>(items: impl Iterator<Item = &'a PlanItem>) -> Value {
+    json!({
+        "sessionUpdate": "plan",
+        "entries": items.map(PlanItem::entry).collect::<Vec<_>>(),
+    })
+}
+
+fn plan_status(status: Option<&str>) -> String {
+    match status {
+        Some("in_progress") => "in_progress",
+        Some("completed") => "completed",
+        _ => "pending",
+    }
+    .to_owned()
+}
+
+fn created_task_id(text: &str) -> Option<String> {
+    let rest = text.trim().strip_prefix("Task #")?;
+    let (id, tail) = rest.split_once(' ')?;
+    tail.starts_with("created").then(|| id.to_owned())
+}
+
+pub fn prompt_text(frame: &Value) -> Option<String> {
+    let text = message_text(frame);
+    (!text.trim().is_empty() && !is_internal_user_text(&text)).then(|| without_paste_tags(&text))
+}
+
+pub fn user_prompt(frame: &Value) -> Option<(String, Vec<(String, String)>)> {
+    let images = message_images(frame);
+    if images.is_empty() {
+        return prompt_text(frame).map(|text| (text, images));
+    }
+    let text = message_text(frame);
+    (!is_internal_user_text(&text))
+        .then(|| (without_image_tags(&without_paste_tags(&text)), images))
+}
+
+pub fn interrupted(frame: &Value) -> bool {
+    message_text(frame).trim_start().starts_with(INTERRUPTED)
+}
+
+fn message_images(frame: &Value) -> Vec<(String, String)> {
+    frame["message"]["content"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|block| block["type"] == "image" && block["source"]["type"] == "base64")
+        .filter_map(|block| {
+            let source = &block["source"];
+            Some((
+                source["media_type"].as_str()?.to_owned(),
+                source["data"].as_str()?.to_owned(),
+            ))
+        })
+        .collect()
+}
+
+fn without_image_tags(text: &str) -> String {
+    const OPEN: &str = "[Image #";
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find(OPEN) {
+        let tail = &rest[at + OPEN.len()..];
+        let digits = tail.bytes().take_while(u8::is_ascii_digit).count();
+        if digits > 0 && tail[digits..].starts_with(']') {
+            out.push_str(&rest[..at]);
+            rest = &tail[digits + 1..];
+            if out.ends_with(' ') {
+                rest = rest.strip_prefix(' ').unwrap_or(rest);
+            }
+        } else {
+            out.push_str(&rest[..at + OPEN.len()]);
+            rest = tail;
+        }
+    }
+    out.push_str(rest);
+    out.trim().to_owned()
+}
+
+fn without_paste_tags(text: &str) -> String {
+    const OPEN: &str = "<pasted_content id=\"";
+    const CLOSE: &str = "</pasted_content id=\"";
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    loop {
+        let open = rest.find(OPEN);
+        let close = rest.find(CLOSE);
+        let (at, closing) = match (open, close) {
+            (Some(open), Some(close)) if close < open => (close, true),
+            (Some(open), _) => (open, false),
+            (None, Some(close)) => (close, true),
+            (None, None) => break,
+        };
+        let Some(end) = rest[at..].find("\">").map(|end| at + end + 2) else {
+            break;
+        };
+        let head = &rest[..at];
+        out.push_str(if closing {
+            head.strip_suffix('\n').unwrap_or(head)
+        } else {
+            head
+        });
+        rest = &rest[end..];
+        if !closing {
+            rest = rest.strip_prefix('\n').unwrap_or(rest);
+        }
+    }
+    out.push_str(rest);
+    out.trim().to_owned()
+}
+
+pub fn note_block(note: &str) -> String {
+    format!("<system-reminder>\n{note}\n</system-reminder>")
+}
+
+fn hidden_block(text: &str) -> bool {
+    text.strip_prefix("<system-reminder>\n")
+        .and_then(|text| text.strip_suffix("\n</system-reminder>"))
+        .is_some_and(zz_protocol::agent_mention::is_hidden_note)
+}
+
+fn message_text(frame: &Value) -> String {
+    match &frame["message"]["content"] {
+        Value::String(text) => text.clone(),
+        Value::Array(blocks) => blocks
+            .iter()
+            .filter(|block| block["type"] == "text")
+            .filter_map(|block| block["text"].as_str())
+            .filter(|text| !hidden_block(text))
+            .collect::<Vec<_>>()
+            .join("\n"),
+        _ => String::new(),
+    }
+}
+
+fn task_notification(text: &str) -> Option<Value> {
+    let body = text.trim_start().strip_prefix("<task-notification>")?;
+    let tag = |name: &str| {
+        let open = format!("<{name}>");
+        let start = body.find(&open)? + open.len();
+        let end = body[start..].rfind(&format!("</{name}>"))? + start;
+        Some(body[start..end].trim().to_owned()).filter(|value| !value.is_empty())
+    };
+    let tool = tag("tool-use-id");
+    let task = tag("task-id");
+    if tool.is_none() && task.is_none() {
+        return None;
+    }
+    Some(json!({
+        "type": "system",
+        "subtype": "task_notification",
+        "task_id": task,
+        "tool_use_id": tool,
+        "status": tag("status"),
+        "summary": tag("result").or_else(|| tag("summary")),
+        "output_file": tag("output-file"),
+    }))
+}
+
+fn answered_questions(result: &Value) -> Option<Value> {
+    let answers = result["answers"].as_object()?;
+    let asked = result["questions"].as_array().cloned().unwrap_or_default();
+    let mut answered = asked
+        .iter()
+        .filter_map(|question| {
+            let text = question["question"].as_str()?;
+            Some(json!({
+                "question": text,
+                "header": question["header"],
+                "answer": answers.get(text)?.as_str()?,
+            }))
+        })
+        .collect::<Vec<_>>();
+    if answered.is_empty() {
+        answered = answers
+            .iter()
+            .filter_map(|(question, answer)| {
+                Some(json!({ "question": question, "answer": answer.as_str()? }))
+            })
+            .collect();
+    }
+    (!answered.is_empty()).then_some(Value::Array(answered))
+}
+
+fn is_internal_user_text(text: &str) -> bool {
+    let trimmed = text.trim_start();
+    [
+        "<command-",
+        "<local-command-",
+        "<system-reminder>",
+        "<task-notification>",
+        INTERRUPTED,
+    ]
+    .iter()
+    .any(|prefix| trimmed.starts_with(prefix))
+}
+
+pub fn result_text(content: &Value) -> String {
+    match content {
+        Value::String(text) => text.clone(),
+        Value::Array(blocks) => blocks
+            .iter()
+            .filter_map(|block| match block["type"].as_str() {
+                Some("text") => block["text"].as_str().map(str::to_owned),
+                Some("image") => Some("[image]".to_owned()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
+        _ => String::new(),
+    }
+}
+
+const MAX_OUTPUT_TAIL_BYTES: u64 = 64 * 1024;
+
+fn output_tail(path: &Path) -> Option<String> {
+    use std::io::{Read as _, Seek as _, SeekFrom};
+
+    let mut file = std::fs::File::open(path).ok()?;
+    let size = file.metadata().ok()?.len();
+    let start = size.saturating_sub(MAX_OUTPUT_TAIL_BYTES);
+    file.seek(SeekFrom::Start(start)).ok()?;
+    let mut bytes = Vec::new();
+    file.take(MAX_OUTPUT_TAIL_BYTES)
+        .read_to_end(&mut bytes)
+        .ok()?;
+    let text = String::from_utf8_lossy(&bytes);
+    let text = if start > 0 {
+        text.split_once('\n').map_or(&*text, |(_, rest)| rest)
+    } else {
+        &text
+    };
+    Some(text.trim_end().to_owned())
+}
+
+fn agent_report(structured: &Value) -> Option<String> {
+    structured["handbackReport"]["text"]
+        .as_str()
+        .map(str::to_owned)
+        .or_else(|| {
+            structured["content"]
+                .is_array()
+                .then(|| result_text(&structured["content"]))
+        })
+        .filter(|report| !report.trim().is_empty())
+}
+
+fn command_output(structured: &Value) -> Option<String> {
+    let stdout = structured["stdout"].as_str()?;
+    let stderr = structured["stderr"].as_str().unwrap_or_default();
+    let mut output = stdout.trim_end().to_owned();
+    if !stderr.trim().is_empty() {
+        if !output.is_empty() {
+            output.push('\n');
+        }
+        output.push_str(stderr.trim_end());
+    }
+    if structured["interrupted"] == true {
+        output.push_str("\n[interrupted]");
+    }
+    Some(output)
+}
+
+pub struct ToolInfo {
+    pub title: String,
+    pub kind: &'static str,
+    pub content: Vec<Value>,
+    pub locations: Vec<Value>,
+    pub target: Option<String>,
+}
+
+pub fn tool_info(name: &str, input: &Value, cwd: &Path) -> ToolInfo {
+    let path = input["file_path"]
+        .as_str()
+        .or_else(|| input["notebook_path"].as_str())
+        .or_else(|| input["path"].as_str());
+    let shown = path.map(|path| display_path(path, cwd));
+    let location = |line: Option<u64>| {
+        path.map(|path| {
+            let mut location = json!({ "path": path });
+            if let Some(line) = line {
+                location["line"] = Value::from(line);
+            }
+            vec![location]
+        })
+        .unwrap_or_default()
+    };
+    let text = |key: &str| {
+        input[key]
+            .as_str()
+            .map(str::trim)
+            .filter(|text| !text.is_empty())
+    };
+    let target = match name {
+        "Bash" | "PowerShell" | "Monitor" => text("command").map(clip_title),
+        "Read" | "Write" | "Edit" | "MultiEdit" | "NotebookEdit" => shown.clone(),
+        "Glob" | "Grep" => text("pattern").map(clip_title),
+        "WebFetch" => text("url").map(clip_title),
+        "WebSearch" => text("query").map(clip_title),
+        "Agent" | "Task" => text("prompt").map(str::to_owned),
+        "ToolSearch" => text("query").map(|query| {
+            query.strip_prefix("select:").map_or_else(
+                || clip_title(query),
+                |names| {
+                    names
+                        .split(',')
+                        .map(str::trim)
+                        .filter(|name| !name.is_empty())
+                        .map(|name| mcp_name(name).unwrap_or_else(|| name.to_owned()))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                },
+            )
+        }),
+        _ => None,
+    };
+    let (title, kind, content, locations) = match name {
+        "Bash" | "PowerShell" => (
+            input["command"]
+                .as_str()
+                .map_or_else(|| "Terminal".to_owned(), str::to_owned),
+            "execute",
+            Vec::new(),
+            Vec::new(),
+        ),
+        "Monitor" => (
+            text("description").unwrap_or("Monitor").to_owned(),
+            "execute",
+            Vec::new(),
+            Vec::new(),
+        ),
+        "Read" => {
+            let offset = input["offset"].as_u64();
+            let range = match (offset, input["limit"].as_u64().filter(|limit| *limit > 0)) {
+                (offset, Some(limit)) => {
+                    let start = offset.unwrap_or(1);
+                    format!(" ({start} - {})", start + limit - 1)
+                }
+                (Some(offset), None) => format!(" (from line {offset})"),
+                (None, None) => String::new(),
+            };
+            (
+                format!("Read {}{range}", shown.as_deref().unwrap_or("file")),
+                "read",
+                Vec::new(),
+                location(Some(offset.unwrap_or(1))),
+            )
+        }
+        "Write" => (
+            shown
+                .as_deref()
+                .map_or_else(|| "Write".to_owned(), |path| format!("Write {path}")),
+            "edit",
+            path.zip(input["content"].as_str())
+                .map(|(path, text)| {
+                    vec![json!({ "type": "diff", "path": path, "oldText": null, "newText": text })]
+                })
+                .unwrap_or_default(),
+            location(None),
+        ),
+        "Edit" => (
+            shown
+                .as_deref()
+                .map_or_else(|| "Edit".to_owned(), |path| format!("Edit {path}")),
+            "edit",
+            path.map(|path| {
+                vec![json!({
+                    "type": "diff",
+                    "path": path,
+                    "oldText": input["old_string"].as_str().filter(|text| !text.is_empty()),
+                    "newText": input["new_string"].as_str().unwrap_or_default(),
+                })]
+            })
+            .unwrap_or_default(),
+            location(None),
+        ),
+        "MultiEdit" => (
+            shown
+                .as_deref()
+                .map_or_else(|| "Edit".to_owned(), |path| format!("Edit {path}")),
+            "edit",
+            path.map(|path| {
+                input["edits"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .map(|edit| {
+                        json!({
+                            "type": "diff",
+                            "path": path,
+                            "oldText": edit["old_string"].as_str().filter(|text| !text.is_empty()),
+                            "newText": edit["new_string"].as_str().unwrap_or_default(),
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
+            location(None),
+        ),
+        "NotebookEdit" => (
+            shown.as_deref().map_or_else(
+                || "Edit notebook".to_owned(),
+                |path| format!("Edit notebook {path}"),
+            ),
+            "edit",
+            Vec::new(),
+            location(None),
+        ),
+        "Glob" => {
+            let mut title = "Find".to_owned();
+            if let Some(path) = &shown {
+                let _ = write!(title, " `{path}`");
+            }
+            if let Some(pattern) = input["pattern"].as_str() {
+                let _ = write!(title, " `{pattern}`");
+            }
+            (title, "search", Vec::new(), location(None))
+        }
+        "Grep" => (grep_title(input), "search", Vec::new(), Vec::new()),
+        "WebFetch" => (
+            input["url"]
+                .as_str()
+                .map_or_else(|| "Fetch".to_owned(), |url| format!("Fetch {url}")),
+            "fetch",
+            Vec::new(),
+            Vec::new(),
+        ),
+        "WebSearch" => (
+            input["query"].as_str().map_or_else(
+                || "Web search".to_owned(),
+                |query| format!("Search \"{query}\""),
+            ),
+            "fetch",
+            Vec::new(),
+            Vec::new(),
+        ),
+        "Agent" | "Task" => (
+            input["description"]
+                .as_str()
+                .filter(|text| !text.is_empty())
+                .map_or_else(|| "Agent".to_owned(), str::to_owned),
+            "think",
+            Vec::new(),
+            Vec::new(),
+        ),
+        "ExitPlanMode" => (
+            "Exit plan mode".to_owned(),
+            "switch_mode",
+            input["plan"]
+                .as_str()
+                .map(|plan| vec![text_content(plan)])
+                .unwrap_or_default(),
+            Vec::new(),
+        ),
+        "ToolSearch" => ("Load tools".to_owned(), "other", Vec::new(), Vec::new()),
+        "TaskStop" | "KillShell" | "KillBash" => (
+            "Stop background task".to_owned(),
+            "other",
+            Vec::new(),
+            Vec::new(),
+        ),
+        "AskUserQuestion" => {
+            let questions = input["questions"].as_array();
+            let title = match questions.map(Vec::as_slice) {
+                Some([question]) => question["question"]
+                    .as_str()
+                    .unwrap_or("Question")
+                    .to_owned(),
+                _ => "Asking for your input".to_owned(),
+            };
+            (title, "other", Vec::new(), Vec::new())
+        }
+        "Skill" => (
+            input["skill"].as_str().map_or_else(
+                || "Load skill".to_owned(),
+                |skill| format!("Load skill: {skill}"),
+            ),
+            "other",
+            Vec::new(),
+            Vec::new(),
+        ),
+        _ => (mcp_title(name), "other", Vec::new(), Vec::new()),
+    };
+    ToolInfo {
+        title: clip_title(&title),
+        kind,
+        content,
+        locations,
+        target,
+    }
+}
+
+fn grep_title(input: &Value) -> String {
+    let mut title = "grep".to_owned();
+    if input["-i"] == true {
+        title.push_str(" -i");
+    }
+    if input["-n"] == true {
+        title.push_str(" -n");
+    }
+    for flag in ["-A", "-B", "-C"] {
+        if let Some(value) = input[flag].as_u64() {
+            let _ = write!(title, " {flag} {value}");
+        }
+    }
+    match input["output_mode"].as_str() {
+        Some("files_with_matches") => title.push_str(" -l"),
+        Some("count") => title.push_str(" -c"),
+        _ => {}
+    }
+    if let Some(glob) = input["glob"].as_str() {
+        let _ = write!(title, " --include=\"{glob}\"");
+    }
+    if let Some(kind) = input["type"].as_str() {
+        let _ = write!(title, " --type={kind}");
+    }
+    if let Some(pattern) = input["pattern"].as_str() {
+        let _ = write!(title, " \"{pattern}\"");
+    }
+    if let Some(path) = input["path"].as_str() {
+        title.push(' ');
+        title.push_str(path);
+    }
+    title
+}
+
+fn mcp_name(name: &str) -> Option<String> {
+    name.strip_prefix("mcp__")
+        .and_then(|rest| rest.split_once("__"))
+        .map(|(server, tool)| format!("{server}: {tool}"))
+}
+
+fn mcp_title(name: &str) -> String {
+    mcp_name(name).unwrap_or_else(|| words(name))
+}
+
+fn words(name: &str) -> String {
+    let mut out = String::with_capacity(name.len() + 4);
+    let mut lower = false;
+    for ch in name.chars() {
+        if ch.is_uppercase() && lower {
+            out.push(' ');
+            out.extend(ch.to_lowercase());
+        } else {
+            out.push(ch);
+        }
+        lower = ch.is_lowercase();
+    }
+    out
+}
+
+fn clip_title(title: &str) -> String {
+    let line = title.lines().next().unwrap_or_default();
+    let multiline = title.lines().nth(1).is_some();
+    let mut clipped = line.chars().take(MAX_TITLE_CHARS).collect::<String>();
+    if multiline || line.chars().count() > MAX_TITLE_CHARS {
+        clipped.push('…');
+    }
+    clipped
+}
+
+fn display_path(path: &str, cwd: &Path) -> String {
+    Path::new(path)
+        .strip_prefix(cwd)
+        .ok()
+        .filter(|relative| !relative.as_os_str().is_empty())
+        .map_or_else(
+            || path.to_owned(),
+            |relative| relative.display().to_string(),
+        )
+}
+
+pub(crate) fn available_commands(
+    commands: &[Value],
+    hidden: &HashSet<String>,
+    listed: Option<&HashSet<String>>,
+) -> Value {
+    let commands = commands
+        .iter()
+        .filter_map(|command| {
+            let name = command["name"].as_str()?;
+            if hidden.contains(name) || listed.is_some_and(|listed| !listed.contains(name)) {
+                return None;
+            }
+            let mut entry = json!({
+                "name": name,
+                "description": command["description"].as_str().unwrap_or_default(),
+            });
+            if let Some(hint) = command["argumentHint"]
+                .as_str()
+                .filter(|hint| !hint.is_empty())
+            {
+                entry["input"] = json!({ "hint": hint });
+            }
+            Some(entry)
+        })
+        .collect::<Vec<_>>();
+    json!({ "sessionUpdate": "available_commands_update", "availableCommands": commands })
+}
+
+pub fn rate_limits(frame: &Value) -> Option<zz_protocol::QuotaWindows> {
+    let windows = &frame["rate_limit_info"]["unifiedWindows"];
+    let window = |key: &str| {
+        let window = &windows[key];
+        Some(zz_protocol::QuotaWindow {
+            used: window["utilization"].as_f64()? as f32,
+            resets_at: window["resetsAt"].as_u64(),
+        })
+    };
+    let quota = zz_protocol::QuotaWindows {
+        five_hour: window("five_hour"),
+        week: window("seven_day"),
+    };
+    (!quota.is_empty()).then_some(quota)
+}
+
+pub fn usage_rate_limits(response: &Value) -> Option<zz_protocol::QuotaWindows> {
+    let limits = &response["rate_limits"];
+    let window = |key: &str| {
+        let window = &limits[key];
+        let resets_at = window["resets_at"]
+            .as_str()
+            .and_then(|at| chrono::DateTime::parse_from_rfc3339(at).ok())
+            .and_then(|at| u64::try_from(at.timestamp()).ok());
+        Some(zz_protocol::QuotaWindow {
+            used: (window["utilization"].as_f64()? / 100.0) as f32,
+            resets_at,
+        })
+    };
+    let quota = zz_protocol::QuotaWindows {
+        five_hour: window("five_hour"),
+        week: window("seven_day"),
+    };
+    (!quota.is_empty()).then_some(quota)
+}
+
+#[cfg(test)]
+mod paste_tests {
+    use super::without_paste_tags;
+
+    #[test]
+    fn pasted_text_shows_without_its_wrapper() {
+        assert_eq!(
+            without_paste_tags(
+                "\n\n<pasted_content id=\"d953\">\nfirst line\n\nsecond\n</pasted_content id=\"d953\">\n"
+            ),
+            "first line\n\nsecond"
+        );
+        assert_eq!(
+            without_paste_tags(
+                "look <pasted_content id=\"1\">\na\n</pasted_content id=\"1\"> and <pasted_content id=\"2\">\nb\n</pasted_content id=\"2\">"
+            ),
+            "look a and b"
+        );
+        assert_eq!(without_paste_tags("plain <b>text</b>"), "plain <b>text</b>");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use agent_client_protocol::v1::schema::SessionUpdate;
+
+    use super::*;
+
+    fn fixture(name: &str) -> Vec<Value> {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("src/claude/fixtures")
+            .join(name);
+        std::fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("{}: {error}", path.display()))
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .map(|line| serde_json::from_str::<Value>(line).expect("fixture line is JSON"))
+            .filter(|record| record["dir"] == "out")
+            .map(|record| record["msg"].clone())
+            .collect()
+    }
+
+    fn replay(name: &str) -> Vec<Value> {
+        let mut translator = Translator::new(PathBuf::from("/work"));
+        let updates = fixture(name)
+            .iter()
+            .flat_map(|frame| translator.frame(frame))
+            .collect::<Vec<_>>();
+        for update in &updates {
+            serde_json::from_value::<SessionUpdate>(update.clone())
+                .unwrap_or_else(|error| panic!("{update} is not an ACP update: {error}"));
+        }
+        updates
+    }
+
+    fn kinds(updates: &[Value]) -> Vec<&str> {
+        updates
+            .iter()
+            .map(|update| update["sessionUpdate"].as_str().unwrap_or_default())
+            .collect()
+    }
+
+    fn message_text(updates: &[Value], kind: &str) -> String {
+        updates
+            .iter()
+            .filter(|update| update["sessionUpdate"] == kind)
+            .filter_map(|update| update["content"]["text"].as_str())
+            .collect()
+    }
+
+    #[test]
+    fn a_rate_limit_event_gives_the_five_hour_and_week_windows() {
+        let quotas = fixture("steer.ndjson")
+            .iter()
+            .filter(|frame| frame["type"] == "rate_limit_event")
+            .map(rate_limits)
+            .collect::<Vec<_>>();
+        let window = |used, resets_at| {
+            Some(zz_protocol::QuotaWindow {
+                used,
+                resets_at: Some(resets_at),
+            })
+        };
+        assert_eq!(
+            quotas,
+            [
+                Some(zz_protocol::QuotaWindows {
+                    five_hour: window(0.07, 1_791_408_600),
+                    week: window(0.24, 1_791_583_200),
+                }),
+                Some(zz_protocol::QuotaWindows {
+                    five_hour: window(0.07, 1_791_408_600),
+                    week: window(0.25, 1_791_583_200),
+                }),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_plain_reply_streams_once_and_reports_usage() {
+        let updates = replay("hello.ndjson");
+        assert_eq!(message_text(&updates, "agent_message_chunk"), "hi there");
+        assert_eq!(kinds(&updates).last(), Some(&"usage_update"));
+        let usage = updates.last().expect("usage");
+        assert_eq!(usage["size"], 200_000);
+        assert!(usage["used"].as_u64().is_some_and(|used| used > 0));
+    }
+
+    #[test]
+    fn a_result_with_no_turns_leaves_the_context_meter_alone() {
+        let used = replay("resume.ndjson")
+            .iter()
+            .filter(|update| update["sessionUpdate"] == "usage_update")
+            .map(|update| update["used"].as_u64())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            used,
+            [Some(33_178), Some(33_708), Some(37_249), Some(37_670)]
+        );
+    }
+
+    #[test]
+    fn tools_become_rows_that_complete_with_their_output() {
+        let updates = replay("tools.ndjson");
+        let calls = updates
+            .iter()
+            .filter(|update| update["sessionUpdate"] == "tool_call")
+            .collect::<Vec<_>>();
+        let titles = calls
+            .iter()
+            .map(|call| call["title"].as_str().unwrap_or_default())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            titles,
+            [
+                "echo zz-probe > out.txt && cat notes.txt",
+                "Read notes.txt",
+                "Edit notes.txt",
+                "What is your favorite color?",
+                "Agent that replies with pong",
+            ]
+        );
+        let edit = calls[2];
+        assert_eq!(edit["kind"], "edit");
+        assert_eq!(edit["content"][0]["type"], "diff");
+        assert_eq!(edit["content"][0]["oldText"], "hello");
+        assert_eq!(edit["content"][0]["newText"], "hullo");
+        let bash_done = updates
+            .iter()
+            .find(|update| {
+                update["sessionUpdate"] == "tool_call_update"
+                    && update["toolCallId"] == calls[0]["toolCallId"]
+            })
+            .expect("bash completion");
+        assert_eq!(bash_done["status"], "completed");
+        assert_eq!(bash_done["content"][0]["content"]["text"], "hello");
+        let agent_done = updates
+            .iter()
+            .find(|update| {
+                update["sessionUpdate"] == "tool_call_update"
+                    && update["toolCallId"] == calls[4]["toolCallId"]
+            })
+            .expect("agent completion");
+        assert_eq!(agent_done["content"][0]["content"]["text"], "pong");
+        assert!(
+            updates
+                .iter()
+                .filter(|update| update["sessionUpdate"] == "tool_call_update"
+                    && update["toolCallId"] == edit["toolCallId"])
+                .all(|update| update.get("content").is_none()),
+            "a finished edit keeps its diff"
+        );
+        assert_eq!(message_text(&updates, "agent_message_chunk"), "done");
+    }
+
+    #[test]
+    fn steering_and_background_work_keep_one_row_per_tool() {
+        let updates = replay("steer.ndjson");
+        let mut seen = HashSet::new();
+        for update in updates
+            .iter()
+            .filter(|update| update["sessionUpdate"] == "tool_call")
+        {
+            assert!(
+                seen.insert(update["toolCallId"].as_str().unwrap_or_default()),
+                "duplicate tool row {update}"
+            );
+        }
+        assert!(message_text(&updates, "agent_message_chunk").contains("bye"));
+        assert!(
+            !kinds(&updates).contains(&"user_message_chunk"),
+            "prompt echoes stay with the host"
+        );
+    }
+
+    #[test]
+    fn todo_and_task_tools_become_the_plan_not_rows() {
+        let mut translator = Translator::new(PathBuf::from("/work"));
+        let todo = json!({"type":"assistant","parent_tool_use_id":null,"message":{"id":"m1","content":[
+            {"type":"tool_use","id":"t1","name":"TodoWrite","input":{"todos":[
+                {"content":"Write code","activeForm":"Writing code","status":"in_progress"},
+                {"content":"Test","activeForm":"Testing","status":"pending"}]}}]}});
+        let updates = translator.frame(&todo);
+        assert_eq!(kinds(&updates), ["plan"]);
+        assert_eq!(updates[0]["entries"][0]["content"], "Writing code");
+        let create = json!({"type":"assistant","parent_tool_use_id":null,"message":{"id":"m2","content":[
+            {"type":"tool_use","id":"t2","name":"TaskCreate","input":{"subject":"Ship it","description":"d"}}]}});
+        assert!(translator.frame(&create).is_empty());
+        let created = json!({"type":"user","parent_tool_use_id":null,"message":{"role":"user","content":[
+            {"type":"tool_result","tool_use_id":"t2","content":"Task #7 created successfully: Ship it"}]}});
+        let updates = translator.frame(&created);
+        assert_eq!(updates[0]["entries"][0]["content"], "Ship it");
+        let update = json!({"type":"assistant","parent_tool_use_id":null,"message":{"id":"m3","content":[
+            {"type":"tool_use","id":"t3","name":"TaskUpdate","input":{"taskId":"7","status":"completed"}}]}});
+        let updates = translator.frame(&update);
+        assert_eq!(updates[0]["entries"][0]["status"], "completed");
+        let done = json!({"type":"user","parent_tool_use_id":null,"message":{"role":"user","content":[
+            {"type":"tool_result","tool_use_id":"t3","content":"Updated task #7"}]}});
+        assert!(translator.frame(&done).is_empty());
+    }
+
+    #[test]
+    fn a_transcript_background_agent_stays_running_until_its_notification() {
+        let mut translator = Translator::new(PathBuf::from("/work"));
+        let call = json!({"type":"assistant","uuid":"a1","message":{"id":"m","content":[
+            {"type":"tool_use","id":"g1","name":"Agent","input":{"description":"Find it","prompt":"find it","subagent_type":"Explore"}}]}});
+        assert_eq!(kinds(&translator.history_entry(&call)), ["tool_call"]);
+        let launched = json!({"type":"user","uuid":"u1",
+            "toolUseResult":{"isAsync":true,"status":"async_launched","agentId":"a9"},
+            "message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"g1",
+                "content":[{"type":"text","text":"Async agent launched successfully. (internal metadata)"}]}]}});
+        let updates = translator.history_entry(&launched);
+        assert_eq!(updates.len(), 1);
+        assert_eq!(updates[0]["status"], "in_progress");
+        assert_eq!(updates[0]["_meta"]["zz"]["background"], true);
+        assert!(updates[0].get("content").is_none(), "{}", updates[0]);
+        let done = json!({"type":"user","uuid":"u2","message":{"role":"user","content":
+            "<task-notification>\n<task-id>a9</task-id>\n<tool-use-id>g1</tool-use-id>\n<status>completed</status>\n<summary>Agent \"Find it\" finished</summary>\n<result>src/lib.rs:4</result>\n<usage><duration_ms>6532</duration_ms></usage>\n</task-notification>"}});
+        let updates = translator.history_entry(&done);
+        assert_eq!(updates.len(), 1);
+        assert_eq!(updates[0]["toolCallId"], "g1");
+        assert_eq!(updates[0]["status"], "completed");
+        assert_eq!(updates[0]["content"][0]["content"]["text"], "src/lib.rs:4");
+    }
+
+    #[test]
+    fn a_foreground_agent_shows_its_report_live_and_from_either_transcript_shape() {
+        let notice = "This agent's report was delivered to you as a message from \"a1\" (its SubagentHandback call). Read it there; it is not repeated here.\n";
+        let call = json!({"type":"assistant","parent_tool_use_id":null,"message":{"id":"m","content":[
+            {"type":"tool_use","id":"f1","name":"Agent","input":{"description":"pong check","prompt":"Reply with exactly: pong"}}]}});
+        let done = json!({"type":"system","subtype":"task_notification","task_id":"a1","tool_use_id":"f1",
+            "status":"completed","summary":notice,"handback":"send","handback_report":{"text":"pong","toolUseId":"h1"}});
+        let result = |key: &str, structured: Value, text: &str| {
+            let mut frame = json!({"type":"user","parent_tool_use_id":null,"message":{"role":"user","content":[
+                {"type":"tool_result","tool_use_id":"f1","content":[{"type":"text","text":text}]}]}});
+            frame[key] = structured;
+            frame
+        };
+        let handed_back = json!({"status":"completed","agentId":"a1","handback":"send",
+            "handbackReport":{"text":"pong","toolUseId":"h1"},"content":[{"type":"text","text":notice}]});
+        let replied =
+            json!({"status":"completed","agentId":"a1","content":[{"type":"text","text":"pong"}]});
+        let wrapped = "[Subagent hand-back] The report follows:\n  pong\nagentId: a1";
+        let output = |updates: Vec<Value>| {
+            updates.last().expect("update")["content"][0]["content"]["text"]
+                .as_str()
+                .map(str::to_owned)
+        };
+        let mut live = Translator::new(PathBuf::from("/work"));
+        live.frame(&call);
+        live.frame(&done);
+        let live = output(live.frame(&result(
+            "tool_use_result",
+            handed_back.clone(),
+            &format!("  {notice}agentId: a1"),
+        )));
+        let reloaded = |structured: Value, text: &str| {
+            let mut translator = Translator::new(PathBuf::from("/work"));
+            translator.history_entry(&call);
+            output(translator.history_entry(&result("toolUseResult", structured, text)))
+        };
+        assert_eq!(
+            [
+                live,
+                reloaded(handed_back, &format!("  {notice}agentId: a1")),
+                reloaded(replied, wrapped),
+            ],
+            [
+                Some("pong".to_owned()),
+                Some("pong".to_owned()),
+                Some("pong".to_owned())
+            ]
+        );
+    }
+
+    #[test]
+    fn a_question_answered_in_the_terminal_carries_its_answers() {
+        let mut translator = Translator::new(PathBuf::from("/work"));
+        let questions = json!([{"question":"Which file?","header":"Open first","multiSelect":false,
+            "options":[{"label":"chat.rs","description":"d"},{"label":"lib.rs","description":"d"}]}]);
+        let call = json!({"type":"assistant","uuid":"a1","message":{"id":"m","content":[
+            {"type":"tool_use","id":"q1","name":"AskUserQuestion","input":{"questions":questions}}]}});
+        translator.history_entry(&call);
+        let answered = json!({"type":"user","uuid":"u1",
+            "toolUseResult":{"questions":questions,"answers":{"Which file?":"chat.rs"},"annotations":{}},
+            "message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"q1",
+                "content":"Your questions have been answered: \"Which file?\"=\"chat.rs\"."}]}});
+        let updates = translator.history_entry(&answered);
+        assert_eq!(updates[0]["status"], "completed");
+        assert_eq!(
+            updates[0]["_meta"]["zz"]["answered"],
+            json!([{"question":"Which file?","header":"Open first","answer":"chat.rs"}])
+        );
+    }
+
+    #[test]
+    fn background_work_stays_running_until_its_notification() {
+        let output = tempfile::NamedTempFile::new().expect("output");
+        std::fs::write(output.path(), "line one\nlate\n").expect("write");
+        let mut translator = Translator::new(PathBuf::from("/work"));
+        let call = json!({"type":"assistant","parent_tool_use_id":null,"message":{"id":"m","content":[
+            {"type":"tool_use","id":"b1","name":"Bash","input":{"command":"sleep 30; echo late","run_in_background":true}}]}});
+        assert_eq!(kinds(&translator.frame(&call)), ["tool_call"]);
+        let started = json!({"type":"system","subtype":"task_started","task_id":"t9","tool_use_id":"b1","is_backgrounded":true,"task_type":"local_bash","description":"late"});
+        let updates = translator.frame(&started);
+        assert_eq!(updates.len(), 1);
+        assert_eq!(updates[0]["toolCallId"], "b1");
+        assert_eq!(updates[0]["_meta"]["zz"]["background"], true);
+        assert!(updates[0].get("status").is_none());
+        let launched = json!({"type":"user","parent_tool_use_id":null,"message":{"role":"user","content":[
+            {"type":"tool_result","tool_use_id":"b1","content":"Command running in background with ID: t9."}]}});
+        let updates = translator.frame(&launched);
+        assert_eq!(updates[0]["status"], "in_progress");
+        assert_eq!(updates[0]["_meta"]["zz"]["background"], true);
+        let done = json!({"type":"system","subtype":"task_notification","task_id":"t9","tool_use_id":"b1","status":"completed",
+            "output_file": output.path(), "summary":"Background command completed"});
+        let updates = translator.frame(&done);
+        assert_eq!(updates[0]["status"], "completed");
+        assert_eq!(
+            updates[0]["content"][0]["content"]["text"],
+            "line one\nlate"
+        );
+        let agent = json!({"type":"assistant","parent_tool_use_id":null,"message":{"id":"m2","content":[
+            {"type":"tool_use","id":"a1","name":"Agent","input":{"description":"Survey","prompt":"p"}}]}});
+        translator.frame(&agent);
+        let progress = json!({"type":"system","subtype":"task_progress","task_id":"t10","tool_use_id":"a1","description":"Survey","summary":"Reading the reducer","usage":{"total_tokens":1,"tool_uses":1,"duration_ms":1}});
+        let updates = translator.frame(&progress);
+        assert_eq!(
+            updates[0]["content"][0]["content"]["text"],
+            "Reading the reducer"
+        );
+        for update in &updates {
+            serde_json::from_value::<SessionUpdate>(update.clone()).expect("ACP update");
+        }
+    }
+
+    #[test]
+    fn background_work_that_ends_before_its_launch_result_settles_on_the_result() {
+        let output = tempfile::NamedTempFile::new().expect("output");
+        std::fs::write(output.path(), "fast\n").expect("write");
+        let mut translator = Translator::new(PathBuf::from("/work"));
+        let call = json!({"type":"assistant","parent_tool_use_id":null,"message":{"id":"m","content":[
+            {"type":"tool_use","id":"b1","name":"Bash","input":{"command":"echo fast","run_in_background":true}}]}});
+        translator.frame(&call);
+        let started = json!({"type":"system","subtype":"task_started","task_id":"t9","tool_use_id":"b1","is_backgrounded":true,"task_type":"local_bash","description":"fast"});
+        translator.frame(&started);
+        let done = json!({"type":"system","subtype":"task_notification","task_id":"t9","tool_use_id":"b1","status":"completed",
+            "output_file": output.path(), "summary":"Background command completed"});
+        assert!(translator.frame(&done).is_empty());
+        let launched = json!({"type":"user","parent_tool_use_id":null,"message":{"role":"user","content":[
+            {"type":"tool_result","tool_use_id":"b1","content":"Command running in background with ID: t9."}]}});
+        let updates = translator.frame(&launched);
+        assert_eq!(updates[0]["status"], "completed");
+        assert_eq!(updates[0]["content"][0]["content"]["text"], "fast");
+    }
+
+    #[test]
+    fn unstreamed_blocks_render_whole_and_streamed_ones_never_twice() {
+        let mut translator = Translator::new(PathBuf::from("/work"));
+        let whole = json!({"type":"assistant","parent_tool_use_id":null,"message":{"id":"m","content":[
+            {"type":"text","text":"one"},{"type":"text","text":"two"}]}});
+        let updates = translator.frame(&whole);
+        assert_eq!(message_text(&updates, "agent_message_chunk"), "onetwo");
+        assert_ne!(updates[0]["messageId"], updates[1]["messageId"]);
+    }
+
+    #[test]
+    fn subagent_text_stays_out_of_the_main_thread() {
+        let mut translator = Translator::new(PathBuf::from("/work"));
+        let frame = json!({"type":"assistant","parent_tool_use_id":"toolu_parent","message":{"id":"m","content":[
+            {"type":"text","text":"inner"},
+            {"type":"tool_use","id":"inner_tool","name":"Read","input":{"file_path":"/work/a.rs"}}]}});
+        let mut updates = translator.frame(&frame);
+        assert_eq!(kinds(&updates), ["agent_message_chunk", "tool_call"]);
+        assert_eq!(updates[0]["content"]["text"], "inner");
+        assert_eq!(updates[0]["_meta"]["zz"]["parent"], "toolu_parent");
+        updates.remove(0);
+        assert_eq!(updates[0]["title"], "Read a.rs");
+        assert_eq!(
+            updates[0]["_meta"]["claudeCode"]["parentToolUseId"],
+            "toolu_parent"
+        );
+    }
+
+    #[test]
+    fn peer_messages_show_and_internal_ones_do_not() {
+        let mut translator = Translator::new(PathBuf::from("/work"));
+        let peer = json!({"type":"user","uuid":"u1","parent_tool_use_id":null,"origin":{"kind":"peer"},
+            "message":{"role":"user","content":"hello from another session"}});
+        assert_eq!(kinds(&translator.frame(&peer)), ["user_message_chunk"]);
+        let internal = json!({"type":"user","uuid":"u2","parent_tool_use_id":null,
+            "message":{"role":"user","content":"<local-command-stdout>x</local-command-stdout>"}});
+        assert!(translator.frame(&internal).is_empty());
+    }
+
+    #[test]
+    fn pasted_images_ride_on_the_prompt_without_their_placeholders() {
+        let mut translator = Translator::new(PathBuf::from("/work"));
+        let image = |data: &str| json!({"type":"image","source":{"type":"base64","media_type":"image/png","data":data}});
+        let prompt = json!({"type":"user","uuid":"u1","parent_tool_use_id":null,"message":{"role":"user",
+            "content":[{"type":"text","text":"what is [Image #2] next to [Image #3]?"},image("AAAA"),image("BBBB")]}});
+        let updates = translator.frame(&prompt);
+        assert_eq!(kinds(&updates), ["user_message_chunk"]);
+        serde_json::from_value::<SessionUpdate>(updates[0].clone()).expect("ACP update");
+        assert_eq!(updates[0]["content"]["text"], "what is next to ?");
+        assert_eq!(
+            updates[0]["_meta"]["zz"]["images"],
+            json!([{"format":"image/png","data":"AAAA"},{"format":"image/png","data":"BBBB"}])
+        );
+        let alone = json!({"type":"user","uuid":"u2","isSidechain":false,"message":{"role":"user",
+            "content":[{"type":"text","text":"[Image #4]"},image("CCCC")]}});
+        let updates = translator.history_entry(&alone);
+        assert_eq!(kinds(&updates), ["user_message_chunk"]);
+        assert_eq!(updates[0]["content"]["text"], "");
+        assert_eq!(updates[0]["_meta"]["zz"]["images"][0]["data"], "CCCC");
+        let plain =
+            json!({"type":"user","uuid":"u3","message":{"role":"user","content":"see [Image #1]"}});
+        assert_eq!(
+            translator.history_entry(&plain)[0]["content"]["text"],
+            "see [Image #1]"
+        );
+        let huge = "A".repeat(crate::chat_bridge::MAX_PROMPT_IMAGES_BASE64 + 4);
+        let over = json!({"type":"user","uuid":"u4","message":{"role":"user",
+            "content":[{"type":"text","text":"big [Image #5]"},image(&huge)]}});
+        let updates = translator.history_entry(&over);
+        assert_eq!(updates[0]["content"]["text"], "big");
+        assert!(updates[0]["_meta"]["zz"]["images"].is_null());
+    }
+
+    #[test]
+    fn commands_carry_their_hint_and_hide_terminal_ones() {
+        let hidden = HashSet::from(["doctor".to_owned()]);
+        let commands = [
+            json!({"name":"compact","description":"Compact","argumentHint":"<focus>"}),
+            json!({"name":"doctor","description":"Doctor","argumentHint":""}),
+            json!({"name":"terminal-setup","description":"Set up the terminal","argumentHint":""}),
+        ];
+        let update = available_commands(&commands, &hidden, None);
+        serde_json::from_value::<SessionUpdate>(update.clone()).expect("ACP update");
+        assert_eq!(
+            update["availableCommands"].as_array().map(Vec::len),
+            Some(2)
+        );
+        assert_eq!(update["availableCommands"][0]["input"]["hint"], "<focus>");
+
+        let listed = HashSet::from(["compact".to_owned(), "doctor".to_owned()]);
+        let update = available_commands(&commands, &hidden, Some(&listed));
+        let names = update["availableCommands"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|command| command["name"].as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            names,
+            ["compact"],
+            "only the init frame's commands that work without the TUI"
+        );
+    }
+
+    #[test]
+    fn summary_frames_become_the_live_line_and_batch_sentences() {
+        let mut translator = Translator::new(PathBuf::from("/work"));
+        let call = |id: &str, command: &str, description: &str| {
+            json!({"type":"assistant","parent_tool_use_id":null,"message":{"id":"m","content":[
+                {"type":"tool_use","id":id,"name":"Bash","input":{"command":command,"description":description}}]}})
+        };
+        let first = translator.frame(&call("toolu_1", "wc -l a.txt", "Count lines in a.txt"));
+        assert_eq!(
+            first[0]["_meta"]["zz"],
+            json!({ "activity": "Count lines in a.txt", "target": "wc -l a.txt" })
+        );
+        translator.frame(&call("toolu_2", "ls", ""));
+        let todo = json!({"type":"assistant","parent_tool_use_id":null,"message":{"id":"m2","content":[
+            {"type":"tool_use","id":"toolu_3","name":"TodoWrite","input":{"todos":[]}}]}});
+        translator.frame(&todo);
+        let updates = [
+            json!({"type":"system","subtype":"task_summary","detail":"Listing files in current directory"}),
+            json!({"type":"tool_use_summary","summary":"Counted lines in a.txt",
+                "preceding_tool_use_ids":["toolu_1","toolu_2","toolu_3","toolu_unknown"]}),
+            json!({"type":"system","subtype":"post_turn_summary","status_category":"completed",
+                "status_detail":"ran wc -l and ls as asked","needs_action":""}),
+            json!({"type":"system","subtype":"task_summary","detail":null}),
+        ]
+        .iter()
+        .flat_map(|frame| translator.frame(frame))
+        .collect::<Vec<_>>();
+        assert_eq!(
+            updates,
+            [
+                json!({"sessionUpdate":"session_info_update",
+                    "_meta":{"zz":{"activity":"Listing files in current directory"}}}),
+                json!({"sessionUpdate":"session_info_update",
+                    "_meta":{"zz":{"summary":"Counted lines in a.txt","toolCallIds":["toolu_1","toolu_2"]}}}),
+                json!({"sessionUpdate":"session_info_update","_meta":{"zz":{"activity":null}}}),
+            ]
+        );
+        for update in &updates {
+            serde_json::from_value::<SessionUpdate>(update.clone()).expect("ACP update");
+        }
+    }
+
+    #[test]
+    fn rows_carry_a_plain_title_and_a_short_target() {
+        let rows = [
+            ("Bash", json!({"command":"cat <<EOF\nhello\nEOF"})),
+            (
+                "Read",
+                json!({"file_path":"/work/src/a.rs","offset":10,"limit":5}),
+            ),
+            (
+                "Write",
+                json!({"file_path":"/elsewhere/x.md","content":"x"}),
+            ),
+            ("Grep", json!({"pattern":"fn main","path":"src","-n":true})),
+            ("Glob", json!({"pattern":"**/*.rs"})),
+            (
+                "WebFetch",
+                json!({"url":"https://example.com/a","prompt":"Summarize"}),
+            ),
+            ("WebSearch", json!({"query":"rust 2024"})),
+            (
+                "ToolSearch",
+                json!({"query":"select:EnterPlanMode,mcp__github__create_issue","max_results":2}),
+            ),
+            ("ToolSearch", json!({"query":"slack send","max_results":5})),
+            ("EnterPlanMode", json!({})),
+            ("ExitPlanMode", json!({"plan":"# Plan"})),
+            (
+                "Monitor",
+                json!({"command":"tail -f log","description":"Watch the log","timeout_ms":1000}),
+            ),
+            ("TaskStop", json!({"task_id":"b1"})),
+            (
+                "CronCreate",
+                json!({"cron":"* * * * *","prompt":"check the build"}),
+            ),
+            ("mcp__github__create_issue", json!({"query":"x"})),
+        ]
+        .map(|(name, input)| {
+            let info = tool_info(name, &input, Path::new("/work"));
+            (info.title, info.kind, info.target)
+        });
+        let rows = rows
+            .iter()
+            .map(|(title, kind, target)| (title.as_str(), *kind, target.as_deref()))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            rows,
+            [
+                ("cat <<EOF…", "execute", Some("cat <<EOF…")),
+                ("Read src/a.rs (10 - 14)", "read", Some("src/a.rs")),
+                ("Write /elsewhere/x.md", "edit", Some("/elsewhere/x.md")),
+                ("grep -n \"fn main\" src", "search", Some("fn main")),
+                ("Find `**/*.rs`", "search", Some("**/*.rs")),
+                (
+                    "Fetch https://example.com/a",
+                    "fetch",
+                    Some("https://example.com/a")
+                ),
+                ("Search \"rust 2024\"", "fetch", Some("rust 2024")),
+                (
+                    "Load tools",
+                    "other",
+                    Some("EnterPlanMode, github: create_issue")
+                ),
+                ("Load tools", "other", Some("slack send")),
+                ("Enter plan mode", "other", None),
+                ("Exit plan mode", "switch_mode", None),
+                ("Watch the log", "execute", Some("tail -f log")),
+                ("Stop background task", "other", None),
+                ("Cron create", "other", None),
+                ("github: create_issue", "other", None),
+            ]
+        );
+    }
+}

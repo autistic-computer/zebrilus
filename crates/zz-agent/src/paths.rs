@@ -1,0 +1,59 @@
+use std::{io, path::PathBuf};
+
+use zz_daemon_client::user_data::platform_data_dir;
+
+const DAEMON_DIRECTORY_NAME: &str = "daemon";
+const ACCOUNTS_DIRECTORY_NAME: &str = "accounts";
+const JOURNAL_DIRECTORY_NAME: &str = "agent-journal";
+
+fn app_data_dir() -> io::Result<PathBuf> {
+    let data = platform_data_dir().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::NotFound,
+            "could not resolve the current user's application-data directory",
+        )
+    })?;
+    Ok(data.join(zz_protocol::app_identity::DIRECTORY))
+}
+
+pub fn daemon_data_dir() -> io::Result<PathBuf> {
+    Ok(app_data_dir()?.join(DAEMON_DIRECTORY_NAME))
+}
+
+pub fn accounts_dir() -> io::Result<PathBuf> {
+    Ok(app_data_dir()?.join(ACCOUNTS_DIRECTORY_NAME))
+}
+
+pub fn journal_directory() -> io::Result<PathBuf> {
+    Ok(daemon_data_dir()?.join(JOURNAL_DIRECTORY_NAME))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::ffi::OsStr;
+
+    use super::{
+        DAEMON_DIRECTORY_NAME, JOURNAL_DIRECTORY_NAME, daemon_data_dir, journal_directory,
+    };
+    use zz_daemon_client::user_data::platform_data_dir;
+
+    #[test]
+    fn the_journal_lives_under_the_daemons_own_data_directory() {
+        let Some(data) = platform_data_dir() else {
+            return;
+        };
+        let root = daemon_data_dir().expect("daemon data directory");
+        let journal = journal_directory().expect("journal directory");
+
+        assert_eq!(
+            root,
+            data.join(zz_protocol::app_identity::DIRECTORY)
+                .join(DAEMON_DIRECTORY_NAME)
+        );
+        assert_eq!(journal.parent(), Some(root.as_path()));
+        assert_eq!(
+            journal.file_name().and_then(OsStr::to_str),
+            Some(JOURNAL_DIRECTORY_NAME)
+        );
+    }
+}

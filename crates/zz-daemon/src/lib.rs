@@ -23,7 +23,7 @@ pub(crate) use zz_daemon_client::process_info::pid_alive;
 use zz_protocol::RawText;
 
 #[cfg(feature = "agent")]
-mod agent;
+pub(crate) use zz_agent as agent;
 pub mod agent_fork;
 mod agent_hooks;
 mod daemon;
