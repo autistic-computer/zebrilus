@@ -494,6 +494,7 @@ fn command_connection_waits_without_hiding_peer_disconnects() {
     while shared
         .inner
         .lock()
+        .waits
         .wait_channels
         .get("connection")
         .map_or(0, |channel| channel.waiters.len())
@@ -545,6 +546,7 @@ fn command_connection_waits_without_hiding_peer_disconnects() {
     while shared
         .inner
         .lock()
+        .waits
         .wait_channels
         .get("dropped")
         .map_or(0, |channel| channel.waiters.len())
@@ -565,6 +567,7 @@ fn command_connection_waits_without_hiding_peer_disconnects() {
         shared
             .inner
             .lock()
+            .waits
             .wait_channels
             .get("dropped")
             .is_none_or(|channel| channel.waiters.is_empty())

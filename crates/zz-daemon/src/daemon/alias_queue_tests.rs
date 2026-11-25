@@ -39,6 +39,7 @@ fn three_level_alias_suspension_preserves_output_and_runs_an_unrelated_queue() {
         if shared
             .inner
             .lock()
+            .waits
             .wait_channels
             .get("alias-resume")
             .is_some_and(|channel| !channel.waiters.is_empty())

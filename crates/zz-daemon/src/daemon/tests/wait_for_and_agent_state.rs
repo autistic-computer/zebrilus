@@ -13,8 +13,8 @@ fn wait_for_matches_sticky_signal_gc_and_dispatch_precedence() {
             &CommandInvocation::new("wait-for", ["-SL", "sticky"]),
         )
         .expect("signal wins over lock");
-    assert!(shared.inner.lock().wait_channels["sticky"].woken);
-    assert!(!shared.inner.lock().wait_channels["sticky"].locked);
+    assert!(shared.inner.lock().waits.wait_channels["sticky"].woken);
+    assert!(!shared.inner.lock().waits.wait_channels["sticky"].locked);
     shared
         .execute(
             ClientId(1),
@@ -23,7 +23,14 @@ fn wait_for_matches_sticky_signal_gc_and_dispatch_precedence() {
             &CommandInvocation::new("wait", ["sticky"]),
         )
         .expect("consume sticky signal");
-    assert!(!shared.inner.lock().wait_channels.contains_key("sticky"));
+    assert!(
+        !shared
+            .inner
+            .lock()
+            .waits
+            .wait_channels
+            .contains_key("sticky")
+    );
     let error = shared
         .execute(
             ClientId(1),
@@ -245,24 +252,36 @@ fn user_option_writes_signal_their_wait_channel() {
     };
 
     run(&["set-option", "-p", "-t", &pane, "@agent_state", "working"]).expect("set");
-    assert!(shared.inner.lock().wait_channels[&channel].woken);
+    assert!(shared.inner.lock().waits.wait_channels[&channel].woken);
     run(&["wait-for", &channel]).expect("the sticky signal is consumed at once");
-    assert!(!shared.inner.lock().wait_channels.contains_key(&channel));
+    assert!(
+        !shared
+            .inner
+            .lock()
+            .waits
+            .wait_channels
+            .contains_key(&channel)
+    );
 
     run(&["set-option", "-p", "-t", &pane, "-u", "@agent_state"]).expect("unset");
-    assert!(shared.inner.lock().wait_channels[&channel].woken);
+    assert!(shared.inner.lock().waits.wait_channels[&channel].woken);
     run(&["wait-for", &channel]).expect("unset signals too");
 
     run(&["set-option", "-p", "-t", &pane, "-u", "@agent_state"]).expect("unset again");
     assert!(
-        !shared.inner.lock().wait_channels.contains_key(&channel),
+        !shared
+            .inner
+            .lock()
+            .waits
+            .wait_channels
+            .contains_key(&channel),
         "unsetting an absent option is not a change"
     );
 
     run(&["set-option", "-g", "@fleet", "north"]).expect("global");
-    assert!(shared.inner.lock().wait_channels["@fleet@global-session"].woken);
+    assert!(shared.inner.lock().waits.wait_channels["@fleet@global-session"].woken);
     run(&["set-option", "-s", "@daemon", "up"]).expect("server");
-    assert!(shared.inner.lock().wait_channels["@daemon@server"].woken);
+    assert!(shared.inner.lock().waits.wait_channels["@daemon@server"].woken);
 }
 
 #[cfg(unix)]
@@ -310,6 +329,7 @@ fn progress_bar_transitions_write_agent_state_for_listed_commands() {
         while shared
             .inner
             .lock()
+            .waits
             .wait_channels
             .get(&channel)
             .is_none_or(|channel| channel.waiters.is_empty())
@@ -358,6 +378,7 @@ fn progress_bar_transitions_write_agent_state_for_listed_commands() {
             !shared
                 .inner
                 .lock()
+                .waits
                 .wait_channels
                 .get(&channel)
                 .is_some_and(|channel| channel.woken),
@@ -429,6 +450,7 @@ fn progress_bar_transitions_are_ignored_for_unlisted_commands() {
             !shared
                 .inner
                 .lock()
+                .waits
                 .wait_channels
                 .contains_key(&format!("@agent_state@{pane}"))
         );
@@ -660,7 +682,7 @@ fn wait_for_sticky_signal_survives_signaling_client_disconnect() {
         )
         .expect("sticky signal");
     shared.unregister(ClientId(1));
-    assert!(shared.inner.lock().wait_channels["ch1"].woken);
+    assert!(shared.inner.lock().waits.wait_channels["ch1"].woken);
 
     shared
         .execute(
@@ -670,7 +692,7 @@ fn wait_for_sticky_signal_survives_signaling_client_disconnect() {
             &CommandInvocation::new("wait-for", ["ch1"]),
         )
         .expect("consume sticky signal after signaler disconnects");
-    assert!(!shared.inner.lock().wait_channels.contains_key("ch1"));
+    assert!(!shared.inner.lock().waits.wait_channels.contains_key("ch1"));
 
     let error = shared
         .execute(
@@ -732,7 +754,7 @@ fn user_option_writes_run_the_option_changed_hook_once() {
         "yes"
     );
     assert!(
-        shared.inner.lock().wait_channels["@seen@global-session"].woken,
+        shared.inner.lock().waits.wait_channels["@seen@global-session"].woken,
         "the hook's own write still signals its channel without re-running the hook"
     );
 }
@@ -759,6 +781,7 @@ fn wait_for_wakes_all_waiters_and_hands_locks_off_fifo() {
     while shared
         .inner
         .lock()
+        .waits
         .wait_channels
         .get("wake-all")
         .map_or(0, |channel| channel.waiters.len())
@@ -786,7 +809,11 @@ fn wait_for_wakes_all_waiters_and_hands_locks_off_fifo() {
         .expect("first lock");
     let locker = wait(4, Some("-L"), "lock");
     let deadline = Instant::now() + Duration::from_secs(2);
-    while shared.inner.lock().wait_channels["lock"].lockers.len() != 1 {
+    while shared.inner.lock().waits.wait_channels["lock"]
+        .lockers
+        .len()
+        != 1
+    {
         assert!(Instant::now() < deadline, "locker did not queue");
         thread::yield_now();
     }
@@ -798,7 +825,7 @@ fn wait_for_wakes_all_waiters_and_hands_locks_off_fifo() {
         )
         .expect("handoff lock");
     locker.join().expect("locker").expect("lock handoff");
-    assert!(shared.inner.lock().wait_channels["lock"].locked);
+    assert!(shared.inner.lock().waits.wait_channels["lock"].locked);
     shared
         .wait_for(
             ClientId(u64::MAX),
@@ -806,7 +833,7 @@ fn wait_for_wakes_all_waiters_and_hands_locks_off_fifo() {
             &["-U".into(), "lock".into()],
         )
         .expect("free lock");
-    assert!(!shared.inner.lock().wait_channels["lock"].locked);
+    assert!(!shared.inner.lock().waits.wait_channels["lock"].locked);
 }
 
 #[test]
@@ -841,6 +868,7 @@ fn wait_for_rejects_interactive_blocking_and_disconnect_cleanup_unblocks() {
     while shared
         .inner
         .lock()
+        .waits
         .wait_channels
         .get("drop")
         .map_or(0, |channel| channel.waiters.len())
@@ -855,6 +883,7 @@ fn wait_for_rejects_interactive_blocking_and_disconnect_cleanup_unblocks() {
         shared
             .inner
             .lock()
+            .waits
             .wait_channels
             .get("drop")
             .is_none_or(|channel| channel.waiters.is_empty())
@@ -862,7 +891,7 @@ fn wait_for_rejects_interactive_blocking_and_disconnect_cleanup_unblocks() {
     shared
         .wait_for(ClientId(9), ClientKind::Command, &["late".into()])
         .expect("disconnected wait does not park");
-    assert!(!shared.inner.lock().wait_channels.contains_key("late"));
+    assert!(!shared.inner.lock().waits.wait_channels.contains_key("late"));
 }
 
 #[test]
@@ -874,7 +903,13 @@ fn kill_server_flushes_waiters() {
         waiter_shared.wait_for(ClientId(5), ClientKind::Command, &["shutdown".into()])
     });
     let deadline = Instant::now() + Duration::from_secs(2);
-    while !shared.inner.lock().wait_channels.contains_key("shutdown") {
+    while !shared
+        .inner
+        .lock()
+        .waits
+        .wait_channels
+        .contains_key("shutdown")
+    {
         assert!(Instant::now() < deadline, "shutdown waiter did not queue");
         thread::yield_now();
     }
@@ -887,5 +922,5 @@ fn kill_server_flushes_waiters() {
         )
         .expect("kill server");
     waiter.join().expect("waiter").expect("shutdown flush");
-    assert!(shared.inner.lock().wait_channels.is_empty());
+    assert!(shared.inner.lock().waits.wait_channels.is_empty());
 }

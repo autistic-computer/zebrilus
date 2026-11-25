@@ -6,6 +6,7 @@ fn wait_until_parked(shared: &Shared, name: &str) {
         if shared
             .inner
             .lock()
+            .waits
             .wait_channels
             .get(name)
             .is_some_and(|channel| !channel.waiters.is_empty())

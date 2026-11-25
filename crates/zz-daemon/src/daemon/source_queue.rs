@@ -852,7 +852,7 @@ impl SourceExecution {
             shared.nudge_client_timers();
         }
         self.pending_hook_events.extend(std::mem::take(
-            &mut shared.inner.lock().deferred_event_hooks,
+            &mut shared.inner.lock().waits.deferred_event_hooks,
         ));
         if !self.pending_hook_events.is_empty() {
             shared.wake_control_queue(self.client, self.kind);

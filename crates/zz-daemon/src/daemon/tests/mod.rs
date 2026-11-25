@@ -738,6 +738,7 @@ fn claude_peer_status_drives_agent_state_for_terminal_panes() {
                 while shared
                     .inner
                     .lock()
+                    .waits
                     .wait_channels
                     .get(&channel)
                     .is_none_or(|channel| channel.waiters.is_empty())
@@ -767,6 +768,7 @@ fn claude_peer_status_drives_agent_state_for_terminal_panes() {
                 !shared
                     .inner
                     .lock()
+                    .waits
                     .wait_channels
                     .get(&channel)
                     .is_some_and(|channel| channel.woken),

@@ -615,7 +615,7 @@ pub(super) fn control_query_can_defer_wakeup(
         return false;
     };
     if !hook_events::command_is_read_only(name, &command.invocation.args)
-        || !inner.deferred_event_hooks.is_empty()
+        || !inner.waits.deferred_event_hooks.is_empty()
     {
         return false;
     }

@@ -982,12 +982,12 @@ fn an_interactive_client_parks_on_an_event_wait() {
         })
     };
     let deadline = Instant::now() + Duration::from_secs(10);
-    while shared.inner.lock().event_waiters.is_empty() {
+    while shared.inner.lock().waits.event_waiters.is_empty() {
         assert!(!waiter.is_finished(), "the wait returned without parking");
         assert!(Instant::now() < deadline, "the wait never parked");
         std::thread::sleep(Duration::from_millis(5));
     }
     run(&shared, &mut context, &["set-hook", "-E", "@done"]).expect("fire @done");
     waiter.join().expect("waiter thread").expect("wait-for -E");
-    assert!(shared.inner.lock().event_waiters.is_empty());
+    assert!(shared.inner.lock().waits.event_waiters.is_empty());
 }

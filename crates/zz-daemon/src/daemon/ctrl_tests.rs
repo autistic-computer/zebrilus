@@ -646,7 +646,7 @@ fn control_query_wakeup_excludes_hooks_and_pending_events() {
             )
             .expect("unset hook");
     }
-    inner.deferred_event_hooks.push(PendingHookEvent {
+    inner.waits.deferred_event_hooks.push(PendingHookEvent {
         name: "session-renamed",
         context: context.clone(),
         variables: BTreeMap::new(),

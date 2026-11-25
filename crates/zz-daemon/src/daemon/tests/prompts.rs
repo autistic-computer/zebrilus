@@ -32,7 +32,7 @@ fn an_attached_waiter_sees_each_payload_while_it_waits() {
         })
     };
     let deadline = Instant::now() + Duration::from_secs(10);
-    while shared.inner.lock().event_waiters.is_empty() {
+    while shared.inner.lock().waits.event_waiters.is_empty() {
         assert!(!waiter.is_finished(), "the wait returned without parking");
         assert!(Instant::now() < deadline, "the wait never parked");
         std::thread::sleep(Duration::from_millis(5));
@@ -52,11 +52,11 @@ fn an_attached_waiter_sees_each_payload_while_it_waits() {
         !waiter.is_finished(),
         "#{{pane_id}} has no target in the filter"
     );
-    assert_eq!(shared.inner.lock().event_waiters.len(), 1);
+    assert_eq!(shared.inner.lock().waits.event_waiters.len(), 1);
     assert!(shared.read_client(client, |c| c.is_some_and(|c| c.command_output.is_some())));
     rename("stop");
     waiter.join().expect("waiter thread").expect("wait-for -E");
-    assert!(shared.inner.lock().event_waiters.is_empty());
+    assert!(shared.inner.lock().waits.event_waiters.is_empty());
 }
 
 #[test]
@@ -89,7 +89,7 @@ fn wait_for_wakes_on_an_agent_state_event() {
     let other = wait("%999".to_owned());
     let waiter = wait(pane.to_string());
     let deadline = Instant::now() + Duration::from_secs(10);
-    while shared.inner.lock().event_waiters.len() < 2 {
+    while shared.inner.lock().waits.event_waiters.len() < 2 {
         assert!(!waiter.is_finished(), "the wait returned without parking");
         assert!(Instant::now() < deadline, "the wait never parked");
         std::thread::sleep(Duration::from_millis(5));
@@ -107,7 +107,7 @@ fn wait_for_wakes_on_an_agent_state_event() {
         .expect("waiter thread")
         .expect("wait-for -E agent-state-changed");
     assert!(!other.is_finished(), "another pane's wait stays parked");
-    assert_eq!(shared.inner.lock().event_waiters.len(), 1);
+    assert_eq!(shared.inner.lock().waits.event_waiters.len(), 1);
     let payload = hook_events::event_payload(
         "agent-state-changed",
         &BTreeMap::from([

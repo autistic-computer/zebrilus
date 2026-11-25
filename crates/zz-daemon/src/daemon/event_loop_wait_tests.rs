@@ -81,10 +81,12 @@ fn twenty_signal_waiters_add_no_workers_and_complete_once_each() {
         })
         .collect::<Vec<_>>();
     assert_eq!(
-        shared.inner.lock().wait_channels["e06-all"].waiters.len(),
+        shared.inner.lock().waits.wait_channels["e06-all"]
+            .waiters
+            .len(),
         20
     );
-    let continuations = shared.inner.lock().wait_channels["e06-all"]
+    let continuations = shared.inner.lock().waits.wait_channels["e06-all"]
         .waiters
         .iter()
         .map(|item| item.continuation.clone())
@@ -152,7 +154,9 @@ fn twenty_lock_waiters_resume_fifo_without_workers() {
         })
         .collect::<Vec<_>>();
     assert_eq!(
-        shared.inner.lock().wait_channels["e06-lock"].lockers.len(),
+        shared.inner.lock().waits.wait_channels["e06-lock"]
+            .lockers
+            .len(),
         20
     );
     for index in 0..20 {
@@ -172,7 +176,7 @@ fn twenty_lock_waiters_resume_fifo_without_workers() {
         }
     }
     signal(&shared, "-U", "e06-lock");
-    assert!(!shared.inner.lock().wait_channels["e06-lock"].locked);
+    assert!(!shared.inner.lock().waits.wait_channels["e06-lock"].locked);
     assert_eq!(shared.connection_threads.worker_count(), 0);
     assert!(
         shared
@@ -203,10 +207,19 @@ fn nested_alias_wait_preserves_frames_without_a_worker() {
         &shared,
         vec![CommandInvocation::new("first", [] as [&str; 0])],
     );
-    assert!(!shared.inner.lock().wait_channels.contains_key("e06-alias"));
+    assert!(
+        !shared
+            .inner
+            .lock()
+            .waits
+            .wait_channels
+            .contains_key("e06-alias")
+    );
     event_loop.turn(&shared).unwrap();
     assert_eq!(
-        shared.inner.lock().wait_channels["e06-alias"].waiters.len(),
+        shared.inner.lock().waits.wait_channels["e06-alias"]
+            .waiters
+            .len(),
         1
     );
     event_loop.turn(&shared).unwrap();
@@ -285,9 +298,9 @@ fn cancellation_between_unlock_and_resume_transfers_the_lock() {
         )),
         [String::new()]
     );
-    assert!(shared.inner.lock().wait_channels["race"].locked);
+    assert!(shared.inner.lock().waits.wait_channels["race"].locked);
     signal(&shared, "-U", "race");
-    assert!(!shared.inner.lock().wait_channels["race"].locked);
+    assert!(!shared.inner.lock().waits.wait_channels["race"].locked);
 }
 
 #[test]
@@ -331,7 +344,7 @@ fn twenty_inserted_waiters_complete_once_on_the_loop_without_workers() {
         .store(true, Ordering::Release);
     event_loop.turn(&shared).unwrap();
     assert_eq!(
-        shared.inner.lock().wait_channels["inserted-all"]
+        shared.inner.lock().waits.wait_channels["inserted-all"]
             .waiters
             .len(),
         20

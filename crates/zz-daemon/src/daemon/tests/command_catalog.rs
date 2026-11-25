@@ -375,6 +375,6 @@ fn catalogued_positional_minimums_precede_daemon_targets_and_effects() {
     assert!(inner.engine.state.sessions.is_empty());
     assert!(inner.clients.values().all(|c| c.menu.is_none()));
     assert!(inner.clients.values().all(|c| c.confirm.is_none()));
-    assert!(inner.wait_channels.is_empty());
+    assert!(inner.waits.wait_channels.is_empty());
     assert!(inner.paste_buffers.is_empty());
 }

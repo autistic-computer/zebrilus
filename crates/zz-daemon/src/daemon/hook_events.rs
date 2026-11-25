@@ -1968,7 +1968,7 @@ pub(super) fn event_waited_in(waiters: &[EventWaiter], name: &str) -> bool {
 
 impl Shared {
     pub(super) fn event_waited(&self, name: &str) -> bool {
-        event_waited_in(&self.inner.lock().event_waiters, name)
+        event_waited_in(&self.inner.lock().waits.event_waiters, name)
     }
 
     pub(super) fn feed_event_waiters(
@@ -1978,7 +1978,12 @@ impl Shared {
     ) {
         let (woken, printed, lines) = {
             let mut inner = self.inner.lock();
-            if !inner.event_waiters.iter().any(|waiter| waiter.name == name) {
+            if !inner
+                .waits
+                .event_waiters
+                .iter()
+                .any(|waiter| waiter.name == name)
+            {
                 return;
             }
             let payload = event_payload(name, variables);
@@ -1986,6 +1991,7 @@ impl Shared {
             let passes = {
                 let facts = borrowed_format_hook_facts(&inner);
                 inner
+                    .waits
                     .event_waiters
                     .iter()
                     .enumerate()
@@ -2015,13 +2021,13 @@ impl Shared {
             let mut woken = Vec::new();
             let mut printed = Vec::new();
             for (index, pass) in passes.into_iter().rev() {
-                let waiter = inner.event_waiters[index].client;
-                if inner.event_waiters[index].verbose {
+                let waiter = inner.waits.event_waiters[index].client;
+                if inner.waits.event_waiters[index].verbose {
                     let print = match inner.client(waiter).and_then(|client| client.kind) {
                         Some(ClientKind::Command) => PayloadPrint::Stdout,
                         Some(ClientKind::Control) => PayloadPrint::Control,
                         _ => {
-                            let view = &mut inner.event_waiters[index].output;
+                            let view = &mut inner.waits.event_waiters[index].output;
                             view.push_str(&lines);
                             trim_event_view(view);
                             PayloadPrint::View(view.clone())
@@ -2030,7 +2036,7 @@ impl Shared {
                     printed.push((waiter, print));
                 }
                 if pass {
-                    woken.push(inner.event_waiters.remove(index));
+                    woken.push(inner.waits.event_waiters.remove(index));
                 }
             }
             woken.reverse();
@@ -2084,6 +2090,7 @@ impl Shared {
         if list {
             let inner = self.inner.lock();
             let lines = inner
+                .waits
                 .event_waiters
                 .iter()
                 .filter(|waiter| waiter.name == name)
@@ -2097,10 +2104,10 @@ impl Shared {
         if let Some(target) = wake {
             let woken = {
                 let mut inner = self.inner.lock();
-                let index = inner.event_waiters.iter().position(|waiter| {
+                let index = inner.waits.event_waiters.iter().position(|waiter| {
                     waiter.name == name && client_format_name(&inner, waiter.client) == target
                 });
-                index.map(|index| inner.event_waiters.remove(index))
+                index.map(|index| inner.waits.event_waiters.remove(index))
             };
             let Some(woken) = woken else {
                 return Err(
@@ -2129,7 +2136,7 @@ impl Shared {
                 wake_owner,
             );
             let state = terminal_requests::CommandState::parked(continuation.clone());
-            inner.event_waiters.push(EventWaiter {
+            inner.waits.event_waiters.push(EventWaiter {
                 client,
                 name: name.to_owned(),
                 filter: filter.map(str::to_owned),
@@ -2170,6 +2177,7 @@ impl Shared {
             let token = continuation.token;
             self.inner
                 .lock()
+                .waits
                 .event_waiters
                 .retain(|waiter| waiter.state.continuation.token != token);
             drop(state);

@@ -737,7 +737,7 @@ fn pane_event_if_observed(
     name: &'static str,
     pane: PaneId,
 ) -> Option<PendingHookEvent> {
-    let waited = hook_events::event_waited_in(&inner.event_waiters, name);
+    let waited = hook_events::event_waited_in(&inner.waits.event_waiters, name);
     let event = PendingHookEvent::live_pane(name, pane, &inner.engine)?;
     let hooked = inner
         .engine
@@ -6454,9 +6454,9 @@ impl Shared {
                 client.visible_agents = None;
                 client.focused_window = None;
             }
-            let mut wakes = take_all_wait_wakes(&mut inner.wait_channels);
+            let mut wakes = take_all_wait_wakes(&mut inner.waits.wait_channels);
             wakes.extend(hook_events::take_event_waiter_wakes(
-                &mut inner.event_waiters,
+                &mut inner.waits.event_waiters,
                 None,
             ));
             pane_exit::cancel_all(&mut inner);
@@ -7374,9 +7374,9 @@ impl Shared {
                 .transfers
                 .file_writes
                 .retain(|(writer, _), _| *writer != client);
-            let mut wait_wakes = remove_client_wait_items(&mut inner.wait_channels, client);
+            let mut wait_wakes = remove_client_wait_items(&mut inner.waits.wait_channels, client);
             wait_wakes.extend(hook_events::take_event_waiter_wakes(
-                &mut inner.event_waiters,
+                &mut inner.waits.event_waiters,
                 Some(client),
             ));
             pane_exit::cancel_client(&mut inner, client);
@@ -13155,7 +13155,9 @@ impl Shared {
         if client_timers_changed || status_formats_changed || !status_refresh_sessions.is_empty() {
             self.nudge_client_timers();
         }
-        pending_hook_events.extend(std::mem::take(&mut self.inner.lock().deferred_event_hooks));
+        pending_hook_events.extend(std::mem::take(
+            &mut self.inner.lock().waits.deferred_event_hooks,
+        ));
         if !pending_hook_events.is_empty() {
             self.wake_control_queue(client, kind);
         }
@@ -13495,7 +13497,11 @@ impl Shared {
     fn signal_wait_channel(&self, name: &str) {
         let wakes = {
             let mut inner = self.inner.lock();
-            let channel = inner.wait_channels.entry(name.to_owned()).or_default();
+            let channel = inner
+                .waits
+                .wait_channels
+                .entry(name.to_owned())
+                .or_default();
             if channel.waiters.is_empty() && !channel.woken {
                 channel.woken = true;
                 return;
@@ -13505,7 +13511,7 @@ impl Shared {
                 .drain(..)
                 .map(|item| item.continuation)
                 .collect::<Vec<_>>();
-            remove_wait_channel_if_unused(&mut inner.wait_channels, name);
+            remove_wait_channel_if_unused(&mut inner.waits.wait_channels, name);
             wakes
         };
         self.wake_wait_items(wakes);
@@ -13561,6 +13567,7 @@ impl Shared {
         if parsed.has('l') {
             let inner = self.inner.lock();
             let lines = inner
+                .waits
                 .wait_channels
                 .get(name)
                 .map(|channel| {
@@ -13580,7 +13587,7 @@ impl Shared {
         if let Some(waiter) = parsed.value('w') {
             let wake = {
                 let mut inner = self.inner.lock();
-                let names = inner.wait_channels.get(name).map(|channel| {
+                let names = inner.waits.wait_channels.get(name).map(|channel| {
                     (
                         channel
                             .waiters
@@ -13592,19 +13599,19 @@ impl Shared {
                             .position(|item| client_format_name(&inner, item.client) == waiter),
                     )
                 });
-                let channel = inner.wait_channels.get_mut(name);
+                let channel = inner.waits.wait_channels.get_mut(name);
                 let item = match (channel, names) {
                     (Some(channel), Some((Some(index), _))) => channel.waiters.remove(index),
                     (Some(channel), Some((None, Some(index)))) => channel.lockers.remove(index),
                     _ => None,
                 };
-                if inner.wait_channels.get(name).is_some_and(|channel| {
+                if inner.waits.wait_channels.get(name).is_some_and(|channel| {
                     !channel.locked
                         && !channel.woken
                         && channel.waiters.is_empty()
                         && channel.lockers.is_empty()
                 }) {
-                    inner.wait_channels.remove(name);
+                    inner.waits.wait_channels.remove(name);
                 }
                 item.map(|item| item.continuation)
             };
@@ -13630,7 +13637,7 @@ impl Shared {
                 {
                     return Ok(Execution::default());
                 }
-                let channel = inner.wait_channels.entry(name.clone()).or_default();
+                let channel = inner.waits.wait_channels.entry(name.clone()).or_default();
                 if !channel.locked {
                     channel.locked = true;
                     return Ok(Execution::default());
@@ -13653,7 +13660,7 @@ impl Shared {
         if parsed.has('U') {
             let wake = {
                 let mut inner = self.inner.lock();
-                let Some(channel) = inner.wait_channels.get_mut(name) else {
+                let Some(channel) = inner.waits.wait_channels.get_mut(name) else {
                     return Err(
                         ServerError::InvalidCommand(format!("channel {name} not locked")).into(),
                     );
@@ -13670,7 +13677,7 @@ impl Shared {
                     Some(continuation)
                 } else {
                     channel.locked = false;
-                    remove_wait_channel_if_unused(&mut inner.wait_channels, name);
+                    remove_wait_channel_if_unused(&mut inner.waits.wait_channels, name);
                     None
                 }
             };
@@ -13690,9 +13697,9 @@ impl Shared {
             {
                 return Ok(Execution::default());
             }
-            let channel = inner.wait_channels.entry(name.clone()).or_default();
+            let channel = inner.waits.wait_channels.entry(name.clone()).or_default();
             if channel.woken {
-                remove_wait_channel_if_unused(&mut inner.wait_channels, name);
+                remove_wait_channel_if_unused(&mut inner.waits.wait_channels, name);
                 return Ok(Execution::default());
             }
             let continuation = cmdq::WaitContinuation::new(
@@ -28115,11 +28122,12 @@ impl Shared {
                 .key_engine
                 .get_or_insert_default()
                 .switch_table(Some(table));
-            inner.next_command_output_id = inner
+            inner.waits.next_command_output_id = inner
+                .waits
                 .next_command_output_id
                 .checked_add(1)
                 .expect("command output IDs exhausted");
-            let output_id = inner.next_command_output_id;
+            let output_id = inner.waits.next_command_output_id;
             inner
                 .client_entry(client)
                 .command_output
@@ -29275,7 +29283,7 @@ impl Shared {
                             if let Some(registered) = inner.client_mut(client) {
                                 registered.last_session = None;
                             }
-                            inner.deferred_event_hooks.extend(events);
+                            inner.waits.deferred_event_hooks.extend(events);
                             let outbound = inner
                                 .client(client)
                                 .and_then(|c| c.subscriber.as_ref())
@@ -29845,6 +29853,7 @@ impl Shared {
             for client in recipients {
                 if let Some(item) = capture_item
                     && let Some(capture) = inner
+                        .waits
                         .control_command_event_captures
                         .get_mut(&(client, item))
                         .and_then(|captures| captures.last_mut())
@@ -29960,6 +29969,7 @@ impl Shared {
                 .map(|item| (client, item.lock().id));
             let mut inner = self.inner.lock();
             if let Some(capture) = inner
+                .waits
                 .control_command_event_captures
                 .get_mut(&capture_key.unwrap_or((client, cmdq::ItemId::NONE)))
                 .and_then(|captures| captures.last_mut())
@@ -30036,6 +30046,7 @@ impl Shared {
         let item_id = self.command_item.as_ref().expect("command item").lock().id;
         self.inner
             .lock()
+            .waits
             .control_command_event_captures
             .entry((client, item_id))
             .or_default()
@@ -30055,10 +30066,16 @@ impl Shared {
     ) -> Option<CapturedControlCommandEvents> {
         let capture_key = (client, item_id);
         let mut inner = self.inner.lock();
-        let captures = inner.control_command_event_captures.get_mut(&capture_key)?;
+        let captures = inner
+            .waits
+            .control_command_event_captures
+            .get_mut(&capture_key)?;
         let finished = captures.pop();
         if captures.is_empty() {
-            inner.control_command_event_captures.remove(&capture_key);
+            inner
+                .waits
+                .control_command_event_captures
+                .remove(&capture_key);
         }
         finished
     }
@@ -30070,6 +30087,7 @@ impl Shared {
             .map(|item| (client, item.lock().id));
         self.inner
             .lock()
+            .waits
             .control_command_event_captures
             .get(&capture_key.unwrap_or((client, cmdq::ItemId::NONE)))
             .is_some_and(|captures| !captures.is_empty())
@@ -36835,7 +36853,7 @@ struct ServerState {
     window_latest_clients: BTreeMap<WindowId, ClientId>,
     session_last_attached: BTreeMap<SessionId, u64>,
     activity_sequence: u64,
-    deferred_event_hooks: Vec<PendingHookEvent>,
+    waits: Waits,
     terminals: Arc<BTreeMap<PaneId, Arc<TerminalSession>>>,
     name_checks: BTreeMap<PaneId, timers::NameCheck>,
     scheduled_name_check: Option<Instant>,
@@ -36857,9 +36875,6 @@ struct ServerState {
     #[cfg(feature = "agent")]
     agent_forks: BTreeMap<PaneId, Option<String>>,
     terminal_spawns: BTreeMap<PaneId, TerminalSpawn>,
-    next_command_output_id: u64,
-    control_command_event_captures:
-        HashMap<(ClientId, cmdq::ItemId), Vec<CapturedControlCommandEvents>>,
     transfers: Transfers,
     pane_exit_waits: BTreeMap<PaneId, PaneExitWait>,
     attached: BTreeMap<SessionId, BTreeSet<ClientId>>,
@@ -36874,7 +36889,6 @@ struct ServerState {
     pane_modes: BTreeMap<PaneId, Vec<PaneModeRequest>>,
     pane_mode_transitions: Vec<PaneModeTransition>,
     open_pane_prompts: BTreeMap<ClientId, (u64, PaneId, CommandPromptType)>,
-    event_waiters: Vec<hook_events::EventWaiter>,
     pane_mode_zooms: BTreeSet<PaneId>,
     pane_mode_kill_panes: Vec<PaneId>,
     panes_mode_frames: BTreeMap<PaneId, PanesModeFrames>,
@@ -36894,7 +36908,6 @@ struct ServerState {
     next_buffer_id: u64,
     next_client_id: u64,
     next_display_panes_token: u64,
-    wait_channels: BTreeMap<String, WaitChannel>,
     pane_pipes: BTreeMap<PaneId, PanePipe>,
     control_routes: BTreeMap<ClientId, ControlRoute>,
     next_pipe_token: u64,
@@ -36905,6 +36918,16 @@ struct ServerState {
     border_presentations_cache: Mutex<Option<CachedBorderPresentations>>,
     status_parameters_cache: Mutex<Option<CachedStatusParameters>>,
     status_preparation_cache: Mutex<Option<CachedStatusPreparation>>,
+}
+
+#[derive(Default)]
+struct Waits {
+    event_waiters: Vec<hook_events::EventWaiter>,
+    deferred_event_hooks: Vec<PendingHookEvent>,
+    wait_channels: BTreeMap<String, WaitChannel>,
+    control_command_event_captures:
+        HashMap<(ClientId, cmdq::ItemId), Vec<CapturedControlCommandEvents>>,
+    next_command_output_id: u64,
 }
 
 #[derive(Default)]
@@ -50141,7 +50164,7 @@ fn remove_wait_item(
     token: cmdq::ContinuationToken,
     cancelled: bool,
 ) -> Option<cmdq::WaitContinuation> {
-    let channel = inner.wait_channels.get_mut(name)?;
+    let channel = inner.waits.wait_channels.get_mut(name)?;
     channel
         .waiters
         .retain(|item| item.continuation.token != token);
@@ -50164,7 +50187,7 @@ fn remove_wait_item(
                 .map(|item| item.continuation.clone());
         }
     }
-    remove_wait_channel_if_unused(&mut inner.wait_channels, name);
+    remove_wait_channel_if_unused(&mut inner.waits.wait_channels, name);
     wake
 }
 

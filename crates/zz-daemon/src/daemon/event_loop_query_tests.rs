@@ -219,6 +219,7 @@ fn command_hooks_park_plain_input_on_the_loop() {
     while shared
         .inner
         .lock()
+        .waits
         .wait_channels
         .get("b3fix-hook")
         .is_none_or(|channel| channel.waiters.is_empty())
