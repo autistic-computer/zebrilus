@@ -153,8 +153,10 @@ mod tests {
     #[test]
     fn hover_card_waits_for_open_and_close_delays_and_stays_open_while_card_hovered() {
         let start = Instant::now();
-        let mut state = HoverCardState::default();
-        state.trigger_hovered = true;
+        let mut state = HoverCardState {
+            trigger_hovered: true,
+            ..HoverCardState::default()
+        };
         assert!(state.sync(start));
         assert!(!state.presence.is_open());
         assert!(!state.sync(start + HOVER_CARD_OPEN_DELAY));
