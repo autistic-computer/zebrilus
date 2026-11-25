@@ -11962,6 +11962,7 @@ version = "0.31.0"
 dependencies = [
  "base64 0.23.1",
  "core-foundation",
+ "crossbeam-channel",
  "ed25519-dalek",
  "getrandom 0.4.3",
  "interprocess",
@@ -11978,6 +11979,7 @@ dependencies = [
  "thiserror 2.0.21",
  "tokio",
  "windows",
+ "windows-sys 0.61.2",
  "zeroize",
  "zz-protocol",
  "zz-terminal",

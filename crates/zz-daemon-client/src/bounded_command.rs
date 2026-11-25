@@ -6,11 +6,11 @@ use std::{
     time::{Duration, Instant},
 };
 
-use zz_daemon_client::unmasked::SpawnUnmasked as _;
+use crate::unmasked::SpawnUnmasked as _;
 
 const MAX_STDERR_BYTES: usize = 256 * 1024;
 
-pub(crate) fn run_output_until(
+pub fn run_output_until(
     command: Command,
     max_stdout: usize,
     deadline: Instant,
@@ -18,7 +18,7 @@ pub(crate) fn run_output_until(
     run_output_until_cancelled(command, max_stdout, deadline, &|| false)
 }
 
-pub(crate) fn run_output_until_cancelled(
+pub fn run_output_until_cancelled(
     mut command: Command,
     max_stdout: usize,
     deadline: Instant,

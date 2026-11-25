@@ -1092,7 +1092,7 @@ impl Runtime {
         if self.ready_sent {
             command.args(["--permission-mode", &self.settings.mode]);
         }
-        for name in crate::PARENT_CLAUDE_SESSION_ENVIRONMENT {
+        for name in zz_daemon_client::agent_context::PARENT_CLAUDE_SESSION_ENVIRONMENT {
             command.env_remove(name);
         }
         if !self.command.sets_system_prompt()
@@ -1101,9 +1101,12 @@ impl Runtime {
             let session = self.workspace.session.as_deref().unwrap_or_default();
             command.args([
                 "--append-system-prompt",
-                &crate::workspace_context(pane, session, true),
+                &zz_daemon_client::agent_context::workspace_context(pane, session, true),
             ]);
-            command.env(crate::WORKSPACE_CONTEXT_SENT_ENVIRONMENT_VARIABLE, "1");
+            command.env(
+                zz_daemon_client::agent_context::WORKSPACE_CONTEXT_SENT_ENVIRONMENT_VARIABLE,
+                "1",
+            );
         }
         if *self.auto_approve.lock() != AgentAutoApprove::Off && !self.command.sets_allowed_tools()
         {
@@ -3136,7 +3139,13 @@ while read -r line; do :; done
             let status = Command::new(std::env::current_exe().expect("test binary"))
                 .args([
                     "--exact",
-                    "agent::claude::tests::a_managed_login_runs_claude_without_inherited_login_variables",
+                    concat!(
+                        module_path!(),
+                        "::a_managed_login_runs_claude_without_inherited_login_variables"
+                    )
+                    .split_once("::")
+                    .expect("crate-qualified test path")
+                    .1,
                     "--test-threads=1",
                 ])
                 .env(CHILD, "1")

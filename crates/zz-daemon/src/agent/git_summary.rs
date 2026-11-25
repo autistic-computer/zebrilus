@@ -6,7 +6,7 @@ use std::{
 
 use zz_protocol::AgentGitSummary;
 
-use crate::bounded_command::run_output_until;
+use zz_daemon_client::bounded_command::run_output_until;
 
 const MAX_GIT_OUTPUT_BYTES: usize = 2 * 1024 * 1024;
 const GIT_TIMEOUT: Duration = Duration::from_secs(5);

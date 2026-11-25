@@ -376,7 +376,7 @@ impl AgentRuntime {
     }
 
     pub(crate) fn prewarm(&self) {
-        if cfg!(test) {
+        if crate::agent::sandboxed() {
             return;
         }
         self.host.prewarm();

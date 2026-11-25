@@ -22,8 +22,10 @@ pub const FLOW_WINDOW_ENVIRONMENT_VARIABLE: &str = "ZZ_FLOW_WINDOW";
 pub const SSH_BATCH_ENVIRONMENT_VARIABLE: &str = "ZZ_SSH_BATCH";
 pub const COLD_START_PREPARE_ABORT_COMMAND: &str = "__zz-cold-start-prepare-abort";
 
+pub mod agent_context;
 #[cfg_attr(any(target_os = "ios", target_os = "android"), allow(dead_code))]
 mod askpass;
+pub mod bounded_command;
 mod client;
 #[cfg_attr(any(target_os = "ios", target_os = "android"), allow(dead_code))]
 mod endpoint;
@@ -43,6 +45,7 @@ mod lifecycle;
 #[cfg_attr(any(target_os = "ios", target_os = "android"), allow(dead_code))]
 mod paths;
 pub mod process_info;
+pub mod reply;
 #[cfg(all(any(unix, windows), not(any(target_os = "ios", target_os = "android"))))]
 mod route;
 #[cfg(any(target_os = "ios", target_os = "android"))]

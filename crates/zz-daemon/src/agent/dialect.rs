@@ -106,7 +106,7 @@ pub(crate) async fn run(
         .zip(config.workspace.pane.as_deref())
         .map(|(key, pane)| {
             let session = config.workspace.session.as_deref().unwrap_or_default();
-            let rules = crate::workspace_context(pane, session, true);
+            let rules = zz_daemon_client::agent_context::workspace_context(pane, session, true);
             serde_json::Map::from_iter([(key.to_owned(), Value::String(rules))])
         });
     run_through(dialect, provider, channels, move |inner| {

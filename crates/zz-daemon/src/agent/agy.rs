@@ -65,7 +65,7 @@ fn program(path: Option<&str>) -> Result<PathBuf, String> {
 fn speaks_acp(program: &Path) -> bool {
     let mut command = Command::new(program);
     command.args([ACP, "--help"]).stdin(Stdio::null());
-    crate::bounded_command::run_output_until(
+    zz_daemon_client::bounded_command::run_output_until(
         command,
         MAX_USAGE_BYTES,
         Instant::now() + USAGE_TIMEOUT,

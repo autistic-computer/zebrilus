@@ -66,7 +66,7 @@ const TRUNCATION_MARKER: &str = "… [truncated]";
 const INITIALIZE_TIMEOUT: Duration = Duration::from_mins(1);
 const RPC_TIMEOUT: Duration = Duration::from_secs(30);
 const CLOSE_TIMEOUT: Duration = Duration::from_secs(2);
-const CANCEL_GRACE: Duration = if cfg!(test) {
+const CANCEL_GRACE: Duration = if crate::agent::sandboxed() {
     Duration::from_millis(300)
 } else {
     Duration::from_secs(5)

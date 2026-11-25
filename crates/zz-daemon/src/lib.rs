@@ -13,29 +13,19 @@ use std::{
 };
 
 use zz_daemon_client::STARTUP_REENTRY_ENVIRONMENT_VARIABLE;
+pub(crate) use zz_daemon_client::agent_context::{
+    PARENT_CLAUDE_SESSION_ENVIRONMENT, TMUX_SHIM_DIRECTORY_ENVIRONMENT_VARIABLE,
+    TMUX_SHIM_EXECUTABLE_ENVIRONMENT_VARIABLE,
+};
+#[cfg_attr(not(feature = "agent"), allow(unused_imports))]
+pub(crate) use zz_daemon_client::bounded_command;
+pub(crate) use zz_daemon_client::process_info::pid_alive;
 use zz_protocol::RawText;
-
-pub(crate) const PARENT_CLAUDE_SESSION_ENVIRONMENT: &[&str] = &[
-    "CLAUDECODE",
-    "CLAUDE_CODE_CHILD_SESSION",
-    "CLAUDE_CODE_SESSION_ID",
-    "CLAUDE_CODE_SESSION_ATTENDED",
-    "CLAUDE_CODE_ENTRYPOINT",
-    "CLAUDE_CODE_EXECPATH",
-    "CLAUDE_CODE_MESSAGING_SOCKET",
-    "CLAUDE_CODE_MESSAGING_TOKEN",
-    "CLAUDE_PID",
-    "CLAUDE_EFFORT",
-];
-const TMUX_SHIM_EXECUTABLE_ENVIRONMENT_VARIABLE: &str = "ZZ_TMUX_EXECUTABLE";
-const TMUX_SHIM_DIRECTORY_ENVIRONMENT_VARIABLE: &str = "ZZ_TMUX_SHIM_DIR";
 
 #[cfg(feature = "agent")]
 mod agent;
 pub mod agent_fork;
 mod agent_hooks;
-#[cfg_attr(not(feature = "agent"), allow(dead_code))]
-mod bounded_command;
 mod daemon;
 mod keys;
 mod status;
@@ -57,35 +47,6 @@ pub use daemon::{
     exec_resume_kind, load_buffer_reads_stdin, send_text_reads_stdin, workspace_context,
     workspace_tools,
 };
-
-#[cfg(unix)]
-#[allow(unsafe_code, clippy::undocumented_unsafe_blocks)]
-pub(crate) fn pid_alive(pid: u32) -> bool {
-    let Ok(pid) = i32::try_from(pid) else {
-        return false;
-    };
-    pid > 0
-        && (unsafe { libc::kill(pid, 0) } == 0
-            || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM))
-}
-
-#[cfg(windows)]
-#[allow(unsafe_code, clippy::undocumented_unsafe_blocks)]
-pub(crate) fn pid_alive(pid: u32) -> bool {
-    use windows_sys::Win32::{
-        Foundation::{CloseHandle, STILL_ACTIVE},
-        System::Threading::{GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION},
-    };
-    let process = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
-    if process.is_null() {
-        // Access denied means it exists, like EPERM above.
-        return std::io::Error::last_os_error().kind() == std::io::ErrorKind::PermissionDenied;
-    }
-    let mut code = 0;
-    let read = unsafe { GetExitCodeProcess(process, &mut code) } != 0;
-    unsafe { CloseHandle(process) };
-    read && code == STILL_ACTIVE.cast_unsigned()
-}
 
 fn tmux_shim_environment(
     tmux_shim: Option<&Path>,

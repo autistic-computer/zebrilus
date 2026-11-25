@@ -18,7 +18,7 @@ use serde_json::{Value, json};
 
 use zz_daemon_client::unmasked::SpawnUnmasked as _;
 
-use crate::pid_alive;
+use zz_daemon_client::process_info::pid_alive;
 
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", default)]

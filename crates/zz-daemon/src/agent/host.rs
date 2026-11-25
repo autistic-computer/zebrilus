@@ -35,7 +35,7 @@ use crate::agent::{
         AgentSessionSummary, AgentStreamItem, AgentStreamPayload,
     },
 };
-use crate::daemon::AgentBlockPolicy;
+use zz_protocol::agent_stream::AgentBlockPolicy;
 
 const PANE_INBOX_CAPACITY: usize = 64;
 const RUNTIME_COMMAND_CAPACITY: usize = 32;
@@ -73,7 +73,7 @@ pub(crate) enum HostCommand {
     },
     NewSession {
         cwd: PathBuf,
-        reply: Option<crate::daemon::cmdq::Reply<Result<(), String>>>,
+        reply: Option<zz_daemon_client::reply::Reply<Result<(), String>>>,
     },
     SwitchSession {
         session: AgentSessionSummary,
@@ -134,7 +134,7 @@ pub(crate) enum PermissionResponse {
     Select {
         request_id: Option<u64>,
         choice: PermissionChoice,
-        reply: crate::daemon::cmdq::Reply<Result<String, String>>,
+        reply: zz_daemon_client::reply::Reply<Result<String, String>>,
     },
 }
 
@@ -226,7 +226,7 @@ pub(crate) fn typed_answer(
 pub(crate) type AgentTurnResult = Result<AgentTurnReply, AgentTurnFailure>;
 #[derive(Debug)]
 pub(crate) struct AgentTurnWaiter {
-    pub(crate) reply: crate::daemon::cmdq::Reply<AgentTurnResult>,
+    pub(crate) reply: zz_daemon_client::reply::Reply<AgentTurnResult>,
     pub(crate) on_block: AgentBlockPolicy,
     pub(crate) audit: Arc<Mutex<Vec<String>>>,
     pub(crate) asks: Option<AgentAsks>,
@@ -871,7 +871,7 @@ struct PanePump {
     dispatched_prompt: Option<(u64, AgentPrompt)>,
     active_waiter: Option<AgentTurnWaiter>,
     joined_waiters: Vec<AgentTurnWaiter>,
-    session_waiter: Option<crate::daemon::cmdq::Reply<Result<(), String>>>,
+    session_waiter: Option<zz_daemon_client::reply::Reply<Result<(), String>>>,
     new_session_pending: bool,
     turn_reply: AgentTurnReply,
     turn_started: Instant,
@@ -1184,7 +1184,7 @@ impl PanePump {
         &mut self,
         command: RuntimeCommand,
         phase: AgentConnectionPhase,
-        reply: Option<crate::daemon::cmdq::Reply<Result<(), String>>>,
+        reply: Option<zz_daemon_client::reply::Reply<Result<(), String>>>,
     ) {
         let accepted = {
             let mut state = self.state.lock();
@@ -3231,7 +3231,7 @@ mod tests {
             response: PermissionResponse::Select {
                 request_id: None,
                 choice: PermissionChoice::Deny,
-                reply: crate::daemon::cmdq::Reply::new(move |result| {
+                reply: zz_daemon_client::reply::Reply::new(move |result| {
                     let _ = sender.send(result);
                 }),
             },

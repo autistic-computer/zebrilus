@@ -5,6 +5,7 @@ use std::{
 };
 
 use serde_json::{Map, Value, json};
+use zz_daemon_client::agent_context::CODEX_RULES;
 
 use crate::WORKSPACE_STUB_SKILL;
 
@@ -14,22 +15,9 @@ const HOOK_TIMEOUT_SECONDS: u64 = 5;
 const STUB_MARKER: &str = "zz-stub:";
 const SKILL_NAME: &str = "zz-workspace";
 const CLAUDE_RULE: &str = "Bash(zz:*)";
-const CODEX_RULES: &str = "# Written by zz tools --install-hooks; zz tools --remove-hooks deletes it.\nprefix_rule(pattern = [\"zz\"], decision = \"allow\")\n";
 const RULES_MARKER: &str = "zz tools --install-hooks";
 const CODEX_HOOK_REVIEW: &str =
     "approve the new hook with /hooks in Codex; until then Codex skips it";
-
-#[cfg(feature = "agent")]
-pub(crate) fn ensure_codex_rule(codex_home: &Path) -> io::Result<bool> {
-    let rules = codex_home.join("rules");
-    let path = rules.join("zz.rules");
-    if path.exists() {
-        return Ok(false);
-    }
-    fs::create_dir_all(&rules)?;
-    fs::write(&path, CODEX_RULES)?;
-    Ok(true)
-}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AgentHookChange {
@@ -421,6 +409,8 @@ fn write_atomically(path: &Path, bytes: &[u8]) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "agent")]
+    use crate::agent::codex::ensure_codex_rule;
 
     #[cfg(feature = "agent")]
     #[test]

@@ -23,7 +23,7 @@ pub(crate) fn config_home() -> Option<PathBuf> {
     let configured = std::env::var_os("CLAUDE_CONFIG_DIR")
         .filter(|value| !value.is_empty())
         .map(PathBuf::from);
-    if cfg!(test) {
+    if crate::agent::sandboxed() {
         return configured;
     }
     configured.or_else(|| zz_daemon_client::home_directory().map(|home| home.join(".claude")))

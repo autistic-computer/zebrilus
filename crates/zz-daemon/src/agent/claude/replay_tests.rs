@@ -1237,7 +1237,13 @@ fn a_session_reloads_from_its_own_transcript_at_every_line() {
         let status = Command::new(std::env::current_exe().expect("test binary"))
             .args([
                 "--exact",
-                "agent::claude::replay_tests::a_session_reloads_from_its_own_transcript_at_every_line",
+                concat!(
+                    module_path!(),
+                    "::a_session_reloads_from_its_own_transcript_at_every_line"
+                )
+                .split_once("::")
+                .expect("crate-qualified test path")
+                .1,
                 "--test-threads=1",
                 "--nocapture",
             ])

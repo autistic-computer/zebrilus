@@ -980,9 +980,9 @@ impl Runtime {
                 self.command.program
             )
         })?;
-        if !cfg!(test)
+        if !crate::agent::sandboxed()
             && let Some(home) = codex_home()
-            && let Err(error) = crate::agent_hooks::ensure_codex_rule(&home)
+            && let Err(error) = ensure_codex_rule(&home)
         {
             log::warn!(target: "zz::agent", "could not write the zz rule under {}: {error}", home.display());
         }
@@ -1012,7 +1012,10 @@ impl Runtime {
                 accounts::strip_logins(&mut command, AgentProvider::Codex);
             }
             if self.workspace.pane.is_some() {
-                command.env(crate::WORKSPACE_CONTEXT_SENT_ENVIRONMENT_VARIABLE, "1");
+                command.env(
+                    zz_daemon_client::agent_context::WORKSPACE_CONTEXT_SENT_ENVIRONMENT_VARIABLE,
+                    "1",
+                );
             }
             for (name, value) in &self.command.env {
                 command.env(name, value);
@@ -1083,7 +1086,10 @@ impl Runtime {
             set(name, value);
         }
         if self.workspace.pane.is_some() {
-            set(crate::WORKSPACE_CONTEXT_SENT_ENVIRONMENT_VARIABLE, "1");
+            set(
+                zz_daemon_client::agent_context::WORKSPACE_CONTEXT_SENT_ENVIRONMENT_VARIABLE,
+                "1",
+            );
         }
         if let Some(path) = self.workspace.path(agent_path().as_deref()) {
             set("PATH", &path);
@@ -1106,7 +1112,9 @@ impl Runtime {
             return;
         };
         let session = self.workspace.session.as_deref().unwrap_or_default();
-        self.instructions = Some(crate::workspace_context(pane, session, true));
+        self.instructions = Some(zz_daemon_client::agent_context::workspace_context(
+            pane, session, true,
+        ));
         let params = self.starting.as_ref().map_or_else(
             || json!({}),
             |starting| json!({ "cwd": starting.cwd.display().to_string() }),
@@ -2811,6 +2819,17 @@ pub(crate) fn codex_home() -> Option<PathBuf> {
         .or_else(|| zz_daemon_client::home_directory().map(|home| home.join(".codex")))
 }
 
+pub(crate) fn ensure_codex_rule(codex_home: &Path) -> std::io::Result<bool> {
+    let rules = codex_home.join("rules");
+    let path = rules.join("zz.rules");
+    if path.exists() {
+        return Ok(false);
+    }
+    std::fs::create_dir_all(&rules)?;
+    std::fs::write(&path, zz_daemon_client::agent_context::CODEX_RULES)?;
+    Ok(true)
+}
+
 #[cfg(unix)]
 pub(crate) fn uses_managed_daemon(command: &CodexCommand) -> bool {
     command.args.is_empty() && command.env.is_empty()
@@ -2825,7 +2844,7 @@ pub(crate) fn managed_socket() -> Option<PathBuf> {
 pub(crate) fn restart_managed_daemon(program: &Path) {
     use zz_daemon_client::unmasked::SpawnUnmasked as _;
 
-    if cfg!(test) || managed_socket().is_none() {
+    if crate::agent::sandboxed() || managed_socket().is_none() {
         return;
     }
     let mut restart = Command::new(program);
@@ -2854,7 +2873,7 @@ pub(crate) fn restart_managed_daemon(program: &Path) {
 fn managed_daemon(program: &Path, command: &CodexCommand) -> Option<PathBuf> {
     use zz_daemon_client::unmasked::SpawnUnmasked as _;
 
-    if cfg!(test) || !uses_managed_daemon(command) {
+    if crate::agent::sandboxed() || !uses_managed_daemon(command) {
         return None;
     }
     if let Some(socket) = managed_socket() {
@@ -3429,7 +3448,7 @@ done
         assert_eq!(
             config[format!(
                 "shell_environment_policy.set.{}",
-                crate::WORKSPACE_CONTEXT_SENT_ENVIRONMENT_VARIABLE
+                zz_daemon_client::agent_context::WORKSPACE_CONTEXT_SENT_ENVIRONMENT_VARIABLE
             )],
             "1"
         );

@@ -43,3 +43,7 @@ pub(crate) mod tape;
 pub(crate) mod turn;
 pub(crate) mod visualize;
 pub(crate) mod zz_command;
+
+pub(crate) const fn sandboxed() -> bool {
+    cfg!(test)
+}

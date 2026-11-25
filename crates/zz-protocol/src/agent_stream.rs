@@ -278,6 +278,15 @@ pub fn agent_verb(text: &str) -> Option<(&'static str, &str)> {
         .map(|verb| (verb, rest))
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum AgentBlockPolicy {
+    #[default]
+    Wait,
+    Fail,
+    Allow,
+    Deny,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

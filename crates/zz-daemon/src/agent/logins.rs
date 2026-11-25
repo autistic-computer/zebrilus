@@ -517,7 +517,7 @@ pub(crate) fn guard() -> MutexGuard<'static, ()> {
 }
 
 fn root() -> io::Result<PathBuf> {
-    if cfg!(test) {
+    if crate::agent::sandboxed() {
         return Ok(test_root());
     }
     crate::agent::paths::accounts_dir()
@@ -624,7 +624,7 @@ fn location(provider: AgentProvider, place: Place<'_>) -> io::Result<Location> {
             format!("{} keeps one login", provider.label()),
         )
     };
-    if cfg!(test) && swaps(provider) {
+    if crate::agent::sandboxed() && swaps(provider) {
         let name = match place {
             Place::Native => "native",
             Place::Parked(id) => id,
@@ -714,7 +714,7 @@ fn hex(bytes: &[u8]) -> String {
 }
 
 pub(crate) fn legacy(provider: AgentProvider, home: &Path) -> io::Result<Option<Login>> {
-    if cfg!(test) {
+    if crate::agent::sandboxed() {
         return Ok(None);
     }
     let location = match provider {

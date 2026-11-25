@@ -257,7 +257,9 @@ impl Pane {
         let session_meta = self.dialect.rules.map(|key| {
             serde_json::Map::from_iter([(
                 key.to_owned(),
-                Value::String(crate::workspace_context("%1", "$1", true)),
+                Value::String(zz_daemon_client::agent_context::workspace_context(
+                    "%1", "$1", true,
+                )),
             )])
         });
         let transport = ByteStreams::new(Writer(Arc::clone(&pipe)), Reader(Arc::clone(&pipe)));

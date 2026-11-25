@@ -107,11 +107,11 @@ impl AgentWorkspaceEnvironment {
             ("TMUX", self.tmux.as_deref()),
             ("TMUX_PANE", self.tmux_pane.as_deref()),
             (
-                crate::TMUX_SHIM_EXECUTABLE_ENVIRONMENT_VARIABLE,
+                zz_daemon_client::agent_context::TMUX_SHIM_EXECUTABLE_ENVIRONMENT_VARIABLE,
                 self.tools_executable.as_deref(),
             ),
             (
-                crate::TMUX_SHIM_DIRECTORY_ENVIRONMENT_VARIABLE,
+                zz_daemon_client::agent_context::TMUX_SHIM_DIRECTORY_ENVIRONMENT_VARIABLE,
                 self.tools.as_deref(),
             ),
         ]
