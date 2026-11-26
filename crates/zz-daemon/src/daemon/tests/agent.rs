@@ -1,4 +1,5 @@
-use zz_protocol::{AgentImage as WireAgentImage, AgentProvider};
+use crate::agent::fanout::AgentRequestReply;
+use zz_protocol::{AgentImage as WireAgentImage, AgentPaneWire, AgentProvider};
 
 use super::*;
 use crate::agent::{

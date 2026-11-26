@@ -1,6 +1,7 @@
 use super::super::agent_publisher::Publisher;
 use super::super::tests::take_reliable_messages;
 use super::*;
+use zz_protocol::AgentPaneWire;
 
 struct Fixture {
     shared: Arc<Shared>,
