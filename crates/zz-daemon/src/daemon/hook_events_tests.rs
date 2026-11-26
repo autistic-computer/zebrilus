@@ -753,7 +753,14 @@ fn a_bind_with_a_subscriber_publishes_only_the_table_it_changed() {
 }
 
 fn focused_panes(shared: &Shared) -> BTreeSet<PaneId> {
-    shared.inner.lock().pane_focus.iter().copied().collect()
+    shared
+        .inner
+        .lock()
+        .attachment
+        .pane_focus
+        .iter()
+        .copied()
+        .collect()
 }
 
 fn session_active_pane_set(shared: &Shared, name: &str) -> BTreeSet<PaneId> {

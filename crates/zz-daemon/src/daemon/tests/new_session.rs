@@ -25,7 +25,7 @@ fn interactive_new_session_attaches_the_requesting_client() {
     let session = context.session.expect("session id");
 
     assert_eq!(
-        shared.inner.lock().attached.get(&session),
+        shared.inner.lock().attachment.attached.get(&session),
         Some(&BTreeSet::from([client]))
     );
     let messages = take_reliable_messages(&mailbox);
@@ -239,7 +239,7 @@ fn interactive_new_session_without_a_terminal_is_rejected_before_creation() {
     ));
     let inner = shared.inner.lock();
     assert!(inner.engine.state.sessions.is_empty());
-    assert!(inner.attached.is_empty());
+    assert!(inner.attachment.attached.is_empty());
     drop(inner);
     assert!(
         !take_reliable_messages(&mailbox)
@@ -275,7 +275,7 @@ fn control_new_session_attaches_without_terminal_frames() {
     let pane = context.pane.expect("pane id");
 
     assert_eq!(
-        shared.inner.lock().attached.get(&session),
+        shared.inner.lock().attachment.attached.get(&session),
         Some(&BTreeSet::from([client]))
     );
     let messages = take_reliable_messages(&mailbox);
@@ -453,6 +453,7 @@ fn new_session_attach_or_create_cwd_survives_preflight_and_control_attach() {
         );
         assert!(
             inner
+                .attachment
                 .attached
                 .values()
                 .all(|clients| !clients.contains(&headless))

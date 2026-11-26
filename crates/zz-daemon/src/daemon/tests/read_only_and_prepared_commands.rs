@@ -12,7 +12,7 @@ fn read_only_terminal_view_actions_use_the_typed_navigation_allowlist() {
         OutboundMailbox::new(),
     );
     shared.attach(client, session).expect("attach viewer");
-    shared.inner.lock().client_flags.insert(client);
+    shared.inner.lock().attachment.client_flags.insert(client);
     let mut context =
         ExecutionContext::for_pane(&shared.inner.lock().engine.state, pane).expect("view context");
 
@@ -33,7 +33,10 @@ fn read_only_terminal_view_actions_use_the_typed_navigation_allowlist() {
             let mut inner = shared.inner.lock();
             inner.engine.state.set_pane_bell(pane, true);
             assert!(inner.engine.state.pane(pane).expect("view pane").bell);
-            (inner.activity_sequence, inner.panes.terminal_input_sequence)
+            (
+                inner.attachment.activity_sequence,
+                inner.panes.terminal_input_sequence,
+            )
         };
         shared
             .input(
@@ -44,7 +47,7 @@ fn read_only_terminal_view_actions_use_the_typed_navigation_allowlist() {
             )
             .expect("apply read-only local view action");
         let inner = shared.inner.lock();
-        assert_eq!(inner.activity_sequence, before.0 + 1);
+        assert_eq!(inner.attachment.activity_sequence, before.0 + 1);
         assert_eq!(inner.panes.terminal_input_sequence, before.1 + 1);
         assert!(inner.engine.state.pane(pane).expect("view pane").bell);
     }
@@ -104,7 +107,10 @@ fn read_only_terminal_view_actions_use_the_typed_navigation_allowlist() {
         assert!(!terminal_view_action_is_read_only_safe(&action));
         let before = {
             let inner = shared.inner.lock();
-            (inner.activity_sequence, inner.panes.terminal_input_sequence)
+            (
+                inner.attachment.activity_sequence,
+                inner.panes.terminal_input_sequence,
+            )
         };
         shared
             .input(
@@ -115,7 +121,7 @@ fn read_only_terminal_view_actions_use_the_typed_navigation_allowlist() {
             )
             .expect("reject read-only shared view action");
         let inner = shared.inner.lock();
-        assert_eq!(inner.activity_sequence, before.0 + 1);
+        assert_eq!(inner.attachment.activity_sequence, before.0 + 1);
         assert_eq!(inner.panes.terminal_input_sequence, before.1 + 1);
         assert_eq!(
             inner.clients[&client].copy_session.as_ref().unwrap().pane,
@@ -126,7 +132,10 @@ fn read_only_terminal_view_actions_use_the_typed_navigation_allowlist() {
 
     let before_focus = {
         let inner = shared.inner.lock();
-        (inner.activity_sequence, inner.panes.terminal_input_sequence)
+        (
+            inner.attachment.activity_sequence,
+            inner.panes.terminal_input_sequence,
+        )
     };
     shared
         .input(
@@ -140,7 +149,7 @@ fn read_only_terminal_view_actions_use_the_typed_navigation_allowlist() {
         )
         .expect("reject read-only pane focus");
     let inner = shared.inner.lock();
-    assert_eq!(inner.activity_sequence, before_focus.0);
+    assert_eq!(inner.attachment.activity_sequence, before_focus.0);
     assert_eq!(inner.panes.terminal_input_sequence, before_focus.1);
     assert!(inner.engine.state.pane(pane).expect("view pane").bell);
 }
@@ -194,7 +203,7 @@ fn read_only_pane_focus_never_reaches_application_focus_reporting() {
         |viewport| viewport.title() == "focus-ready",
     );
 
-    shared.inner.lock().client_flags.insert(client);
+    shared.inner.lock().attachment.client_flags.insert(client);
     shared
         .input(
             client,
@@ -213,7 +222,7 @@ fn read_only_pane_focus_never_reaches_application_focus_reporting() {
             .is_some_and(|viewport| !viewport_text(&viewport).contains("FOCUS_BYTES:"))
     );
 
-    shared.inner.lock().client_flags.remove(client);
+    shared.inner.lock().attachment.client_flags.remove(client);
     shared
         .input(
             client,
@@ -273,7 +282,7 @@ fn read_only_send_keys_and_binding_preflight_are_all_or_nothing() {
     let browser_target = browser.to_string();
     context = ExecutionContext::for_pane(&shared.inner.lock().engine.state, pane)
         .expect("restore send context");
-    shared.inner.lock().client_flags.insert(client);
+    shared.inner.lock().attachment.client_flags.insert(client);
     take_reliable_messages(&mailbox);
 
     for (request_id, command) in [
@@ -984,7 +993,7 @@ fn cold_prepare_abort_requires_an_exclusive_owner_and_disconnect() {
     };
 
     let exclusive = Arc::new(Shared::new(71));
-    exclusive.inner.lock().cold_bootstrap = ColdBootstrapLease::AwaitingFirstExternal;
+    exclusive.inner.lock().attachment.cold_bootstrap = ColdBootstrapLease::AwaitingFirstExternal;
     let owner = register(&exclusive, false);
     let prepared = exclusive.prepare_command_list_for_request(owner, request(71));
     assert_eq!(prepared.len(), 1);
@@ -994,7 +1003,7 @@ fn cold_prepare_abort_requires_an_exclusive_owner_and_disconnect() {
             if message == "unknown command: frobnicate"
     ));
     assert_eq!(
-        exclusive.inner.lock().cold_bootstrap,
+        exclusive.inner.lock().attachment.cold_bootstrap,
         ColdBootstrapLease::PendingAbort(owner)
     );
     assert!(!exclusive.stopping.load(Ordering::Acquire));
@@ -1002,25 +1011,26 @@ fn cold_prepare_abort_requires_an_exclusive_owner_and_disconnect() {
     assert!(exclusive.stopping.load(Ordering::Acquire));
 
     let wrong_generation = Arc::new(Shared::new(72));
-    wrong_generation.inner.lock().cold_bootstrap = ColdBootstrapLease::AwaitingFirstExternal;
+    wrong_generation.inner.lock().attachment.cold_bootstrap =
+        ColdBootstrapLease::AwaitingFirstExternal;
     let owner = register(&wrong_generation, false);
     let _ = wrong_generation.prepare_command_list_for_request(owner, request(71));
     wrong_generation.unregister(owner);
     assert!(!wrong_generation.stopping.load(Ordering::Acquire));
 
     let contested = Arc::new(Shared::new(73));
-    contested.inner.lock().cold_bootstrap = ColdBootstrapLease::AwaitingFirstExternal;
+    contested.inner.lock().attachment.cold_bootstrap = ColdBootstrapLease::AwaitingFirstExternal;
     let owner = register(&contested, false);
     let startup_reentry = register(&contested, true);
     assert_eq!(
-        contested.inner.lock().cold_bootstrap,
+        contested.inner.lock().attachment.cold_bootstrap,
         ColdBootstrapLease::Owned(owner)
     );
     contested.unregister(startup_reentry);
     let competitor = register(&contested, false);
     contested.unregister(competitor);
     assert_eq!(
-        contested.inner.lock().cold_bootstrap,
+        contested.inner.lock().attachment.cold_bootstrap,
         ColdBootstrapLease::Contested
     );
     let _ = contested.prepare_command_list_for_request(owner, request(73));
@@ -1028,15 +1038,20 @@ fn cold_prepare_abort_requires_an_exclusive_owner_and_disconnect() {
     assert!(!contested.stopping.load(Ordering::Acquire));
 
     let pipelined = Arc::new(Shared::new(75));
-    pipelined.inner.lock().cold_bootstrap = ColdBootstrapLease::AwaitingFirstExternal;
+    pipelined.inner.lock().attachment.cold_bootstrap = ColdBootstrapLease::AwaitingFirstExternal;
     let owner = register(&pipelined, false);
     let _ = pipelined.prepare_command_list_for_request(owner, request(75));
-    pipelined.inner.lock().cold_bootstrap.command(owner);
+    pipelined
+        .inner
+        .lock()
+        .attachment
+        .cold_bootstrap
+        .command(owner);
     pipelined.unregister(owner);
     assert!(!pipelined.stopping.load(Ordering::Acquire));
 
     let valid = Arc::new(Shared::new(74));
-    valid.inner.lock().cold_bootstrap = ColdBootstrapLease::AwaitingFirstExternal;
+    valid.inner.lock().attachment.cold_bootstrap = ColdBootstrapLease::AwaitingFirstExternal;
     let owner = register(&valid, false);
     let commands = vec![
         CommandInvocation::new("list-sessions", [] as [&str; 0]),
@@ -1044,7 +1059,7 @@ fn cold_prepare_abort_requires_an_exclusive_owner_and_disconnect() {
     ];
     let _ = valid.prepare_command_list_for_request(owner, commands);
     assert_eq!(
-        valid.inner.lock().cold_bootstrap,
+        valid.inner.lock().attachment.cold_bootstrap,
         ColdBootstrapLease::Committed
     );
     valid.unregister(owner);

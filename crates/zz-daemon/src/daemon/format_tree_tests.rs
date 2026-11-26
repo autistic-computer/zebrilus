@@ -8,7 +8,10 @@ fn fixture() -> (Arc<Shared>, ClientId, ExecutionContext) {
         let mut inner = shared.inner.lock();
         let (session, window, pane) = inner.engine.state.create_session("alpha").unwrap();
         inner.engine.state.create_session("beta").unwrap();
-        inner.attached.insert(session, BTreeSet::from([client]));
+        inner
+            .attachment
+            .attached
+            .insert(session, BTreeSet::from([client]));
         inner
             .client_entry(client)
             .name
@@ -19,7 +22,7 @@ fn fixture() -> (Arc<Shared>, ClientId, ExecutionContext) {
             .tty
             .replace("/dev/ttys003".to_owned());
         inner.client_entry(client).focused_window.replace(window);
-        inner.session_last_attached.insert(session, 73);
+        inner.attachment.session_last_attached.insert(session, 73);
         inner
             .client_entry(client)
             .environment
@@ -49,9 +52,9 @@ fn borrowed<'a>(
         paste_buffers: &inner.buffers.paste_buffers,
         terminals: &inner.terminals,
         pane_pipes: &inner.jobs.pane_pipes,
-        attached: &inner.attached,
+        attached: &inner.attachment.attached,
         clients: &inner.clients,
-        session_last_attached: &inner.session_last_attached,
+        session_last_attached: &inner.attachment.session_last_attached,
         pane_modes: &inner.modes.pane_modes,
         seed: command_format_seed(inner, client, context),
         derived: LazyDerivedFormatFacts::default(),
@@ -358,7 +361,10 @@ fn selected_status_client_callbacks_match_complete_capture_for_every_field() {
         .client_entry(client)
         .last_session
         .replace(last_session);
-    inner.client_flags.apply(client, "read-only,active-pane");
+    inner
+        .attachment
+        .client_flags
+        .apply(client, "read-only,active-pane");
     inner
         .client_entry(client)
         .key_engine

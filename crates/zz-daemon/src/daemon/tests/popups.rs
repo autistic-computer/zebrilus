@@ -65,6 +65,7 @@ fn popup_geometry_uses_the_clients_terminal_metrics_when_a_browser_is_active() {
     let retina = ClientId(1);
     let other = ClientId(2);
     inner
+        .attachment
         .attached
         .insert(session, BTreeSet::from([retina, other]));
     inner
@@ -138,7 +139,10 @@ fn popup_geometry_takes_the_clients_full_terminal_height_like_tty_sy() {
         .set_manual_window_extent(window, 79, 22)
         .unwrap();
     let client = ClientId(1);
-    inner.attached.insert(session, BTreeSet::from([client]));
+    inner
+        .attachment
+        .attached
+        .insert(session, BTreeSet::from([client]));
     inner
         .client_entry(client)
         .kind

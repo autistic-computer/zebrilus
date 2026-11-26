@@ -37,7 +37,7 @@ fn multi_client_attach_uses_latest_active_geometry_and_keeps_independent_views()
         .attach(second_client, session)
         .expect("attach second client");
     assert_eq!(
-        shared.inner.lock().attached.get(&session),
+        shared.inner.lock().attachment.attached.get(&session),
         Some(&BTreeSet::from([first_client, second_client]))
     );
     wait_for_viewport(
@@ -528,7 +528,7 @@ fn multi_client_attach_uses_latest_active_geometry_and_keeps_independent_views()
 
     let inner = shared.inner.lock();
     assert_eq!(
-        inner.attached.get(&session),
+        inner.attachment.attached.get(&session),
         Some(&BTreeSet::from([first_client, third_client]))
     );
     assert!(
@@ -951,6 +951,7 @@ fn detach_client_command_notifies_its_issuer() {
         shared
             .inner
             .lock()
+            .attachment
             .attached
             .values()
             .all(|clients| !clients.contains(&client))
@@ -1015,10 +1016,10 @@ fn detach_client_dash_a_kicks_every_peer_and_keeps_the_caller() {
     }));
     let inner = shared.inner.lock();
     assert!(
-        inner.attached[&session].contains(&caller),
+        inner.attachment.attached[&session].contains(&caller),
         "-a must never detach its own client"
     );
-    assert!(!inner.attached[&session].contains(&peer));
+    assert!(!inner.attachment.attached[&session].contains(&peer));
 }
 
 #[test]
@@ -1076,7 +1077,7 @@ fn detach_client_exec_leaves_control_victims_attached() {
         }),
         "MSG_EXEC only acts in the pty client's attached dispatch"
     );
-    assert!(shared.inner.lock().attached[&session].contains(&control));
+    assert!(shared.inner.lock().attachment.attached[&session].contains(&control));
 
     shared
         .execute(
@@ -1086,7 +1087,7 @@ fn detach_client_exec_leaves_control_victims_attached() {
             &CommandInvocation::new("detach-client", ["-a"]),
         )
         .expect("plain detach still evicts the control victim");
-    assert!(!shared.inner.lock().attached[&session].contains(&control));
+    assert!(!shared.inner.lock().attachment.attached[&session].contains(&control));
 }
 
 #[test]
@@ -1147,7 +1148,11 @@ fn detach_client_dash_s_clears_the_session_including_the_caller() {
     }));
     let inner = shared.inner.lock();
     assert!(
-        inner.attached.get(&session).is_none_or(BTreeSet::is_empty),
+        inner
+            .attachment
+            .attached
+            .get(&session)
+            .is_none_or(BTreeSet::is_empty),
         "-s empties the session"
     );
 }
@@ -1316,7 +1321,7 @@ fn read_only_detach_client_is_limited_to_itself() {
         Arc::clone(&theirs),
     );
     let (session, pane, _) = attached_message_fixture(&shared, "readonly", &[client, peer]);
-    shared.inner.lock().client_flags.insert(client);
+    shared.inner.lock().attachment.client_flags.insert(client);
     let mut context = ExecutionContext::for_pane(&shared.inner.lock().engine.state, pane)
         .expect("read-only context");
 
@@ -1398,7 +1403,7 @@ fn steal_attach_notifies_peer_and_releases_focus_views_and_geometry() {
     {
         let inner = shared.inner.lock();
         assert_eq!(
-            inner.attached.get(&session),
+            inner.attachment.attached.get(&session),
             Some(&BTreeSet::from([desktop, laptop])),
             "plain attach must keep both clients attached"
         );
@@ -1490,7 +1495,7 @@ fn steal_attach_notifies_peer_and_releases_focus_views_and_geometry() {
     {
         let inner = shared.inner.lock();
         assert_eq!(
-            inner.attached.get(&session),
+            inner.attachment.attached.get(&session),
             Some(&BTreeSet::from([laptop]))
         );
         assert!(
@@ -1612,7 +1617,7 @@ fn killing_attached_session_notifies_and_detaches_every_client() {
         );
     }
     let inner = shared.inner.lock();
-    assert!(!inner.attached.contains_key(&session));
+    assert!(!inner.attachment.attached.contains_key(&session));
     assert!(
         inner
             .client(first)

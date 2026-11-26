@@ -46,6 +46,7 @@ impl Fixture {
         )]));
         entry.visible_terminals = Some(BTreeSet::from([self.pane]));
         inner
+            .attachment
             .attached
             .entry(self.session)
             .or_default()
@@ -137,7 +138,7 @@ fn a_detach_racing_a_shard_publish_never_leaves_a_frame_behind() {
     }
     {
         let mut inner = fixture.shared.inner.lock();
-        if let Some(clients) = inner.attached.get_mut(&fixture.session) {
+        if let Some(clients) = inner.attachment.attached.get_mut(&fixture.session) {
             clients.remove(&client);
         }
         let streamed = inner

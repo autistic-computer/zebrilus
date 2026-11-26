@@ -86,7 +86,7 @@ fn every_upstream_command_spelling_has_exact_flag_diagnostics_before_state_or_ef
         let inner = shared.inner.lock();
         assert_eq!(inner.engine.state.snapshot(), snapshot, "{spelling}");
         assert_eq!(inner.engine.keys.snapshot(), keys, "{spelling}");
-        assert!(inner.attached.is_empty(), "{spelling}");
+        assert!(inner.attachment.attached.is_empty(), "{spelling}");
         assert!(inner.buffers.paste_buffers.is_empty(), "{spelling}");
         assert!(
             inner.clients.values().all(|c| c.choose_tree.is_none()),

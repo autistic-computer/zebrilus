@@ -459,7 +459,7 @@ fn concurrent_default_interactive_attaches_atomically_share_session_zero() {
     let inner = shared.inner.lock();
     assert_eq!(inner.engine.state.sessions.len(), 1);
     assert_eq!(
-        inner.attached.get(&SessionId(0)),
+        inner.attachment.attached.get(&SessionId(0)),
         Some(&BTreeSet::from([first, second]))
     );
 }
@@ -1559,6 +1559,7 @@ fn detach_keeps_one_connection_restores_views_and_clears_client_state() {
         assert!(inner.client(client).is_some_and(|c| c.subscriber.is_some()));
         assert!(
             inner
+                .attachment
                 .attached
                 .values()
                 .all(|clients| !clients.contains(&client))
@@ -1649,7 +1650,7 @@ fn detach_keeps_one_connection_restores_views_and_clears_client_state() {
     {
         let inner = shared.inner.lock();
         assert_eq!(
-            inner.attached.get(&session),
+            inner.attachment.attached.get(&session),
             Some(&BTreeSet::from([client]))
         );
         assert!(inner.client(client).is_none_or(|c| c.key_engine.is_none()));

@@ -139,7 +139,7 @@ fn attach_and_terminal_input_update_only_their_activity_boundaries() {
 
     let read_only_sort = {
         let mut inner = shared.inner.lock();
-        inner.client_flags.insert(client);
+        inner.attachment.client_flags.insert(client);
         inner.engine.state.session_mut(first).unwrap().activity = Some(5);
         inner.engine.state.sessions[&first].sort_activity
     };
@@ -159,7 +159,7 @@ fn attach_and_terminal_input_update_only_their_activity_boundaries() {
         let mut inner = shared.inner.lock();
         assert!(inner.engine.state.sessions[&first].sort_activity > read_only_sort);
         assert_ne!(inner.engine.state.sessions[&first].activity, Some(5));
-        inner.client_flags.remove(client);
+        inner.attachment.client_flags.remove(client);
     }
 
     shared
@@ -472,7 +472,7 @@ fn client_focus_updates_activity_and_focus_in_owns_latest_geometry() {
         let inner = shared.inner.lock();
         assert_eq!(inner.engine.pane_geometry(pane), Some((100, 30)));
         (
-            inner.activity_sequence,
+            inner.attachment.activity_sequence,
             inner.panes.terminal_input_sequence,
             inner.engine.state.sessions[&session].sort_activity,
             inner.engine.state.generation(),
@@ -502,7 +502,7 @@ fn client_focus_updates_activity_and_focus_in_owns_latest_geometry() {
             inner.engine.state.sessions[&session].sort_activity,
             sort_activity + 1
         );
-        assert_eq!(inner.activity_sequence, activity_sequence + 1);
+        assert_eq!(inner.attachment.activity_sequence, activity_sequence + 1);
         assert_eq!(
             inner.clients[&second].activity.unwrap(),
             activity_sequence + 1
@@ -575,7 +575,7 @@ fn client_focus_updates_activity_and_focus_in_owns_latest_geometry() {
         (
             inner.engine.state.sessions[&session].activity,
             inner.engine.state.sessions[&session].sort_activity,
-            inner.activity_sequence,
+            inner.attachment.activity_sequence,
             inner.panes.terminal_input_sequence,
             inner.clients[&second].activity.unwrap(),
             terminal_geometry_owner(&inner, pane),
@@ -598,7 +598,7 @@ fn client_focus_updates_activity_and_focus_in_owns_latest_geometry() {
             (
                 inner.engine.state.sessions[&session].activity,
                 inner.engine.state.sessions[&session].sort_activity,
-                inner.activity_sequence,
+                inner.attachment.activity_sequence,
                 inner.panes.terminal_input_sequence,
                 inner.clients[&second].activity.unwrap(),
                 terminal_geometry_owner(&inner, pane),
@@ -613,7 +613,7 @@ fn client_focus_updates_activity_and_focus_in_owns_latest_geometry() {
         inner.engine.state.session_mut(session).unwrap().activity = Some(-11);
         (
             inner.engine.state.sessions[&session].sort_activity,
-            inner.activity_sequence,
+            inner.attachment.activity_sequence,
             inner.panes.terminal_input_sequence,
             terminal_geometry_owner(&inner, pane),
         )
@@ -633,7 +633,7 @@ fn client_focus_updates_activity_and_focus_in_owns_latest_geometry() {
             inner.engine.state.sessions[&session].sort_activity,
             focus_out_state.0 + 1
         );
-        assert_eq!(inner.activity_sequence, focus_out_state.1 + 1);
+        assert_eq!(inner.attachment.activity_sequence, focus_out_state.1 + 1);
         assert_eq!(
             inner.clients[&first].activity.unwrap(),
             focus_out_state.1 + 1
@@ -657,7 +657,7 @@ fn client_focus_updates_activity_and_focus_in_owns_latest_geometry() {
         (
             inner.engine.state.sessions[&session].activity,
             inner.engine.state.sessions[&session].sort_activity,
-            inner.activity_sequence,
+            inner.attachment.activity_sequence,
             inner.panes.terminal_input_sequence,
             inner.clients[&second].activity.unwrap(),
             terminal_geometry_owner(&inner, pane),
@@ -678,7 +678,7 @@ fn client_focus_updates_activity_and_focus_in_owns_latest_geometry() {
         (
             inner.engine.state.sessions[&session].activity,
             inner.engine.state.sessions[&session].sort_activity,
-            inner.activity_sequence,
+            inner.attachment.activity_sequence,
             inner.panes.terminal_input_sequence,
             inner.clients[&second].activity.unwrap(),
             terminal_geometry_owner(&inner, pane),
@@ -797,7 +797,7 @@ fn client_focus_dispatches_any_after_writable_prequeue_and_latest_accounting() {
         CommandInvocation::new("rename-session", ["--", "any-after-accounting"]),
     );
     take_reliable_messages(&first_mailbox);
-    let activity = shared.inner.lock().activity_sequence;
+    let activity = shared.inner.lock().attachment.activity_sequence;
 
     shared
         .input(
@@ -813,7 +813,7 @@ fn client_focus_dispatches_any_after_writable_prequeue_and_latest_accounting() {
         inner.engine.state.sessions[&session].name,
         "any-after-accounting"
     );
-    assert_eq!(inner.activity_sequence, activity + 1);
+    assert_eq!(inner.attachment.activity_sequence, activity + 1);
     assert_eq!(terminal_geometry_owner(&inner, pane), Some(first));
     assert_eq!(inner.engine.pane_geometry(pane), Some((100, 30)));
     assert!(inner.client(first).is_none_or(|c| c.message.is_none()));
@@ -1034,10 +1034,10 @@ fn read_only_client_focus_any_uses_authorization_and_isolates_key_state() {
     );
     let (original_name, activity) = {
         let mut inner = shared.inner.lock();
-        inner.client_flags.insert(first);
+        inner.attachment.client_flags.insert(first);
         (
             inner.engine.state.sessions[&session].name.clone(),
-            inner.activity_sequence,
+            inner.attachment.activity_sequence,
         )
     };
 
@@ -1051,7 +1051,7 @@ fn read_only_client_focus_any_uses_authorization_and_isolates_key_state() {
         .expect("dispatch safe read-only Any");
     {
         let inner = shared.inner.lock();
-        assert_eq!(inner.activity_sequence, activity + 1);
+        assert_eq!(inner.attachment.activity_sequence, activity + 1);
         assert_eq!(
             inner
                 .client(first)
@@ -1085,7 +1085,7 @@ fn read_only_client_focus_any_uses_authorization_and_isolates_key_state() {
         .expect("authorize unsafe read-only Any");
     {
         let inner = shared.inner.lock();
-        assert_eq!(inner.activity_sequence, activity + 2);
+        assert_eq!(inner.attachment.activity_sequence, activity + 2);
         assert_eq!(inner.engine.state.sessions[&session].name, original_name);
         assert_eq!(
             inner
@@ -1171,7 +1171,7 @@ fn client_focus_obeys_writable_command_prompt_prequeue() {
     let focus_state = || {
         let inner = shared.inner.lock();
         (
-            inner.activity_sequence,
+            inner.attachment.activity_sequence,
             inner.panes.terminal_input_sequence,
             inner.engine.state.sessions[&session].sort_activity,
             terminal_geometry_owner(&inner, pane),
@@ -1380,7 +1380,7 @@ fn client_focus_closes_display_panes_and_preserves_chooser_modes() {
     let focus_state = || {
         let inner = shared.inner.lock();
         (
-            inner.activity_sequence,
+            inner.attachment.activity_sequence,
             inner.panes.terminal_input_sequence,
             inner.engine.state.sessions[&session].sort_activity,
             terminal_geometry_owner(&inner, pane),
@@ -1648,7 +1648,7 @@ fn read_only_client_focus_updates_activity_and_focus_in_owns_stored_geometry() {
             },
         )
         .expect("store writable geometry");
-    shared.inner.lock().client_flags.insert(client);
+    shared.inner.lock().attachment.client_flags.insert(client);
     shared
         .input(
             client,
@@ -1676,7 +1676,7 @@ fn read_only_client_focus_updates_activity_and_focus_in_owns_stored_geometry() {
         .expect("enable focus events");
     let mut modal_context = ExecutionContext::for_pane(&shared.inner.lock().engine.state, pane)
         .expect("read-only modal context");
-    shared.inner.lock().client_flags.remove(client);
+    shared.inner.lock().attachment.client_flags.remove(client);
     shared
         .execute(
             client,
@@ -1698,7 +1698,7 @@ fn read_only_client_focus_updates_activity_and_focus_in_owns_stored_geometry() {
     drain_terminal_lane(&read_only_mailbox);
     let focus_out_before = {
         let mut inner = shared.inner.lock();
-        inner.client_flags.insert(client);
+        inner.attachment.client_flags.insert(client);
         assert!(inner.engine.state.set_pane_bell(pane, true));
         inner
             .engine
@@ -1706,7 +1706,7 @@ fn read_only_client_focus_updates_activity_and_focus_in_owns_stored_geometry() {
             .session_mut(session)
             .expect("focus session")
             .activity = Some(-10);
-        assert!(inner.client_flags.contains(client));
+        assert!(inner.attachment.client_flags.contains(client));
         assert_eq!(
             inner.panes.terminal_geometries[&pane][&client],
             TerminalGeometry {
@@ -1720,7 +1720,7 @@ fn read_only_client_focus_updates_activity_and_focus_in_owns_stored_geometry() {
         assert_eq!(inner.engine.pane_geometry(pane), Some((100, 30)));
         (
             inner.engine.state.sessions[&session].sort_activity,
-            inner.activity_sequence,
+            inner.attachment.activity_sequence,
             inner.panes.terminal_input_sequence,
             inner.clients[&client].display_panes.as_ref().unwrap().token,
         )
@@ -1745,7 +1745,7 @@ fn read_only_client_focus_updates_activity_and_focus_in_owns_stored_geometry() {
             inner.engine.state.sessions[&session].sort_activity,
             focus_out_before.0 + 1
         );
-        assert_eq!(inner.activity_sequence, focus_out_before.1 + 1);
+        assert_eq!(inner.attachment.activity_sequence, focus_out_before.1 + 1);
         assert_eq!(
             inner.clients[&client].activity.unwrap(),
             focus_out_before.1 + 1
@@ -1798,7 +1798,7 @@ fn read_only_client_focus_updates_activity_and_focus_in_owns_stored_geometry() {
             .activity = Some(-11);
         (
             inner.engine.state.sessions[&session].sort_activity,
-            inner.activity_sequence,
+            inner.attachment.activity_sequence,
             inner.panes.terminal_input_sequence,
             inner.engine.state.generation(),
         )
@@ -1821,7 +1821,7 @@ fn read_only_client_focus_updates_activity_and_focus_in_owns_stored_geometry() {
             inner.engine.state.sessions[&session].sort_activity,
             focus_in_before.0 + 1
         );
-        assert_eq!(inner.activity_sequence, focus_in_before.1 + 1);
+        assert_eq!(inner.attachment.activity_sequence, focus_in_before.1 + 1);
         assert_eq!(
             inner.clients[&client].activity.unwrap(),
             focus_in_before.1 + 1

@@ -446,6 +446,7 @@ fn control_output_loop_delivers_bytes_without_readers() {
         shared
             .inner
             .lock()
+            .attachment
             .control_routes
             .values()
             .any(|route| route.panes.contains(&pane))

@@ -711,8 +711,18 @@ fn copy_pipe_failure_is_a_reliable_client_message_and_releases_its_permit() {
         let pane = context.pane.expect("pane id");
         let client = ClientId(41);
         let control = ClientId(42);
-        inner.attached.entry(session).or_default().insert(client);
-        inner.attached.entry(session).or_default().insert(control);
+        inner
+            .attachment
+            .attached
+            .entry(session)
+            .or_default()
+            .insert(client);
+        inner
+            .attachment
+            .attached
+            .entry(session)
+            .or_default()
+            .insert(control);
         inner
             .client_entry(client)
             .subscriber

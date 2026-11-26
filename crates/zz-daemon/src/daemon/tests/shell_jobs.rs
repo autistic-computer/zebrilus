@@ -205,6 +205,7 @@ fn shell_job_working_directory_follows_tmux_precedence() {
         .working_directory
         .replace(PathBuf::from("/job-attached-client-decoy"));
     inner
+        .attachment
         .attached
         .entry(attached)
         .or_default()

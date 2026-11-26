@@ -151,6 +151,7 @@ fn a_finish_in_a_watched_window_stays_seen() {
         .select_window(session, first)
         .expect("select first window");
     inner
+        .attachment
         .attached
         .entry(session)
         .or_default()
@@ -170,7 +171,7 @@ fn a_finish_in_a_watched_window_stays_seen() {
     assert!(!summary(&inner, watched).unseen);
     assert!(summary(&inner, hidden).unseen);
 
-    inner.attached.clear();
+    inner.attachment.attached.clear();
     assert!(!pane_window_watched(&inner, watched));
     apply_pane_status(
         &mut inner,
@@ -192,6 +193,7 @@ fn a_finish_behind_an_unfocused_client_stays_unseen_until_focus_in() {
     let mut inner = ServerState::default();
     let (session, _, pane) = inner.engine.state.create_session("away").expect("session");
     inner
+        .attachment
         .attached
         .entry(session)
         .or_default()
@@ -244,6 +246,7 @@ fn a_new_turn_drops_a_stale_unseen() {
     assert!(!summary(&inner, pane).unseen);
 
     inner
+        .attachment
         .attached
         .entry(session)
         .or_default()

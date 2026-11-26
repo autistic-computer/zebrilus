@@ -90,6 +90,7 @@ fn fixture() -> Fixture {
         );
         let mut inner = shared.inner.lock();
         inner
+            .attachment
             .attached
             .entry(context.session.unwrap())
             .or_default()

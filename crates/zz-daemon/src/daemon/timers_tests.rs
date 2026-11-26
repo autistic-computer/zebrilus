@@ -46,6 +46,7 @@ fn copy_and_clock_deadlines_follow_consumers_with_fifty_ms_copy_cadence() {
         let mut inner = shared.inner.lock();
         inner.client_entry(client).subscriber = Some(OutboundMailbox::new());
         inner
+            .attachment
             .attached
             .entry(context.session.unwrap())
             .or_default()
@@ -280,6 +281,7 @@ fn mode_exits_cancel_copy_and_clock_deadlines_before_the_next_tick() {
         let mut inner = shared.inner.lock();
         inner.client_entry(client).subscriber = Some(OutboundMailbox::new());
         inner
+            .attachment
             .attached
             .entry(context.session.unwrap())
             .or_default()

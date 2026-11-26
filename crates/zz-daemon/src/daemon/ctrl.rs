@@ -340,7 +340,7 @@ fn client_view(
             }
         }
     }
-    let flags = inner.client_flags.get(client);
+    let flags = inner.attachment.client_flags.get(client);
     ClientView {
         session: client_attached_session(inner, client),
         focused_window: client_focused_window_for_attachment(inner, client),
@@ -650,6 +650,7 @@ impl Shared {
             let session = inner.engine.state.windows[&window].session;
             let current = inner.engine.state.sessions[&session].active_window == window;
             let attached = inner
+                .attachment
                 .attached
                 .get(&session)
                 .is_some_and(|clients| !clients.is_empty());

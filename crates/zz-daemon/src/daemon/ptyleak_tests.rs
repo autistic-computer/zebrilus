@@ -76,11 +76,12 @@ fn assert_tapped(shared: &Shared, pane: PaneId) {
             .get(&pane)
             .map(|terminal| shard_sink::PaneSink::of(terminal).is_some()),
         inner
+            .attachment
             .control_routes
             .iter()
             .map(|(client, route)| (client, route.mailbox.is_open(), &route.panes))
             .collect::<Vec<_>>(),
-        inner.attached,
+        inner.attachment.attached,
     );
 }
 

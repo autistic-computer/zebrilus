@@ -404,7 +404,12 @@ fn displayed_pid_fallback_is_an_attached_client_target() {
         .state
         .create_session("pid-target")
         .expect("pid target session");
-    inner.attached.entry(session).or_default().insert(client);
+    inner
+        .attachment
+        .attached
+        .entry(session)
+        .or_default()
+        .insert(client);
     inner.client_entry(client).pid.replace(4242);
 
     assert_eq!(client_format_name(&inner, client), "client-4242");
@@ -450,7 +455,10 @@ fn pane_focus_follows_the_pinned_predicate_and_queues_ahead_of_the_client_hooks(
             .collect::<Vec<_>>(),
         ["pane-focus-in", "client-session-changed", "client-attached"]
     );
-    assert_eq!(shared.inner.lock().pane_focus, BTreeSet::from([pane]));
+    assert_eq!(
+        shared.inner.lock().attachment.pane_focus,
+        BTreeSet::from([pane])
+    );
 
     shared
         .attach(second, session)
@@ -488,7 +496,7 @@ fn pane_focus_follows_the_pinned_predicate_and_queues_ahead_of_the_client_hooks(
             .collect::<Vec<_>>(),
         ["pane-focus-out", "pane-focus-in", "pane-focus-out"]
     );
-    assert!(shared.inner.lock().pane_focus.is_empty());
+    assert!(shared.inner.lock().attachment.pane_focus.is_empty());
 
     shared.attach(first, session).expect("re-attach");
     shared.inner.lock().history.message_log.clear();
@@ -609,7 +617,12 @@ fn client_focus_and_activity_hooks_preserve_reports_order_and_latest_changes() {
         ]
     );
     assert_eq!(
-        shared.inner.lock().window_latest_clients.get(&window),
+        shared
+            .inner
+            .lock()
+            .attachment
+            .window_latest_clients
+            .get(&window),
         Some(&second)
     );
 
@@ -625,7 +638,12 @@ fn client_focus_and_activity_hooks_preserve_reports_order_and_latest_changes() {
         .expect("suppress client focus hooks");
     assert_eq!(client_event_log(&shared).len(), 5);
     assert_eq!(
-        shared.inner.lock().window_latest_clients.get(&window),
+        shared
+            .inner
+            .lock()
+            .attachment
+            .window_latest_clients
+            .get(&window),
         Some(&first)
     );
 
@@ -655,7 +673,10 @@ fn client_focus_and_activity_hooks_preserve_reports_order_and_latest_changes() {
     let inner = shared.inner.lock();
     assert!(inner.client(first).is_some_and(|c| c.message.is_some()));
     assert!(inner.client(first).is_some_and(|c| c.message_ignore_keys));
-    assert_eq!(inner.window_latest_clients.get(&window), Some(&first));
+    assert_eq!(
+        inner.attachment.window_latest_clients.get(&window),
+        Some(&first)
+    );
 }
 
 #[test]
@@ -843,7 +864,12 @@ fn detaching_latest_client_promotes_a_surviving_control_client() {
         ]
     );
     assert_eq!(
-        shared.inner.lock().window_latest_clients.get(&window),
+        shared
+            .inner
+            .lock()
+            .attachment
+            .window_latest_clients
+            .get(&window),
         Some(&control)
     );
 }
@@ -861,6 +887,7 @@ fn snapshot_publication_prunes_destroyed_latest_windows() {
     shared
         .inner
         .lock()
+        .attachment
         .window_latest_clients
         .insert(destroyed, client);
 
@@ -870,6 +897,7 @@ fn snapshot_publication_prunes_destroyed_latest_windows() {
         !shared
             .inner
             .lock()
+            .attachment
             .window_latest_clients
             .contains_key(&destroyed)
     );

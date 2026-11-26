@@ -4,7 +4,10 @@ fn fixture() -> (ServerState, ClientId, ExecutionContext) {
     let mut inner = ServerState::default();
     let (session, window, pane) = inner.engine.state.create_session("borders").unwrap();
     let client = ClientId(3);
-    inner.attached.insert(session, BTreeSet::from([client]));
+    inner
+        .attachment
+        .attached
+        .insert(session, BTreeSet::from([client]));
     inner.client_entry(client).focused_window.replace(window);
     inner.engine.set_format_now(1_700_000_000);
     BORDER_FORMAT_EXPANSIONS.with(|count| count.set(0));
@@ -528,6 +531,7 @@ fn border_format_cache_tracks_linked_window_owner_attachments_in_the_same_second
         .windows
         .push(window);
     inner
+        .attachment
         .attached
         .insert(viewer, BTreeSet::from([viewer_client]));
     inner
@@ -571,7 +575,7 @@ fn border_format_cache_preserves_borrowed_window_client_callbacks() {
         borders(&inner, client, session, &facts)
     };
     assert_eq!(first[0].style, "fg=green");
-    inner.attached.get_mut(&session).unwrap().clear();
+    inner.attachment.attached.get_mut(&session).unwrap().clear();
     let second = {
         let facts = readonly_borrowed_format_hook_facts(&inner, CommandFormatSeed::default());
         borders(&inner, client, session, &facts)

@@ -440,7 +440,12 @@ fn status_interval_work_respects_subscriptions_and_keeps_independent_timers() {
         .client_entry(client)
         .subscriber
         .replace(OutboundMailbox::new());
-    inner.attached.entry(session).or_default().insert(client);
+    inner
+        .attachment
+        .attached
+        .entry(session)
+        .or_default()
+        .insert(client);
     inner
         .client_entry(client)
         .ctrl_subscriptions

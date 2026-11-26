@@ -271,7 +271,12 @@ fn pasted_image_fetch_uses_encoded_frames_and_a_per_mailbox_delivery_ledger() {
             .state
             .create_session("pasted-image-fetch")
             .expect("session");
-        inner.attached.entry(session).or_default().insert(client);
+        inner
+            .attachment
+            .attached
+            .entry(session)
+            .or_default()
+            .insert(client);
         pane
     };
     let number = 4;

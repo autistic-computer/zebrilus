@@ -706,7 +706,7 @@ impl Shared {
     pub(super) fn reply_from_artifact(self: &Arc<Self>, client: ClientId, token: &str, text: &str) {
         let delivery = {
             let mut inner = self.inner.lock();
-            if inner.client_flags.contains(client) {
+            if inner.attachment.client_flags.contains(client) {
                 return;
             }
             let Some((opener, name)) = inner

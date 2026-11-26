@@ -27,6 +27,7 @@ pub(super) fn pane_window_watched(inner: &ServerState, pane: PaneId) -> bool {
         .get(&session)
         .is_some_and(|state| state.active_window == window)
         && inner
+            .attachment
             .attached
             .get(&session)
             .is_some_and(|clients| !clients.is_empty())
@@ -48,12 +49,16 @@ pub(super) fn pane_window_seen(inner: &ServerState, pane: PaneId) -> bool {
     let Some(session_state) = inner.engine.state.sessions.get(&session) else {
         return false;
     };
-    inner.attached.get(&session).is_some_and(|clients| {
-        clients.iter().any(|&client| {
-            inner.client(client).and_then(|client| client.focused) != Some(false)
-                && client_focused_window(inner, client, session_state) == window
+    inner
+        .attachment
+        .attached
+        .get(&session)
+        .is_some_and(|clients| {
+            clients.iter().any(|&client| {
+                inner.client(client).and_then(|client| client.focused) != Some(false)
+                    && client_focused_window(inner, client, session_state) == window
+            })
         })
-    })
 }
 
 pub(super) fn mark_focused_window_seen(inner: &mut ServerState, client: ClientId) -> bool {

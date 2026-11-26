@@ -4,7 +4,10 @@ fn fixture(left: &str) -> (ServerState, ClientId, ExecutionContext) {
     let mut inner = ServerState::default();
     let (session, window, pane) = inner.engine.state.create_session("prepared").unwrap();
     let client = ClientId(3);
-    inner.attached.insert(session, BTreeSet::from([client]));
+    inner
+        .attachment
+        .attached
+        .insert(session, BTreeSet::from([client]));
     inner.client_entry(client).focused_window.replace(window);
     inner
         .client_entry(client)
@@ -819,8 +822,14 @@ fn status_preparation_retargets_focus_session_and_replaced_engine() {
         let focused = request(&inner, client);
         assert_fresh(&first, &focused);
         assert_left(&focused, "prepared:second");
-        inner.attached.get_mut(&session).unwrap().remove(&client);
         inner
+            .attachment
+            .attached
+            .get_mut(&session)
+            .unwrap()
+            .remove(&client);
+        inner
+            .attachment
             .attached
             .insert(other_session, BTreeSet::from([client]));
         inner
@@ -868,6 +877,7 @@ fn status_preparation_invalidates_scheme_startup_and_client_identity() {
         assert!(startup.startup);
         let other_client = ClientId(4);
         inner
+            .attachment
             .attached
             .get_mut(&context.session.unwrap())
             .unwrap()

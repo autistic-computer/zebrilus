@@ -35,7 +35,12 @@ impl Stream {
                 entry.subscriber = Some(Arc::clone(&mailbox));
                 entry.streamed_terminals = Some(BTreeMap::from([(pane, *kind)]));
                 entry.visible_terminals = Some(BTreeSet::from([pane]));
-                inner.attached.entry(session).or_default().insert(client);
+                inner
+                    .attachment
+                    .attached
+                    .entry(session)
+                    .or_default()
+                    .insert(client);
                 (client, mailbox)
             })
             .collect();

@@ -220,6 +220,7 @@ pub(super) fn client_chooser_rows(
 ) -> Vec<ClientChooserRow> {
     let format = format.unwrap_or(WINDOW_CLIENT_DEFAULT_FORMAT);
     let mut clients = inner
+        .attachment
         .attached
         .iter()
         .flat_map(|(session, clients)| {

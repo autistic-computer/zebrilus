@@ -455,12 +455,15 @@ fn client_context_formats_share_retained_facts_across_surfaces() {
             ]))));
         inner.client_entry(client).activity_time.replace(222);
         inner.client_entry(client).created_time.replace(111);
-        inner.session_last_attached.insert(session, 333);
+        inner.attachment.session_last_attached.insert(session, 333);
         inner
             .client_entry(client)
             .last_session
             .replace(last_session);
-        inner.client_flags.apply(client, "read-only,active-pane");
+        inner
+            .attachment
+            .client_flags
+            .apply(client, "read-only,active-pane");
         inner
             .client_entry(client)
             .key_engine
@@ -860,7 +863,7 @@ fn attach_session_r_marks_the_client_read_only_and_gates_its_routes() {
             &CommandInvocation::new("attach-session", ["-r", "-t", "A"]),
         )
         .expect("read-only attach");
-    assert!(shared.inner.lock().client_flags.contains(client));
+    assert!(shared.inner.lock().attachment.client_flags.contains(client));
     assert_eq!(
         format_client_flags(&shared.inner.lock(), client),
         "attached,focused,read-only"
@@ -924,7 +927,7 @@ fn attach_session_r_marks_the_client_read_only_and_gates_its_routes() {
             &CommandInvocation::new("switch-client", ["-r"]),
         )
         .expect("switch-client -r clears read-only");
-    assert!(!shared.inner.lock().client_flags.contains(client));
+    assert!(!shared.inner.lock().attachment.client_flags.contains(client));
 }
 
 #[test]
@@ -961,7 +964,7 @@ fn requested_client_flags_mutate_in_tmux_order_and_survive_detach_and_switch() {
         format_client_flags(&shared.inner.lock(), client),
         "attached,focused,ignore-size,no-detach-on-destroy,read-only"
     );
-    let flags = shared.inner.lock().client_flags.get(client);
+    let flags = shared.inner.lock().attachment.client_flags.get(client);
     assert_eq!(flags.reconnect_flags(), "ignore-size,no-detach-on-destroy");
     let messages = take_reliable_messages(&mailbox);
     assert!(messages.iter().any(|message| matches!(
@@ -1034,7 +1037,7 @@ fn requested_client_flags_mutate_in_tmux_order_and_survive_detach_and_switch() {
 
     shared.unregister(client);
     assert_eq!(
-        shared.inner.lock().client_flags.get(client),
+        shared.inner.lock().attachment.client_flags.get(client),
         ClientFlagState::default()
     );
 }
@@ -1177,6 +1180,7 @@ fn attach_flags_follow_resolution_and_precede_the_terminal_open_error() {
         !shared
             .inner
             .lock()
+            .attachment
             .client_flags
             .get(client)
             .no_detach_on_destroy
@@ -1197,6 +1201,7 @@ fn attach_flags_follow_resolution_and_precede_the_terminal_open_error() {
         !shared
             .inner
             .lock()
+            .attachment
             .client_flags
             .get(client)
             .no_detach_on_destroy
@@ -1650,7 +1655,7 @@ fn attached_fresh_new_session_applies_flags_after_terminal_materialization() {
             ),
         )
         .expect("create and attach with flags");
-    let flags = shared.inner.lock().client_flags.get(client);
+    let flags = shared.inner.lock().attachment.client_flags.get(client);
     assert!(flags.ignore_size);
     assert_eq!(
         format_client_flags(&shared.inner.lock(), client),
@@ -2081,6 +2086,7 @@ fn nested_attach_refuses_only_preexisting_sessions_when_the_caller_tty_matches_a
             .expect("expanded detached session");
         assert!(
             inner
+                .attachment
                 .attached
                 .get(&expanded)
                 .is_none_or(|clients| !clients.contains(&nested))
@@ -2131,6 +2137,7 @@ fn nested_attach_refuses_only_preexisting_sessions_when_the_caller_tty_matches_a
         shared
             .inner
             .lock()
+            .attachment
             .attached
             .values()
             .all(|clients| !clients.contains(&nested))
@@ -2154,6 +2161,7 @@ fn nested_attach_refuses_only_preexisting_sessions_when_the_caller_tty_matches_a
             .expect("fresh detached session");
         assert!(
             inner
+                .attachment
                 .attached
                 .get(&fresh)
                 .is_none_or(|clients| !clients.contains(&nested))

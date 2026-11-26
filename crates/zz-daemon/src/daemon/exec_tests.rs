@@ -738,7 +738,7 @@ mod raw {
     #[test]
     fn a_spawned_server_id_aborts_a_bootstrap_daemon_whose_chain_fails_to_prepare() {
         let shared = Arc::new(Shared::new(35));
-        shared.inner.lock().cold_bootstrap = ColdBootstrapLease::AwaitingFirstExternal;
+        shared.inner.lock().attachment.cold_bootstrap = ColdBootstrapLease::AwaitingFirstExternal;
         let (mut client, connection) = serve(&shared);
         let mut exec = request(vec![CommandInvocation::new(
             "no-such-command",
@@ -757,7 +757,8 @@ mod raw {
         assert!(shared.stopping.load(Ordering::Acquire));
 
         let committed = Arc::new(Shared::new(36));
-        committed.inner.lock().cold_bootstrap = ColdBootstrapLease::AwaitingFirstExternal;
+        committed.inner.lock().attachment.cold_bootstrap =
+            ColdBootstrapLease::AwaitingFirstExternal;
         let (mut client, connection) = serve(&committed);
         let mut exec = request(display("fine"));
         exec.spawned_server_id = Some(36);
@@ -770,7 +771,7 @@ mod raw {
             .expect("connection thread")
             .expect("clean exit");
         assert_eq!(
-            committed.inner.lock().cold_bootstrap,
+            committed.inner.lock().attachment.cold_bootstrap,
             ColdBootstrapLease::Committed
         );
     }

@@ -34,10 +34,10 @@ fn read_only_display_panes_bypasses_overlay_consumption_and_preserves_bell() {
         .expect("open display overlay");
     let initial = {
         let mut inner = shared.inner.lock();
-        inner.client_flags.insert(client);
+        inner.attachment.client_flags.insert(client);
         assert!(inner.engine.state.set_pane_bell(pane, true));
         (
-            inner.activity_sequence,
+            inner.attachment.activity_sequence,
             inner.panes.terminal_input_sequence,
             inner.clients[&client].display_panes.as_ref().unwrap().token,
         )
@@ -59,7 +59,7 @@ fn read_only_display_panes_bypasses_overlay_consumption_and_preserves_bell() {
         .expect("bypass display overlay with read-only key");
     {
         let inner = shared.inner.lock();
-        assert_eq!(inner.activity_sequence, initial.0 + 1);
+        assert_eq!(inner.attachment.activity_sequence, initial.0 + 1);
         assert_eq!(inner.panes.terminal_input_sequence, initial.1 + 1);
         assert!(inner.clients[&client].display_panes.is_none());
         assert!(!inner.modes.pane_modes.contains_key(&pane));
@@ -86,7 +86,10 @@ fn read_only_display_panes_bypasses_overlay_consumption_and_preserves_bell() {
 
     let safe_view_before = {
         let inner = shared.inner.lock();
-        (inner.activity_sequence, inner.panes.terminal_input_sequence)
+        (
+            inner.attachment.activity_sequence,
+            inner.panes.terminal_input_sequence,
+        )
     };
     shared
         .input(
@@ -101,7 +104,7 @@ fn read_only_display_panes_bypasses_overlay_consumption_and_preserves_bell() {
         .expect("bypass display overlay with read-only-safe copy-mode action");
     {
         let inner = shared.inner.lock();
-        assert_eq!(inner.activity_sequence, safe_view_before.0 + 1);
+        assert_eq!(inner.attachment.activity_sequence, safe_view_before.0 + 1);
         assert_eq!(inner.panes.terminal_input_sequence, safe_view_before.1 + 1);
         assert_eq!(
             inner.clients[&client].display_panes.as_ref().unwrap().token,
@@ -119,7 +122,10 @@ fn read_only_display_panes_bypasses_overlay_consumption_and_preserves_bell() {
 
     let select_before = {
         let inner = shared.inner.lock();
-        (inner.activity_sequence, inner.panes.terminal_input_sequence)
+        (
+            inner.attachment.activity_sequence,
+            inner.panes.terminal_input_sequence,
+        )
     };
     shared
         .input(
@@ -133,7 +139,7 @@ fn read_only_display_panes_bypasses_overlay_consumption_and_preserves_bell() {
         .expect("reject read-only native pane selection");
     {
         let inner = shared.inner.lock();
-        assert_eq!(inner.activity_sequence, select_before.0 + 1);
+        assert_eq!(inner.attachment.activity_sequence, select_before.0 + 1);
         assert_eq!(inner.panes.terminal_input_sequence, select_before.1 + 1);
         assert_eq!(
             inner.clients[&client].display_panes.as_ref().unwrap().token,
@@ -144,7 +150,10 @@ fn read_only_display_panes_bypasses_overlay_consumption_and_preserves_bell() {
 
     let close_before = {
         let inner = shared.inner.lock();
-        (inner.activity_sequence, inner.panes.terminal_input_sequence)
+        (
+            inner.attachment.activity_sequence,
+            inner.panes.terminal_input_sequence,
+        )
     };
     shared
         .input(
@@ -157,7 +166,7 @@ fn read_only_display_panes_bypasses_overlay_consumption_and_preserves_bell() {
         )
         .expect("bypass read-only display Escape");
     let inner = shared.inner.lock();
-    assert_eq!(inner.activity_sequence, close_before.0 + 1);
+    assert_eq!(inner.attachment.activity_sequence, close_before.0 + 1);
     assert_eq!(inner.panes.terminal_input_sequence, close_before.1 + 1);
     assert_eq!(
         inner.clients[&client].display_panes.as_ref().unwrap().token,

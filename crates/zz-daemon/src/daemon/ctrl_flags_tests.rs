@@ -48,7 +48,12 @@ fn fixture() -> (
         if let Some(client) = inner.client_mut(client) {
             client.ctrl_initializing = false;
         }
-        inner.attached.entry(session).or_default().insert(client);
+        inner
+            .attachment
+            .attached
+            .entry(session)
+            .or_default()
+            .insert(client);
     }
     shared.send_compact_state(client, &mailbox, true);
     let initial = messages(&mailbox)

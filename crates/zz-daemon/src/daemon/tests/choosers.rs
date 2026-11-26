@@ -1826,7 +1826,12 @@ fn choose_tree_closes_when_its_source_pane_is_removed() {
             .state
             .create_session("ephemeral")
             .expect("session");
-        inner.attached.entry(session).or_default().insert(client);
+        inner
+            .attachment
+            .attached
+            .entry(session)
+            .or_default()
+            .insert(client);
         let facts = format_hook_facts(&inner);
         let chooser = ChooseTreeSession::new(
             ChooseTreeKind::Panes,
@@ -2097,12 +2102,12 @@ fn choose_path_opens_only_for_desktop_clients_in_a_usable_terminal_pane() {
     let mut context =
         ExecutionContext::for_pane(&shared.inner.lock().engine.state, pane).expect("pane context");
 
-    shared.inner.lock().client_flags.insert(client);
+    shared.inner.lock().attachment.client_flags.insert(client);
     assert_eq!(
         choose_path_error(choose_path(ClientKind::Interactive, &mut context, &[])),
         "client is read-only"
     );
-    shared.inner.lock().client_flags.remove(client);
+    shared.inner.lock().attachment.client_flags.remove(client);
 
     shared
         .execute(

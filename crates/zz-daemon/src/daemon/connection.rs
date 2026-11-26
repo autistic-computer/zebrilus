@@ -864,7 +864,12 @@ impl Session {
                 command,
                 prepared,
             }) => {
-                shared.inner.lock().cold_bootstrap.command(client);
+                shared
+                    .inner
+                    .lock()
+                    .attachment
+                    .cold_bootstrap
+                    .command(client);
                 let context = context.as_mut().expect("client context");
                 sync_context_with_attachment(&shared.inner.lock(), client, context);
                 let item = shared.command_item(
@@ -1024,14 +1029,9 @@ impl Session {
             ProtocolMessage::Detach => {
                 let control_session = (hello.kind == ClientKind::Control)
                     .then(|| {
-                        shared
-                            .inner
-                            .lock()
-                            .attached
-                            .iter()
-                            .find_map(|(session, clients)| {
-                                clients.contains(&client).then_some(*session)
-                            })
+                        shared.inner.lock().attachment.attached.iter().find_map(
+                            |(session, clients)| clients.contains(&client).then_some(*session),
+                        )
                     })
                     .flatten();
                 shared.detach(client);
@@ -1172,7 +1172,7 @@ impl Session {
                 shared.reply_from_artifact(client, &token, &text);
             }
             ProtocolMessage::AgentLogin(request) if hello.kind == ClientKind::Interactive => {
-                if shared.inner.lock().client_flags.contains(client) {
+                if shared.inner.lock().attachment.client_flags.contains(client) {
                     let _ = outbound.enqueue_reliable(&ProtocolMessage::CommandResponse(
                         CommandResponse::Error {
                             request_id: 0,
@@ -1198,12 +1198,13 @@ impl Session {
             | ProtocolMessage::AgentAnswerQuestion { .. }
             | ProtocolMessage::AgentStopTask { .. }
             | ProtocolMessage::AgentSteer { .. }) => {
-                let read_only_blocked = !matches!(
-                    message,
-                    ProtocolMessage::AgentReplay { .. }
-                        | ProtocolMessage::AgentUnwatch { .. }
-                        | ProtocolMessage::AgentAcknowledgePromptRestore { .. }
-                ) && shared.inner.lock().client_flags.contains(client);
+                let read_only_blocked =
+                    !matches!(
+                        message,
+                        ProtocolMessage::AgentReplay { .. }
+                            | ProtocolMessage::AgentUnwatch { .. }
+                            | ProtocolMessage::AgentAcknowledgePromptRestore { .. }
+                    ) && shared.inner.lock().attachment.client_flags.contains(client);
                 if read_only_blocked {
                     let _ = outbound.enqueue_reliable(&ProtocolMessage::CommandResponse(
                         CommandResponse::Error {

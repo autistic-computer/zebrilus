@@ -1432,6 +1432,7 @@ fn initializing_status_waits_for_explicit_refresh_while_existing_clients_update(
     {
         let mut inner = shared.inner.lock();
         inner
+            .attachment
             .attached
             .entry(session)
             .or_default()
@@ -1550,6 +1551,7 @@ fn display_alias_absence_preserves_packed_targets_literal_markers_and_errors() {
     shared
         .inner
         .lock()
+        .attachment
         .attached
         .entry(session)
         .or_default()
@@ -2084,7 +2086,12 @@ fn forced_attachment_stays_after_an_older_pending_publication() {
     let older = shared.compact_tree_messages(client, true);
     {
         let mut inner = shared.inner.lock();
-        inner.attached.entry(session).or_default().insert(client);
+        inner
+            .attachment
+            .attached
+            .entry(session)
+            .or_default()
+            .insert(client);
         inner.client_entry(client).ctrl_attachment.replace(1);
     }
     let (started, ready) = crossbeam_channel::bounded(1);

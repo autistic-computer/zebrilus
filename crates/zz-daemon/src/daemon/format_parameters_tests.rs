@@ -162,7 +162,10 @@ fn status_preparation_reuses_engine_capture_and_keeps_client_and_config_values_f
     let mut inner = ServerState::default();
     let (session, window, _) = inner.engine.state.create_session("work").unwrap();
     let client = ClientId(3);
-    inner.attached.insert(session, BTreeSet::from([client]));
+    inner
+        .attachment
+        .attached
+        .insert(session, BTreeSet::from([client]));
     inner.client_entry(client).focused_window.replace(window);
     inner
         .client_entry(client)
@@ -229,7 +232,10 @@ fn status_fact_selection_plans_reuse_dependencies_and_keep_referenced_facts_fres
     let mut inner = ServerState::default();
     let (session, window, pane) = inner.engine.state.create_session("work").unwrap();
     let client = ClientId(3);
-    inner.attached.insert(session, BTreeSet::from([client]));
+    inner
+        .attachment
+        .attached
+        .insert(session, BTreeSet::from([client]));
     inner.client_entry(client).focused_window.replace(window);
     inner
         .client_entry(client)

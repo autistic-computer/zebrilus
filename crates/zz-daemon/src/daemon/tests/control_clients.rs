@@ -1096,8 +1096,8 @@ fn read_only_control_clients_run_queries_and_refresh_themselves_only() {
     shared.attach(interactive, session).unwrap();
     {
         let mut inner = shared.inner.lock();
-        inner.client_flags.insert(viewer);
-        inner.client_flags.insert(interactive);
+        inner.attachment.client_flags.insert(viewer);
+        inner.attachment.client_flags.insert(interactive);
     }
     let mut context =
         ExecutionContext::for_pane(&shared.inner.lock().engine.state, pane).expect("pane context");
@@ -1177,7 +1177,7 @@ fn read_only_control_clients_run_queries_and_refresh_themselves_only() {
         "interactive list-windows answered {response:?}"
     );
     let inner = shared.inner.lock();
-    assert!(inner.client_flags.contains(viewer));
+    assert!(inner.attachment.client_flags.contains(viewer));
     assert_eq!(inner.engine.state.sessions[&session].windows.len(), 1);
     assert!(
         inner

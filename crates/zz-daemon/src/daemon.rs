@@ -777,6 +777,7 @@ fn window_alert_notifications(
     let duration_ms = inner.engine.display_time_for_session(session);
     let clients = if applies {
         inner
+            .attachment
             .attached
             .get(&session)
             .into_iter()
@@ -5904,7 +5905,8 @@ impl Shared {
             daemon_environment(),
         );
         if bootstrap {
-            shared.inner.lock().cold_bootstrap = ColdBootstrapLease::AwaitingFirstExternal;
+            shared.inner.lock().attachment.cold_bootstrap =
+                ColdBootstrapLease::AwaitingFirstExternal;
         }
         shared
     }
@@ -6468,7 +6470,7 @@ impl Shared {
             inner.panes.terminal_spawns.clear();
             inner.panes.terminal_geometries.clear();
             inner.panes.reported_pane_places.clear();
-            inner.attached.clear();
+            inner.attachment.attached.clear();
             for client in inner.clients.values_mut() {
                 client.visible_terminals = None;
                 client.streamed_terminals = None;
@@ -6485,7 +6487,7 @@ impl Shared {
             let pipes = std::mem::take(&mut inner.jobs.pane_pipes)
                 .into_values()
                 .collect::<Vec<_>>();
-            inner.control_routes.clear();
+            inner.attachment.control_routes.clear();
             let shell_jobs = if terminate_shell_jobs {
                 std::mem::take(&mut inner.jobs.shell_jobs)
                     .into_values()
@@ -7003,12 +7005,15 @@ impl Shared {
             return None;
         }
         inner.engine.set_format_now(unix_timestamp());
-        let client = ClientId(inner.next_client_id);
-        inner.next_client_id = inner.next_client_id.saturating_add(1);
-        inner.cold_bootstrap.register(client, startup_reentry);
+        let client = ClientId(inner.attachment.next_client_id);
+        inner.attachment.next_client_id = inner.attachment.next_client_id.saturating_add(1);
+        inner
+            .attachment
+            .cold_bootstrap
+            .register(client, startup_reentry);
         let now = unix_timestamp();
-        inner.activity_sequence = inner.activity_sequence.saturating_add(1);
-        let activity = inner.activity_sequence;
+        inner.attachment.activity_sequence = inner.attachment.activity_sequence.saturating_add(1);
+        let activity = inner.attachment.activity_sequence;
         let color_scheme = (kind == ClientKind::Interactive)
             .then_some(color_scheme)
             .flatten();
@@ -7237,7 +7242,7 @@ impl Shared {
             return self.send_compact_attached(client, outbound, session);
         }
         let (read_only, client_flags) = {
-            let flags = self.inner.lock().client_flags.get(client);
+            let flags = self.inner.lock().attachment.client_flags.get(client);
             (flags.read_only, flags.reconnect_flags())
         };
         let target = self.startup_config_delivery_target(client, false);
@@ -7378,7 +7383,7 @@ impl Shared {
             {
                 (self.terminal_requests.notifier())();
             }
-            if let Some(route) = inner.control_routes.remove(&client) {
+            if let Some(route) = inner.attachment.control_routes.remove(&client) {
                 for pane in &route.panes {
                     if let Some(sink) = inner
                         .terminals
@@ -7389,7 +7394,7 @@ impl Shared {
                     }
                 }
             }
-            inner.client_flags.clear(client);
+            inner.attachment.client_flags.clear(client);
             inner
                 .transfers
                 .paste_uploads
@@ -7433,7 +7438,7 @@ impl Shared {
                 .filter(|waiter| waiter.0.client == client)
                 .cloned()
                 .collect::<Vec<_>>();
-            let cold_shutdown = inner.cold_bootstrap.unregister(client);
+            let cold_shutdown = inner.attachment.cold_bootstrap.unregister(client);
             if cold_shutdown {
                 self.stopping.store(true, Ordering::Release);
                 self.accept_wake.wake();
@@ -7936,7 +7941,7 @@ impl Shared {
             let failed = commands
                 .iter()
                 .any(|command| matches!(&command.result, PreparedCommandResult::Error(_)));
-            inner.cold_bootstrap.prepare(client, failed);
+            inner.attachment.cold_bootstrap.prepare(client, failed);
         }
         commands
     }
@@ -8771,7 +8776,7 @@ impl Shared {
             inner
                 .engine
                 .destroy_unattached_explicit_anywhere()
-                .then(|| inner.attached.clone())
+                .then(|| inner.attachment.attached.clone())
         };
         let preempted = zz_mux::CommandSpec::DAEMON_COMMAND_NAMES
             .contains(&canonical)
@@ -9224,7 +9229,7 @@ impl Shared {
         before: Option<BTreeMap<SessionId, BTreeSet<ClientId>>>,
     ) {
         if let Some(before) = before
-            && self.inner.lock().attached != before
+            && self.inner.lock().attachment.attached != before
         {
             self.enforce_destroy_unattached();
         }
@@ -9881,7 +9886,7 @@ impl Shared {
                 )
             });
             let mut focused_windows_before = BTreeMap::new();
-            for (session, clients) in inner.attached.iter().filter(|_| captures) {
+            for (session, clients) in inner.attachment.attached.iter().filter(|_| captures) {
                 let Some(state) = inner.engine.state.sessions.get(session) else {
                     continue;
                 };
@@ -10153,7 +10158,12 @@ impl Shared {
                 }
             }
             for (session, focused_window) in changed_windows {
-                let attached = inner.attached.get(&session).cloned().unwrap_or_default();
+                let attached = inner
+                    .attachment
+                    .attached
+                    .get(&session)
+                    .cloned()
+                    .unwrap_or_default();
                 if attached.contains(&client) || attaching_session == Some(session) {
                     for attached_client in attached {
                         let focus = if attached_client == client {
@@ -10372,7 +10382,7 @@ impl Shared {
                             .state
                             .window_for_pane(*pane)
                             .map(|window| inner.engine.state.windows[&window].session)
-                            .and_then(|session| inner.attached.get(&session))
+                            .and_then(|session| inner.attachment.attached.get(&session))
                             .cloned()
                             .unwrap_or_default();
                         for client in attached_clients {
@@ -10568,6 +10578,7 @@ impl Shared {
                             &mut hooks,
                         );
                         let attached_clients = inner
+                            .attachment
                             .attached
                             .get(&pane_session)
                             .cloned()
@@ -10798,6 +10809,7 @@ impl Shared {
                             relocated_terminal_views.push((
                                 terminal,
                                 inner
+                                    .attachment
                                     .attached
                                     .get(from)
                                     .cloned()
@@ -10806,6 +10818,7 @@ impl Shared {
                                     .copied()
                                     .collect::<BTreeSet<_>>(),
                                 inner
+                                    .attachment
                                     .attached
                                     .get(to)
                                     .cloned()
@@ -11042,7 +11055,7 @@ impl Shared {
                             .cloned()
                             .ok_or(ServerError::PaneExited(*pane))?;
                         let caller_attached = client_is_attached_to_pane(&inner, client, *pane);
-                        if inner.client_flags.contains(client) && !caller_attached {
+                        if inner.attachment.client_flags.contains(client) && !caller_attached {
                             return Err(ServerError::InvalidCommand(
                                 "client is read-only".to_owned(),
                             )
@@ -11195,7 +11208,7 @@ impl Shared {
                         {
                             return Err(ServerError::PaneNotAttached(*pane).into());
                         }
-                        if inner.client_flags.contains(client) {
+                        if inner.attachment.client_flags.contains(client) {
                             return Err(ServerError::InvalidCommand(
                                 "client is read-only".to_owned(),
                             )
@@ -11367,7 +11380,9 @@ impl Shared {
                             ))
                             .into());
                         }
-                        if *tree_kind == ChooseTreeKind::Clients && inner.attached.is_empty() {
+                        if *tree_kind == ChooseTreeKind::Clients
+                            && inner.attachment.attached.is_empty()
+                        {
                             continue;
                         }
                         let attached_session = client_attached_session(&inner, client);
@@ -11953,7 +11968,7 @@ impl Shared {
                     MuxEffect::SuspendClient { target_client } => {
                         let target =
                             resolve_client_target(&inner, client, kind, target_client.as_deref())?;
-                        if inner.client_flags.contains(client) {
+                        if inner.attachment.client_flags.contains(client) {
                             return Err(ServerError::InvalidCommand(
                                 "client is read-only".to_owned(),
                             )
@@ -11986,7 +12001,7 @@ impl Shared {
                             kind,
                             request.target_client.as_deref(),
                         )?;
-                        if inner.client_flags.contains(client)
+                        if inner.attachment.client_flags.contains(client)
                             && (!matches!(request.scope, DetachScope::Client)
                                 || target_client != client)
                         {
@@ -12172,7 +12187,7 @@ impl Shared {
                         transitions,
                     ));
                     for session in diff.closed_sessions(&inner.engine.state) {
-                        if let Some(clients) = inner.attached.get(&session) {
+                        if let Some(clients) = inner.attachment.attached.get(&session) {
                             for attached_client in clients {
                                 let client_name = client_format_name(&inner, *attached_client);
                                 pending_hook_events.push(PendingHookEvent::client(
@@ -13276,6 +13291,7 @@ impl Shared {
                 })
                 .collect::<Vec<_>>();
             let mut defaults = inner
+                .attachment
                 .attached
                 .iter()
                 .filter(|(_, clients)| !clients.is_empty())
@@ -14121,7 +14137,9 @@ impl Shared {
                 .sessions
                 .iter()
                 .filter(|(_, session)| session.windows.contains(&window))
-                .flat_map(|(session, _)| inner.attached.get(session).into_iter().flatten())
+                .flat_map(|(session, _)| {
+                    inner.attachment.attached.get(session).into_iter().flatten()
+                })
                 .collect::<BTreeSet<_>>()
                 .into_iter()
                 .filter_map(|client| {
@@ -18724,6 +18742,7 @@ impl Shared {
         let sort = TmuxSort::parse(parsed.value('O'), parsed.has('r'), None)?;
         inner.engine.set_format_now(unix_timestamp());
         let mut clients = inner
+            .attachment
             .attached
             .iter()
             .flat_map(|(session, clients)| {
@@ -18884,8 +18903,8 @@ impl Shared {
         };
         if parsed.has('r') {
             let mut inner = self.inner.lock();
-            if !inner.client_flags.remove(target_client) {
-                inner.client_flags.insert(target_client);
+            if !inner.attachment.client_flags.remove(target_client) {
+                inner.attachment.client_flags.insert(target_client);
             }
         }
         if let Some(table) = parsed.value('T') {
@@ -19153,7 +19172,7 @@ impl Shared {
     fn set_control_client_flags(&self, client: ClientId, flags: &str) {
         let event = {
             let mut inner = self.inner.lock();
-            inner.client_flags.apply(client, flags);
+            inner.attachment.client_flags.apply(client, flags);
             if inner.client(client).and_then(|c| c.kind) != Some(ClientKind::Control) {
                 return;
             }
@@ -19197,10 +19216,10 @@ impl Shared {
         let event = {
             let mut inner = self.inner.lock();
             if let Some(requested) = requested {
-                inner.client_flags.apply(client, requested);
+                inner.attachment.client_flags.apply(client, requested);
             }
             if read_only {
-                inner.client_flags.insert(client);
+                inner.attachment.client_flags.insert(client);
             }
             if inner.client(client).and_then(|c| c.kind) != Some(ClientKind::Control) {
                 return;
@@ -21040,7 +21059,7 @@ impl Shared {
         let _wakes = zz_terminal::hold_actor_wakes();
         let mut inner = self.inner.lock();
         if !inner.engine.state.sessions.contains_key(&session)
-            || inner.destroying_unattached.contains(&session)
+            || inner.attachment.destroying_unattached.contains(&session)
         {
             return Err(ServerError::MissingTarget(session.to_string()));
         }
@@ -21055,6 +21074,7 @@ impl Shared {
         let previous_session = client_attached_session(&inner, client);
         let client_name = client_format_name(&inner, client);
         let previous_sessions = inner
+            .attachment
             .attached
             .iter()
             .filter_map(|(attached_session, clients)| {
@@ -21099,13 +21119,21 @@ impl Shared {
                 .client_mut(client)
                 .and_then(|c| c.focused_window.take());
         }
-        for (attached_session, clients) in &mut inner.attached {
+        for (attached_session, clients) in &mut inner.attachment.attached {
             if *attached_session != session {
                 clients.remove(&client);
             }
         }
-        inner.attached.retain(|_, clients| !clients.is_empty());
-        inner.attached.entry(session).or_default().insert(client);
+        inner
+            .attachment
+            .attached
+            .retain(|_, clients| !clients.is_empty());
+        inner
+            .attachment
+            .attached
+            .entry(session)
+            .or_default()
+            .insert(client);
         let _ = inner
             .client_mut(client)
             .is_some_and(|client| std::mem::take(&mut client.terminal_preview));
@@ -21117,16 +21145,19 @@ impl Shared {
             registered.last_session = Some(previous_session);
         }
         let now = unix_timestamp();
-        inner.activity_sequence = inner.activity_sequence.saturating_add(1);
-        let activity = inner.activity_sequence;
+        inner.attachment.activity_sequence = inner.attachment.activity_sequence.saturating_add(1);
+        let activity = inner.attachment.activity_sequence;
         if let Some(registered) = inner.client_mut(client) {
             registered.detached = false;
             registered.activity = Some(activity);
             registered.activity_time = Some(now);
         }
-        inner.session_last_attached.insert(session, now);
+        inner.attachment.session_last_attached.insert(session, now);
         if let Some(window) = client_focused_window_for_attachment(&inner, client) {
-            inner.window_latest_clients.insert(window, client);
+            inner
+                .attachment
+                .window_latest_clients
+                .insert(window, client);
         }
         if let Some(feed) = inner
             .client(client)
@@ -21430,8 +21461,8 @@ impl Shared {
                 .sessions
                 .keys()
                 .filter(|session| {
-                    !inner.attached.contains_key(session)
-                        && !inner.destroying_unattached.contains(session)
+                    !inner.attachment.attached.contains_key(session)
+                        && !inner.attachment.destroying_unattached.contains(session)
                 })
                 .filter(|session| {
                     matches!(
@@ -21449,11 +21480,11 @@ impl Shared {
             {
                 let mut inner = self.inner.lock();
                 let eligible = inner.engine.state.sessions.contains_key(&session)
-                    && !inner.attached.contains_key(&session);
+                    && !inner.attachment.attached.contains_key(&session);
                 if !eligible {
                     continue;
                 }
-                inner.destroying_unattached.insert(session);
+                inner.attachment.destroying_unattached.insert(session);
             }
             #[cfg(unix)]
             if self.loop_active.load(Ordering::Acquire) {
@@ -21469,7 +21500,12 @@ impl Shared {
                     false,
                     None,
                     Box::new(move |shared, _, result| {
-                        shared.inner.lock().destroying_unattached.remove(&session);
+                        shared
+                            .inner
+                            .lock()
+                            .attachment
+                            .destroying_unattached
+                            .remove(&session);
                         if let Err(error) = result {
                             log::warn!("destroy-unattached could not destroy {session}: {error}");
                         }
@@ -21491,7 +21527,11 @@ impl Shared {
                 &mut context,
                 &command,
             );
-            self.inner.lock().destroying_unattached.remove(&session);
+            self.inner
+                .lock()
+                .attachment
+                .destroying_unattached
+                .remove(&session);
             if let Err(error) = result {
                 log::warn!("destroy-unattached could not destroy {target}: {error}");
             }
@@ -21508,6 +21548,7 @@ impl Shared {
         let (victims, by) = {
             let inner = self.inner.lock();
             let victims = inner
+                .attachment
                 .attached
                 .iter()
                 .filter(|(attached, _)| session.is_none_or(|wanted| wanted == **attached))
@@ -21548,6 +21589,7 @@ impl Shared {
         let _wakes = zz_terminal::hold_actor_wakes();
         let mut inner = self.inner.lock();
         let sessions = inner
+            .attachment
             .attached
             .iter()
             .filter_map(|(session, clients)| clients.contains(&client).then_some(*session))
@@ -21576,10 +21618,13 @@ impl Shared {
             .unwrap_or_default();
         affected_panes.extend(control_client_sized_panes(&inner, client));
         affected_panes.extend(remove_client_terminal_geometries(&mut inner, client));
-        for clients in inner.attached.values_mut() {
+        for clients in inner.attachment.attached.values_mut() {
             clients.remove(&client);
         }
-        inner.attached.retain(|_, clients| !clients.is_empty());
+        inner
+            .attachment
+            .attached
+            .retain(|_, clients| !clients.is_empty());
         let client_active_events =
             promote_window_latest_clients(&mut inner, client, event_hooks_enabled);
         if let Some(feed) = inner
@@ -21799,7 +21844,7 @@ impl Shared {
             dismiss_display_panes,
         ) = {
             let mut inner = self.inner.lock();
-            let read_only = inner.client_flags.contains(client);
+            let read_only = inner.attachment.client_flags.contains(client);
             let read_only_rejected = read_only && read_only_blocks_input(&input);
             let mouse_rejected = terminal_mouse_rejected(&inner, client, &input);
             let chooser_pane = inner
@@ -21871,7 +21916,7 @@ impl Shared {
             (
                 ignores_message_input,
                 inner.client(client).is_some_and(|c| c.message.is_some())
-                    && !inner.client_flags.contains(client)
+                    && !inner.attachment.client_flags.contains(client)
                     && input_dismisses_client_message(&input),
                 early_input_activity,
                 read_only_rejected || mouse_rejected,
@@ -23095,7 +23140,7 @@ impl Shared {
             hook_events.push(event);
         }
         let report = (
-            inner.client_flags.contains(client),
+            inner.attachment.client_flags.contains(client),
             inner.engine.focus_events(),
             hook_events,
         );
@@ -23540,7 +23585,7 @@ impl Shared {
                 inner
                     .client(client)
                     .is_some_and(|c| c.display_panes.is_some()),
-                inner.client_flags.contains(client),
+                inner.attachment.client_flags.contains(client),
             )
         };
         if choose_tree || choose_buffer || display_panes {
@@ -24364,7 +24409,7 @@ impl Shared {
         };
         let terminal = {
             let inner = self.inner.lock();
-            if inner.client_flags.contains(client)
+            if inner.attachment.client_flags.contains(client)
                 || !client_is_attached_to_pane(&inner, client, pane)
             {
                 None
@@ -24700,7 +24745,7 @@ impl Shared {
         let Some((source_pane, true, _, _)) = route else {
             return Ok(());
         };
-        let read_only = self.inner.lock().client_flags.contains(client);
+        let read_only = self.inner.lock().attachment.client_flags.contains(client);
         self.note_terminal_input_without_bell(client, source_pane);
         if read_only {
             return Ok(());
@@ -25102,7 +25147,7 @@ impl Shared {
         let Some((source_pane, true, _, _)) = route else {
             return Ok(());
         };
-        let read_only = self.inner.lock().client_flags.contains(client);
+        let read_only = self.inner.lock().attachment.client_flags.contains(client);
         self.note_terminal_input_without_bell(client, source_pane);
         if read_only {
             return Ok(());
@@ -25462,7 +25507,7 @@ impl Shared {
             };
             (
                 overlay.source_pane,
-                inner.client_flags.contains(client),
+                inner.attachment.client_flags.contains(client),
                 inner
                     .engine
                     .state
@@ -26101,13 +26146,13 @@ impl Shared {
         let mut output_truncated = false;
         let (read_only_commands, blocked) = {
             let mut inner = self.inner.lock();
-            if inner.client_flags.contains(client) {
+            if inner.attachment.client_flags.contains(client) {
                 let commands = commands.to_vec();
                 let blocked = commands
                     .iter()
                     .any(|command| {
                         read_only_guard_client(&inner, client, command)
-                            .is_some_and(|guarded| inner.client_flags.contains(guarded))
+                            .is_some_and(|guarded| inner.attachment.client_flags.contains(guarded))
                             && !command_is_read_only_safe(command)
                     })
                     .then(|| {
@@ -26426,7 +26471,7 @@ impl Shared {
         }
         let (read_only, read_only_pane) = {
             let inner = self.inner.lock();
-            let read_only = inner.client_flags.contains(client);
+            let read_only = inner.attachment.client_flags.contains(client);
             (
                 read_only,
                 read_only
@@ -26846,7 +26891,7 @@ impl Shared {
         if kind != ClientKind::Interactive {
             return;
         }
-        if self.inner.lock().client_flags.contains(client) {
+        if self.inner.lock().attachment.client_flags.contains(client) {
             return;
         }
         if !zz_protocol::paste_upload_extension_is_valid(&extension)
@@ -28524,7 +28569,7 @@ impl Shared {
             }
             sync_control_routes(&mut inner, &self.control_wake);
             if let Some(sink) = shard_sink::PaneSink::of(terminal) {
-                for route in inner.control_routes.values() {
+                for route in inner.attachment.control_routes.values() {
                     if route.panes.contains(&pane) {
                         sink.set_control(&route.mailbox, true);
                     }
@@ -29303,6 +29348,7 @@ impl Shared {
                 .map(|(session, name, policy)| (session, (name, policy)))
                 .collect::<BTreeMap<_, _>>();
             for session in inner
+                .attachment
                 .attached
                 .keys()
                 .copied()
@@ -29327,13 +29373,18 @@ impl Shared {
                         _ => None,
                     };
                     let clients = inner
+                        .attachment
                         .attached
                         .get(&session)
                         .into_iter()
                         .flatten()
                         .map(|client| {
                             let client_survivor = if survivor.is_none()
-                                && inner.client_flags.get(*client).no_detach_on_destroy
+                                && inner
+                                    .attachment
+                                    .client_flags
+                                    .get(*client)
+                                    .no_detach_on_destroy
                             {
                                 fallback
                             } else {
@@ -29342,7 +29393,7 @@ impl Shared {
                             (*client, client_survivor)
                         })
                         .collect::<Vec<_>>();
-                    inner.session_last_attached.remove(&session);
+                    inner.attachment.session_last_attached.remove(&session);
                     (session, clients)
                 })
                 .collect::<Vec<_>>()
@@ -29433,7 +29484,11 @@ impl Shared {
             let mut inner = self.inner.lock();
             let ServerState {
                 engine,
-                window_latest_clients,
+                attachment:
+                    Attachment {
+                        window_latest_clients,
+                        ..
+                    },
                 ..
             } = &mut *inner;
             window_latest_clients.retain(|window, _| engine.state.windows.contains_key(window));
@@ -29703,6 +29758,7 @@ impl Shared {
             let mut inner = self.inner.lock();
             sync_control_routes(&mut inner, &self.control_wake);
             let attachments = inner
+                .attachment
                 .attached
                 .iter()
                 .flat_map(|(session, clients)| clients.iter().map(|client| (*session, *client)))
@@ -29918,6 +29974,7 @@ impl Shared {
                         && Some(**client) != exclude
                         && (!attached_only
                             || inner
+                                .attachment
                                 .attached
                                 .values()
                                 .any(|attached| attached.contains(client)))
@@ -31091,6 +31148,7 @@ impl Shared {
             };
             let session = inner.engine.state.windows[&window].session;
             inner
+                .attachment
                 .attached
                 .get(&session)
                 .into_iter()
@@ -31129,6 +31187,7 @@ impl Shared {
                 .map(|window| inner.engine.state.windows[&window].session)
                 .is_some_and(|session| {
                     inner
+                        .attachment
                         .attached
                         .get(&session)
                         .is_some_and(|clients| clients.contains(&client))
@@ -31457,6 +31516,7 @@ impl Shared {
             };
             let current = session_state.active_window == window;
             let attached = inner
+                .attachment
                 .attached
                 .get(&session)
                 .is_some_and(|clients| !clients.is_empty());
@@ -31619,6 +31679,7 @@ impl Shared {
                 };
                 let current = session_state.active_window == scheduled.window;
                 let attached = inner
+                    .attachment
                     .attached
                     .get(&session)
                     .is_some_and(|clients| !clients.is_empty());
@@ -35433,6 +35494,7 @@ impl Shared {
         let changes = {
             let mut inner = self.inner.lock();
             let attachments = inner
+                .attachment
                 .attached
                 .iter()
                 .flat_map(|(session, clients)| clients.iter().map(|client| (*session, *client)))
@@ -36912,19 +36974,13 @@ impl Client {
 
 #[derive(Default)]
 struct ServerState {
-    border_cycle: parking_lot::Mutex<BTreeSet<ClientId>>,
+    attachment: Attachment,
     clients: BTreeMap<ClientId, Box<Client>>,
     engine: MuxEngine,
-    cold_bootstrap: ColdBootstrapLease,
     publication: Publication,
     artifact_state: ArtifactState,
     published_agent_parents: BTreeMap<PaneId, PaneId>,
     config: Config,
-    client_flags: ClientFlags,
-    pane_focus: BTreeSet<PaneId>,
-    window_latest_clients: BTreeMap<WindowId, ClientId>,
-    session_last_attached: BTreeMap<SessionId, u64>,
-    activity_sequence: u64,
     waits: Waits,
     terminals: Arc<BTreeMap<PaneId, Arc<TerminalSession>>>,
     panes: PaneTables,
@@ -36941,14 +36997,25 @@ struct ServerState {
     #[cfg(feature = "agent")]
     agent_forks: BTreeMap<PaneId, Option<String>>,
     transfers: Transfers,
-    attached: BTreeMap<SessionId, BTreeSet<ClientId>>,
-    destroying_unattached: BTreeSet<SessionId>,
     modes: Modes,
     history: History,
     buffers: Buffers,
     jobs: Jobs,
-    next_client_id: u64,
+}
+
+#[derive(Default)]
+struct Attachment {
+    attached: BTreeMap<SessionId, BTreeSet<ClientId>>,
+    client_flags: ClientFlags,
+    cold_bootstrap: ColdBootstrapLease,
+    session_last_attached: BTreeMap<SessionId, u64>,
+    border_cycle: parking_lot::Mutex<BTreeSet<ClientId>>,
+    window_latest_clients: BTreeMap<WindowId, ClientId>,
+    activity_sequence: u64,
     control_routes: BTreeMap<ClientId, ControlRoute>,
+    pane_focus: BTreeSet<PaneId>,
+    next_client_id: u64,
+    destroying_unattached: BTreeSet<SessionId>,
 }
 
 #[derive(Default)]
@@ -37300,7 +37367,7 @@ impl DiagnosticSample {
                 .filter_map(|(id, client)| client.subscriber.as_ref().map(|value| (id, value)))
                 .map(|(client, subscriber)| (*client, Arc::clone(subscriber)))
                 .collect(),
-            attached: inner.attached.clone(),
+            attached: inner.attachment.attached.clone(),
             visible_terminals: inner
                 .clients
                 .iter()
@@ -37411,7 +37478,7 @@ fn owned_gui_request(
 
 impl ServerState {
     fn border_cycling(&self) -> bool {
-        let mut cycling = self.border_cycle.lock();
+        let mut cycling = self.attachment.border_cycle.lock();
         cycling.retain(|client| self.clients.contains_key(client));
         !cycling.is_empty()
     }
@@ -41579,6 +41646,7 @@ fn effective_mux_options(inner: &ServerState, client: ClientId) -> MuxOptions {
 
 fn best_client_on_session(inner: &ServerState, session: SessionId) -> Option<ClientId> {
     inner
+        .attachment
         .attached
         .get(&session)?
         .iter()
@@ -41603,6 +41671,7 @@ fn best_display_message_format_client(
 
 fn best_attached_client(inner: &ServerState) -> Option<ClientId> {
     inner
+        .attachment
         .attached
         .values()
         .flatten()
@@ -41620,6 +41689,7 @@ fn best_attached_client(inner: &ServerState) -> Option<ClientId> {
 
 fn best_attached_session(inner: &ServerState) -> Option<SessionId> {
     inner
+        .attachment
         .attached
         .iter()
         .filter(|(session, clients)| {
@@ -41660,7 +41730,11 @@ fn destroyed_session_survivor(
     match policy {
         "off" => newest_session_matching(inner, |_| true),
         "no-detached" => newest_session_matching(inner, |session| {
-            inner.attached.get(&session).is_none_or(BTreeSet::is_empty)
+            inner
+                .attachment
+                .attached
+                .get(&session)
+                .is_none_or(BTreeSet::is_empty)
         }),
         "previous" => {
             let sessions = inner.engine.state.sessions_by_name();
@@ -41751,6 +41825,7 @@ fn find_attached_client_with_aliases(
 ) -> Option<ClientId> {
     let target = normalized_client_target(target);
     inner
+        .attachment
         .attached
         .values()
         .flatten()
@@ -41779,6 +41854,7 @@ fn requested_detach_victims(
             .map(|session| vec![(session, target)])
             .unwrap_or_default(),
         ResolvedDetach::Others(target) => inner
+            .attachment
             .attached
             .iter()
             .flat_map(|(session, clients)| {
@@ -41789,6 +41865,7 @@ fn requested_detach_victims(
             })
             .collect(),
         ResolvedDetach::Session(session) => inner
+            .attachment
             .attached
             .get(&session)
             .into_iter()
@@ -42136,7 +42213,7 @@ fn client_ignores_size_from_source(inner: &ClientFormatSource<'_>, client: Clien
 }
 
 fn unignored_attached_sizing_client_exists(inner: &ServerState) -> bool {
-    inner.attached.values().flatten().any(|client| {
+    inner.attachment.attached.values().flatten().any(|client| {
         matches!(
             inner.client(*client).and_then(|c| c.kind),
             Some(ClientKind::Interactive | ClientKind::Control)
@@ -42206,7 +42283,14 @@ fn attached_client_extents(
     let suppress_ignored = unignored_attached_sizing_client_exists(inner);
     let mut candidates = Vec::new();
     let mut ceilings = Vec::new();
-    for client in inner.attached.get(&session).into_iter().flatten().copied() {
+    for client in inner
+        .attachment
+        .attached
+        .get(&session)
+        .into_iter()
+        .flatten()
+        .copied()
+    {
         if !client_is_sizing_candidate(inner, client, suppress_ignored) {
             continue;
         }
@@ -43045,6 +43129,7 @@ fn capture_client_focus_probe(inner: &ServerState) -> PaneFocusProbe {
         window_active_panes: BTreeMap::new(),
         session_windows: BTreeMap::new(),
         client_sessions: inner
+            .attachment
             .attached
             .iter()
             .flat_map(|(session, clients)| clients.iter().map(|client| (*client, *session)))
@@ -43090,14 +43175,14 @@ fn pane_focus_transition(inner: &mut ServerState, pane: PaneId) -> Option<Pendin
         return None;
     }
     let focused = pane_is_focused(inner, pane);
-    if focused == inner.pane_focus.contains(&pane) {
+    if focused == inner.attachment.pane_focus.contains(&pane) {
         return None;
     }
     let name = if focused {
-        inner.pane_focus.insert(pane);
+        inner.attachment.pane_focus.insert(pane);
         "pane-focus-in"
     } else {
-        inner.pane_focus.remove(&pane);
+        inner.attachment.pane_focus.remove(&pane);
         "pane-focus-out"
     };
     PendingHookEvent::live_pane(name, pane, &inner.engine)
@@ -43115,7 +43200,7 @@ fn plain_key_generation_locked(
     input: &zz_terminal::KeyInput,
 ) -> Option<u64> {
     let registered = inner.client(client)?;
-    if inner.client_flags.contains(client)
+    if inner.attachment.client_flags.contains(client)
         || registered.message.is_some()
         || registered.command_prompt.is_some()
         || registered.choose_tree.is_some()
@@ -43187,6 +43272,7 @@ fn pane_focus_candidates(
         }
     }
     for (client, session) in inner
+        .attachment
         .attached
         .iter()
         .flat_map(|(session, clients)| clients.iter().map(|client| (*client, Some(*session))))
@@ -43249,8 +43335,9 @@ fn pane_focus_candidates(
 }
 
 fn no_pane_can_hold_focus(inner: &ServerState) -> bool {
-    inner.pane_focus.is_empty()
+    inner.attachment.pane_focus.is_empty()
         && !inner
+            .attachment
             .attached
             .values()
             .flatten()
@@ -43259,6 +43346,7 @@ fn no_pane_can_hold_focus(inner: &ServerState) -> bool {
 
 fn pane_focus_hook_events(inner: &mut ServerState, before: &PaneFocusProbe) -> PaneFocusEvents {
     inner
+        .attachment
         .pane_focus
         .retain(|pane| inner.engine.state.pane(*pane).is_some());
     let (leading, removals) = pane_focus_candidates(inner, before);
@@ -43350,7 +43438,12 @@ fn set_window_latest_client(
     if inner.engine.state.windows.get(&window)?.session != session {
         return None;
     }
-    if inner.window_latest_clients.insert(window, client) == Some(client) {
+    if inner
+        .attachment
+        .window_latest_clients
+        .insert(window, client)
+        == Some(client)
+    {
         return None;
     }
     event_hooks_enabled
@@ -43373,7 +43466,7 @@ fn prepare_command_request(
     command: &CommandInvocation,
     prepared: bool,
 ) -> Result<(CommandInvocation, bool), ServerError> {
-    inner.cold_bootstrap.command(client);
+    inner.attachment.cold_bootstrap.command(client);
     let command = if prepared {
         command.clone()
     } else {
@@ -43383,7 +43476,7 @@ fn prepare_command_request(
         parse_buffer_command_args("load-buffer", &command.args, &['b', 't'], &['w'])?;
     }
     let guarded = read_only_guard_client(inner, client, &command);
-    let blocked = guarded.is_some_and(|guarded| inner.client_flags.contains(guarded))
+    let blocked = guarded.is_some_and(|guarded| inner.attachment.client_flags.contains(guarded))
         && !read_only_client_may_run(inner, client, &command);
     Ok((command, blocked))
 }
@@ -43464,6 +43557,7 @@ fn detach_is_inert(inner: &ServerState, client: ClientId) -> bool {
             .is_none_or(|c| c.visible_terminals.is_none())
         && inner.client(client).and_then(|c| c.kind) != Some(ClientKind::Control)
         && !inner
+            .attachment
             .window_latest_clients
             .values()
             .any(|latest| *latest == client)
@@ -43475,6 +43569,7 @@ fn promote_window_latest_clients(
     event_hooks_enabled: bool,
 ) -> Vec<PendingHookEvent> {
     let windows = inner
+        .attachment
         .window_latest_clients
         .iter()
         .filter_map(|(window, client)| (*client == detached).then_some(*window))
@@ -43486,7 +43581,7 @@ fn promote_window_latest_clients(
             .state
             .windows
             .get(&window)
-            .and_then(|window_state| inner.attached.get(&window_state.session))
+            .and_then(|window_state| inner.attachment.attached.get(&window_state.session))
             .into_iter()
             .flatten()
             .filter(|client| client_focused_window_for_attachment(inner, **client) == Some(window))
@@ -43501,7 +43596,10 @@ fn promote_window_latest_clients(
                 )
             });
         if let Some(survivor) = survivor {
-            inner.window_latest_clients.insert(window, survivor);
+            inner
+                .attachment
+                .window_latest_clients
+                .insert(window, survivor);
             if event_hooks_enabled
                 && let Some(event) =
                     client_hook_event_for_window(inner, "client-active", survivor, window)
@@ -43509,7 +43607,7 @@ fn promote_window_latest_clients(
                 events.push(event);
             }
         } else {
-            inner.window_latest_clients.remove(&window);
+            inner.attachment.window_latest_clients.remove(&window);
         }
     }
     events
@@ -45020,6 +45118,7 @@ fn resolve_attached_client(
     target: Option<&str>,
 ) -> Result<ClientId, ServerError> {
     let attached = inner
+        .attachment
         .attached
         .values()
         .flat_map(BTreeSet::iter)
@@ -45402,6 +45501,7 @@ type SnapshotPresence = BTreeMap<SessionId, Vec<(ClientId, SessionViewer)>>;
 
 fn snapshot_presence(inner: &ServerState) -> SnapshotPresence {
     inner
+        .attachment
         .attached
         .iter()
         .filter_map(|(session, clients)| {
@@ -45673,7 +45773,7 @@ fn stamp_snapshot_for_client_with(
         &contexts,
         snapshot,
     );
-    let mut cycling = inner.border_cycle.lock();
+    let mut cycling = inner.attachment.border_cycle.lock();
     if border_cycle {
         cycling.insert(client);
     } else {
@@ -47861,10 +47961,10 @@ fn sync_control_routes(inner: &mut ServerState, wake: &Arc<shard_sink::ControlWa
             Some((*client, (mailbox, control_route_panes(inner, *client))))
         })
         .collect::<BTreeMap<_, _>>();
-    if desired.is_empty() && inner.control_routes.is_empty() {
+    if desired.is_empty() && inner.attachment.control_routes.is_empty() {
         return;
     }
-    let previous = std::mem::take(&mut inner.control_routes);
+    let previous = std::mem::take(&mut inner.attachment.control_routes);
     let sink = |pane: &PaneId| {
         inner
             .terminals
@@ -47898,7 +47998,7 @@ fn sync_control_routes(inner: &mut ServerState, wake: &Arc<shard_sink::ControlWa
             }
         }
     }
-    inner.control_routes = desired
+    inner.attachment.control_routes = desired
         .into_iter()
         .map(|(client, (mailbox, panes))| (client, ControlRoute { mailbox, panes }))
         .collect();
@@ -48073,7 +48173,7 @@ fn selected_effect_client(
 fn attached_clients_for_pane(inner: &ServerState, pane: PaneId) -> Option<&BTreeSet<ClientId>> {
     let window = inner.engine.state.window_for_pane(pane)?;
     let session = inner.engine.state.windows.get(&window)?.session;
-    inner.attached.get(&session)
+    inner.attachment.attached.get(&session)
 }
 
 fn client_is_attached_to_pane(inner: &ServerState, client: ClientId, pane: PaneId) -> bool {
@@ -48166,6 +48266,7 @@ fn terminal_geometry_owner(inner: &ServerState, pane: PaneId) -> Option<ClientId
     let window = inner.engine.state.window_for_pane(pane)?;
     let session = inner.engine.state.windows.get(&window)?.session;
     inner
+        .attachment
         .attached
         .get(&session)?
         .iter()
@@ -48279,6 +48380,7 @@ fn terminal_geometry_for_mode_from(
         .flatten();
     let drawn = !inner.terminals.contains_key(&pane);
     let candidates = inner
+        .attachment
         .attached
         .get(&session)?
         .iter()
@@ -48397,6 +48499,7 @@ fn floating_terminal_geometry(
         .map(|geometry| (geometry.cell_width_px, geometry.cell_height_px))
         .or_else(|| {
             inner
+                .attachment
                 .attached
                 .get(&window.session)
                 .into_iter()
@@ -48540,8 +48643,8 @@ fn note_client_activity_locked(
 ) -> bool {
     let now = unix_timestamp();
     inner.engine.mark_session_active_at(session, now);
-    inner.activity_sequence = inner.activity_sequence.saturating_add(1);
-    let activity = inner.activity_sequence;
+    inner.attachment.activity_sequence = inner.attachment.activity_sequence.saturating_add(1);
+    let activity = inner.attachment.activity_sequence;
     if let Some(registered) = inner.client_mut(client) {
         registered.activity = Some(activity);
         registered.activity_time = Some(now);
@@ -49457,8 +49560,8 @@ impl<'a> ClientFormatFields<'a> {
     fn from_inner(inner: &'a ServerState) -> Self {
         Self {
             clients: &inner.clients,
-            attached: &inner.attached,
-            client_flags: &inner.client_flags,
+            attached: &inner.attachment.attached,
+            client_flags: &inner.attachment.client_flags,
             terminal_geometries: &inner.panes.terminal_geometries,
             terminals: &inner.terminals,
         }
@@ -49758,14 +49861,18 @@ fn split_borrowed_format_hook_facts(
 ) -> (&mut MuxEngine, BorrowedFormatHookFacts<'_>) {
     let ServerState {
         engine,
-        attached,
+        attachment:
+            Attachment {
+                attached,
+                client_flags,
+                session_last_attached,
+                ..
+            },
         clients,
-        client_flags,
 
         modes: Modes { pane_modes, .. },
         jobs: Jobs { pane_pipes, .. },
         buffers: Buffers { paste_buffers, .. },
-        session_last_attached,
         panes: PaneTables {
             terminal_geometries,
             ..
@@ -49805,9 +49912,9 @@ fn readonly_borrowed_format_hook_facts(
         paste_buffers: &inner.buffers.paste_buffers,
         terminals: &inner.terminals,
         pane_pipes: &inner.jobs.pane_pipes,
-        attached: &inner.attached,
+        attached: &inner.attachment.attached,
         clients: &inner.clients,
-        session_last_attached: &inner.session_last_attached,
+        session_last_attached: &inner.attachment.session_last_attached,
         pane_modes: &inner.modes.pane_modes,
         seed,
         derived: LazyDerivedFormatFacts::default(),
@@ -49981,7 +50088,7 @@ fn selected_status_format_facts_with_selection(
         facts.session_attachments = Arc::new(source.session_attachments().clone());
     }
     if selection.session_last_attached {
-        facts.session_last_attached = Arc::new(inner.session_last_attached.clone());
+        facts.session_last_attached = Arc::new(inner.attachment.session_last_attached.clone());
     }
     if selection.window_clients {
         facts.window_clients = Arc::new(source.window_clients(context).clone());
@@ -50020,6 +50127,7 @@ fn format_hook_facts(inner: &ServerState) -> FormatHookFacts {
         ),
         session_attachments: Arc::new(
             inner
+                .attachment
                 .attached
                 .iter()
                 .map(|(session, clients)| {
@@ -50037,7 +50145,7 @@ fn format_hook_facts(inner: &ServerState) -> FormatHookFacts {
                 })
                 .collect(),
         ),
-        window_clients: Arc::new(inner.attached.values().flatten().fold(
+        window_clients: Arc::new(inner.attachment.attached.values().flatten().fold(
             BTreeMap::<WindowId, Vec<String>>::new(),
             |mut windows, client| {
                 if let Some(window) = client_focused_window_for_attachment(inner, *client) {
@@ -50049,9 +50157,9 @@ fn format_hook_facts(inner: &ServerState) -> FormatHookFacts {
                 windows
             },
         )),
-        session_last_attached: Arc::new(inner.session_last_attached.clone()),
+        session_last_attached: Arc::new(inner.attachment.session_last_attached.clone()),
         clients: Arc::new(
-            loop_clients_in_connect_order(&inner.attached, &inner.engine)
+            loop_clients_in_connect_order(&inner.attachment.attached, &inner.engine)
                 .into_iter()
                 .map(|(client, session)| {
                     client_format_facts(inner, client, session).loop_row(
@@ -54626,7 +54734,7 @@ Print nothing on success.
 }
 
 fn gui_client(inner: &ServerState, session: SessionId) -> Option<(ClientId, Arc<OutboundMailbox>)> {
-    let clients = inner.attached.get(&session)?;
+    let clients = inner.attachment.attached.get(&session)?;
     let find = |desktop: bool| {
         clients.iter().find_map(|id| {
             let client = inner.client(*id)?;
@@ -55041,7 +55149,12 @@ fn handle_connection_message<S: TransportStream>(
                 command,
                 prepared,
             }) => {
-                shared.inner.lock().cold_bootstrap.command(client);
+                shared
+                    .inner
+                    .lock()
+                    .attachment
+                    .cold_bootstrap
+                    .command(client);
                 if command_sender.is_none()
                     && let Some(context) = context.as_mut()
                 {
@@ -55210,14 +55323,9 @@ fn handle_connection_message<S: TransportStream>(
             ProtocolMessage::Detach => {
                 let control_session = (hello.kind == ClientKind::Control)
                     .then(|| {
-                        shared
-                            .inner
-                            .lock()
-                            .attached
-                            .iter()
-                            .find_map(|(session, clients)| {
-                                clients.contains(&client).then_some(*session)
-                            })
+                        shared.inner.lock().attachment.attached.iter().find_map(
+                            |(session, clients)| clients.contains(&client).then_some(*session),
+                        )
                     })
                     .flatten();
                 shared.detach(client);
@@ -55336,7 +55444,7 @@ fn handle_connection_message<S: TransportStream>(
                 shared.reply_from_artifact(client, &token, &text);
             }
             ProtocolMessage::AgentLogin(request) if hello.kind == ClientKind::Interactive => {
-                if shared.inner.lock().client_flags.contains(client) {
+                if shared.inner.lock().attachment.client_flags.contains(client) {
                     let _ = outbound.enqueue_reliable(&ProtocolMessage::CommandResponse(
                         CommandResponse::Error {
                             request_id: 0,
@@ -55362,12 +55470,13 @@ fn handle_connection_message<S: TransportStream>(
             | ProtocolMessage::AgentAnswerQuestion { .. }
             | ProtocolMessage::AgentStopTask { .. }
             | ProtocolMessage::AgentSteer { .. }) => {
-                let read_only_blocked = !matches!(
-                    message,
-                    ProtocolMessage::AgentReplay { .. }
-                        | ProtocolMessage::AgentUnwatch { .. }
-                        | ProtocolMessage::AgentAcknowledgePromptRestore { .. }
-                ) && shared.inner.lock().client_flags.contains(client);
+                let read_only_blocked =
+                    !matches!(
+                        message,
+                        ProtocolMessage::AgentReplay { .. }
+                            | ProtocolMessage::AgentUnwatch { .. }
+                            | ProtocolMessage::AgentAcknowledgePromptRestore { .. }
+                    ) && shared.inner.lock().attachment.client_flags.contains(client);
                 if read_only_blocked {
                     let _ = outbound.enqueue_reliable(&ProtocolMessage::CommandResponse(
                         CommandResponse::Error {
