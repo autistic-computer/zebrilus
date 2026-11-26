@@ -311,7 +311,8 @@ row in [session persistence](/concepts/session-persistence.md).
 
 # Citations
 
-- `crates/zz-protocol/src/message.rs` `PROTOCOL_VERSION`, `ClientHello`
+- `crates/zz-protocol/src/message.rs` `PROTOCOL_VERSION`
+- `crates/zz-protocol/src/message/hello.rs` `ClientHello`
 - `crates/zz-protocol/src/framing.rs` `ProtocolError::VersionMismatch`
 - `crates/zz-protocol/src/control.rs` `Welcome`, `CAPABILITY_NAMES`, `Welcome::has_capability`
 - `crates/zz-protocol/src/snapshot.rs` `PaneKindSnapshot`
