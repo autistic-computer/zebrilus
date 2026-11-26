@@ -4438,12 +4438,8 @@ impl CommandSender {
 }
 
 #[cfg(test)]
-#[path = "session/request_e04_tests.rs"]
-mod request_e04_tests;
-
-#[cfg(test)]
-#[path = "session/request_e05_tests.rs"]
-mod request_e05_tests;
+#[path = "session/request_tests.rs"]
+mod request_tests;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum RecentreTarget {
@@ -8762,8 +8758,8 @@ fn capture_history(
 }
 
 #[cfg(test)]
-#[path = "session/capture_work_e22_tests.rs"]
-mod capture_work_e22_tests;
+#[path = "session/capture_work_tests.rs"]
+mod capture_work_tests;
 
 #[cfg(test)]
 #[path = "session/capture_links_tests.rs"]
