@@ -151,6 +151,16 @@ use outbound_mailbox::*;
 mod window_extents;
 use window_extents::*;
 mod mux_effects;
+mod mux_effects_clients;
+mod mux_effects_drain;
+mod mux_effects_flags;
+mod mux_effects_keys;
+mod mux_effects_messages;
+mod mux_effects_options;
+mod mux_effects_overlays;
+mod mux_effects_panes;
+mod mux_effects_sources;
+mod mux_effects_views;
 #[cfg(test)]
 use config_frames::*;
 mod inserted_frames;
