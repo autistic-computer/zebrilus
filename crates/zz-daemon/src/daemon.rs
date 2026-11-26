@@ -57,6 +57,7 @@ mod flow;
 mod flow_tests;
 mod helpers;
 mod history_io;
+mod hook_commands;
 use history_io::*;
 #[cfg(unix)]
 mod jobs;
