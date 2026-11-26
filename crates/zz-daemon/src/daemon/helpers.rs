@@ -1,3 +1,4 @@
+use super::*;
 use std::{
     collections::VecDeque,
     io,
@@ -620,3 +621,85 @@ mod tests;
 #[cfg(test)]
 #[path = "helpers_helperwait_tests.rs"]
 mod helperwait_tests;
+
+impl Shared {
+    pub(super) fn apply_helper_result(self: &Arc<Self>, result: helpers::Result) {
+        match result {
+            helpers::Result::Complete(complete) => complete(self),
+            helpers::Result::File { complete, result } => complete(self, result),
+            helpers::Result::Path { result, applied } => {
+                self.apply_path_list_result(result);
+                let _ = applied.send(());
+            }
+            #[cfg(feature = "agent")]
+            helpers::Result::Catalog {
+                client,
+                pane,
+                result,
+            } => {
+                self.agent_catalog_pending
+                    .lock()
+                    .remove(&(client, pane, result.catalog_provider));
+                self.publish_agent_catalog(client, pane, result);
+            }
+            #[cfg(all(feature = "agent", unix))]
+            helpers::Result::Peers(result) => self.apply_peer_states(result),
+        }
+    }
+
+    pub(super) fn submit_helper(self: &Arc<Self>, task: helpers::Task) -> std::io::Result<()> {
+        self.helpers.submit(task)?;
+        #[cfg(any(windows, test))]
+        return self.start_helper_dispatcher();
+        #[cfg(all(unix, not(test)))]
+        Ok(())
+    }
+
+    #[cfg(any(windows, test))]
+    fn start_helper_dispatcher(self: &Arc<Self>) -> std::io::Result<()> {
+        #[cfg(unix)]
+        if self.loop_active.load(Ordering::Acquire) {
+            return Ok(());
+        }
+        if self.helper_dispatching.swap(true, Ordering::AcqRel) {
+            return Ok(());
+        }
+        let owner = self.server_owner();
+        if let Err(error) = self.connection_threads.run(Box::new(move || {
+            loop {
+                #[cfg(unix)]
+                if owner.loop_active.load(Ordering::Acquire) {
+                    owner.helper_dispatching.store(false, Ordering::Release);
+                    owner.accept_wake.wake();
+                    return;
+                }
+                match owner
+                    .helpers
+                    .results
+                    .recv_timeout(Duration::from_millis(20))
+                {
+                    Ok(result) => owner.apply_helper_result(result),
+                    Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {
+                        owner.helper_dispatching.store(false, Ordering::Release);
+                        return;
+                    }
+                    Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
+                        if !owner.helpers.active() {
+                            owner.helper_dispatching.store(false, Ordering::Release);
+                            if (!owner.helpers.results.is_empty() || owner.helpers.active())
+                                && !owner.helper_dispatching.swap(true, Ordering::AcqRel)
+                            {
+                                continue;
+                            }
+                            return;
+                        }
+                    }
+                }
+            }
+        })) {
+            self.helper_dispatching.store(false, Ordering::Release);
+            return Err(error);
+        }
+        Ok(())
+    }
+}
