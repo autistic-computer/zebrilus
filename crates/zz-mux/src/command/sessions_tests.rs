@@ -1,3 +1,4 @@
+use super::sessions::*;
 use super::test_support::command;
 use super::*;
 
