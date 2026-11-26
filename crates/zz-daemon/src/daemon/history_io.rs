@@ -485,3 +485,61 @@ fn terminal_descriptions(
     }
     lines
 }
+
+pub(super) fn prompt_history_path(path: &str) -> Option<PathBuf> {
+    if path.is_empty() {
+        None
+    } else if Path::new(path).is_absolute() {
+        Some(PathBuf::from(path))
+    } else {
+        path.strip_prefix("~/")
+            .and_then(|rest| home_directory().map(|home| home.join(rest)))
+    }
+}
+
+pub(super) fn load_command_prompt_history(path: &Path, limit: usize) -> (Vec<String>, Vec<String>) {
+    let Ok(contents) = fs::read_to_string(path) else {
+        return (Vec::new(), Vec::new());
+    };
+    let mut command = Vec::new();
+    let mut search = Vec::new();
+    for line in contents.split('\n').filter(|line| !line.is_empty()) {
+        if let Some(entry) = line.strip_prefix("command:") {
+            add_command_prompt_history(&mut command, entry, limit);
+        } else if let Some(entry) = line.strip_prefix("search:") {
+            add_command_prompt_history(&mut search, entry, limit);
+        } else {
+            add_command_prompt_history(&mut command, line, limit);
+        }
+    }
+    (command, search)
+}
+
+pub(super) fn add_command_prompt_history(
+    history: &mut Vec<String>,
+    input: &str,
+    limit: usize,
+) -> bool {
+    let added = history.last().is_none_or(|entry| entry != input);
+    if added {
+        history.push(input.to_owned());
+    }
+    let removed = history.len().saturating_sub(limit);
+    if history.len() > limit {
+        history.drain(..removed);
+    }
+    removed != 0 || (added && limit != 0)
+}
+
+pub(super) fn save_command_prompt_history(path: &Path, command: &[String], search: &[String]) {
+    let mut contents = String::new();
+    for entry in command {
+        let _ = writeln!(contents, "command:{entry}");
+    }
+    for entry in search {
+        let _ = writeln!(contents, "search:{entry}");
+    }
+    if let Err(error) = fs::write(path, contents) {
+        log::debug!("failed to save prompt history {}: {error}", path.display());
+    }
+}

@@ -1764,3 +1764,401 @@ pub(super) fn control_command_guard_error(error: &DaemonError) -> (bool, bool, S
         error => (true, true, daemon_error_text(error)),
     }
 }
+
+#[derive(Clone)]
+pub(super) enum InsertedCommandSource {
+    Commands(Vec<CommandInvocation>),
+    Shell(String),
+    String(String),
+    Block(RawText),
+    Hooks(Box<HookQueueSource>),
+    Events(Box<EventQueueSource>),
+}
+
+pub(super) enum InsertedFrameExecution<'a> {
+    Borrowed(&'a CommandQueueExecution),
+    Owned(Box<CommandQueueExecution>),
+}
+
+impl std::ops::Deref for InsertedFrameExecution<'_> {
+    type Target = CommandQueueExecution;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Self::Borrowed(execution) => execution,
+            Self::Owned(execution) => execution,
+        }
+    }
+}
+
+pub(super) trait FrameExecution: std::ops::Deref<Target = CommandQueueExecution> {
+    fn owned(execution: CommandQueueExecution) -> Self;
+}
+
+impl FrameExecution for InsertedFrameExecution<'_> {
+    fn owned(execution: CommandQueueExecution) -> Self {
+        Self::Owned(Box::new(execution))
+    }
+}
+
+pub(super) struct InsertedQueueFrame<E: FrameExecution> {
+    pub(super) request_root: bool,
+    pub(super) request_result: Option<Result<Execution, DaemonError>>,
+    pub(super) wait_boundary: Option<(InsertedCommandBoundary, InsertedCommandStep)>,
+    pub(super) execution: E,
+    pub(super) context: ExecutionContext,
+    pub(super) commands: std::vec::IntoIter<CommandInvocation>,
+    pub(super) prepared: bool,
+    pub(super) control_target: Option<(ClientId, u8)>,
+    pub(super) mux_source: MuxOptionSource,
+    pub(super) alias_terminal: Option<ClientTerminal>,
+    pub(super) stdin: Option<RawText>,
+    pub(super) carried_a_stream: bool,
+    pub(super) label: String,
+    pub(super) result: InsertedCommandResult,
+    pub(super) stdout_claim: StdoutClaim,
+    pub(super) first_error: Option<DaemonError>,
+    pub(super) failed_group: Option<InsertedPhysicalGroup>,
+    pub(super) boundary: Option<(
+        InsertedCommandBoundary,
+        Box<InsertedQueueChild>,
+        cmdq::ContinuationToken,
+    )>,
+    pub(super) terminal_error: Option<DaemonError>,
+    pub(super) parked_boundary: Option<InsertedCommandBoundary>,
+    pub(super) hook: Option<HookQueueFrame<E>>,
+    pub(super) events: Option<EventQueueFrame>,
+}
+
+pub(super) fn inserted_frame_mode(
+    execution: &CommandQueueExecution,
+    terminal: Option<ClientTerminal>,
+) -> InsertedCommandMode<'_> {
+    match terminal {
+        Some(client_terminal) => InsertedCommandMode::CommandAlias {
+            client_terminal,
+            queue_execution: execution,
+            stdin: None,
+        },
+        None => InsertedCommandMode::Standard(execution),
+    }
+}
+
+#[derive(PartialEq, Eq)]
+pub(super) enum InsertedPhysicalGroup {
+    Unlocated,
+    Source(String, u32),
+}
+
+pub(super) struct InsertedCommandBoundary {
+    pub(super) command: CommandInvocation,
+    pub(super) group: InsertedPhysicalGroup,
+    pub(super) callback_failures_start: usize,
+    pub(super) command_control_target: Option<(ClientId, u8)>,
+    pub(super) stdout_sequence: usize,
+}
+
+pub(super) enum InsertedFrameAction {
+    Continue,
+    Finish(Option<DaemonError>),
+}
+
+pub(super) type InsertedCommandStep = (
+    Result<Execution, DaemonError>,
+    Option<String>,
+    bool,
+    Option<CallbackParseFailure>,
+    bool,
+);
+
+pub(super) struct InsertedQueueChild {
+    pub(super) context: ExecutionContext,
+    pub(super) source: InsertedCommandSource,
+    pub(super) label: String,
+    pub(super) control_target: Option<(ClientId, u8)>,
+    pub(super) mux_source: MuxOptionSource,
+    pub(super) kind: InsertedQueueChildKind,
+    pub(super) leaf: Option<InsertedLeafContinuation>,
+    pub(super) guard: Option<InsertedControlGuard>,
+    pub(super) leaf_name: Option<String>,
+}
+
+pub(super) enum InsertedQueueChildKind {
+    Alias {
+        client_terminal: ClientTerminal,
+        stdin: Option<RawText>,
+    },
+    Foreground(Option<RunShellRoute>),
+    Hook(Option<HookLeafContinuation>),
+    Event {
+        draining: bool,
+    },
+}
+
+#[derive(Clone)]
+pub(super) struct EventQueueSource {
+    pub(super) events: RefCell<Vec<PendingHookEvent>>,
+    pub(super) publish_control: bool,
+    pub(super) shutdown_already_blocked: bool,
+}
+
+pub(super) struct EventQueueFrame {
+    events: VecDeque<PendingHookEvent>,
+    pub(super) publish_control: bool,
+    pub(super) shutdown_already_blocked: bool,
+    pub(super) notifications: Vec<(EventPayload, Option<ClientId>, bool)>,
+}
+
+#[derive(Clone)]
+pub(super) struct HookQueueSource {
+    pub(super) commands: RefCell<Vec<Vec<CommandInvocation>>>,
+    pub(super) variables: BTreeMap<String, String>,
+    pub(super) skip_resolution_errors: bool,
+    pub(super) initial_draining: bool,
+    pub(super) replaying: bool,
+}
+
+pub(super) struct HookQueueFrame<E: FrameExecution> {
+    parent: E,
+    pub(super) variables: BTreeMap<String, String>,
+    pub(super) skip_resolution_errors: bool,
+    pub(super) replaying: bool,
+    initial_draining: bool,
+    groups: VecDeque<Vec<CommandInvocation>>,
+    context: ExecutionContext,
+}
+
+pub(super) struct HookLeafContinuation {
+    pub(super) result: Result<Execution, DaemonError>,
+    pub(super) pane_exit_code: u8,
+}
+
+pub(super) struct InsertedLeafContinuation {
+    pub(super) original_context: ExecutionContext,
+    pub(super) previous_client_terminal: ClientTerminal,
+    pub(super) no_hooks: bool,
+    pub(super) name: String,
+    pub(super) command: Option<CommandInvocation>,
+    pub(super) pane_exit_status: Option<Arc<AtomicU8>>,
+}
+
+pub(super) struct InsertedControlGuard {
+    target: (ClientId, u8),
+    aggregate_forced_shutdown: bool,
+    deferred_shutdown_before: DeferredShutdown,
+    reported_failure_before: bool,
+    early_shell_guard: bool,
+    direct_command_prepare_error: bool,
+    source_command: bool,
+    alias_group: bool,
+    routed_name: Option<String>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum CallbackGroupAction {
+    Continue,
+    Fail,
+    Handled,
+}
+
+impl CallbackGroupAction {
+    pub(super) fn for_command(name: &str) -> Option<Self> {
+        match name {
+            "if-shell" => Some(Self::Fail),
+            "run-shell" => Some(Self::Continue),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone)]
+pub(super) struct CallbackParseFailure {
+    pub(super) message: String,
+    pub(super) group_action: CallbackGroupAction,
+    pub(super) owner: CallbackFailureOwner,
+    pub(super) control_event: Option<Arc<()>>,
+    pub(super) depth: usize,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum CallbackFailureOwner {
+    Source,
+    RuntimeCommand,
+    Hook,
+    CommandErrorHook,
+}
+
+impl CallbackFailureOwner {
+    pub(super) fn is_replay_callback(self) -> bool {
+        matches!(self, Self::Source | Self::RuntimeCommand)
+    }
+}
+
+impl CallbackParseFailure {
+    pub(super) fn for_command(
+        message: String,
+        name: &str,
+        control_event: Option<Arc<()>>,
+        depth: usize,
+    ) -> Option<Self> {
+        Some(Self {
+            message,
+            group_action: CallbackGroupAction::for_command(name)?,
+            owner: CallbackFailureOwner::Source,
+            control_event,
+            depth,
+        })
+    }
+
+    pub(super) fn runtime_command(message: String, label: &str) -> Self {
+        let name = label
+            .strip_prefix('<')
+            .and_then(|label| label.strip_suffix('>'))
+            .unwrap_or(label)
+            .split_ascii_whitespace()
+            .next()
+            .unwrap_or(label);
+        Self {
+            message,
+            group_action: CallbackGroupAction::for_command(name)
+                .unwrap_or(CallbackGroupAction::Handled),
+            owner: CallbackFailureOwner::RuntimeCommand,
+            control_event: None,
+            depth: 0,
+        }
+    }
+}
+
+pub(super) fn select_callback_group_action(
+    failures: &[CallbackParseFailure],
+    routed_name: &str,
+    terminal_depth: usize,
+) -> Option<CallbackGroupAction> {
+    let mut continuing = false;
+    for failure in failures.iter().filter(|failure| {
+        failure.owner.is_replay_callback()
+            && failure.group_action != CallbackGroupAction::Handled
+            && failure.depth == 1
+    }) {
+        match failure.group_action {
+            CallbackGroupAction::Fail => return Some(CallbackGroupAction::Fail),
+            CallbackGroupAction::Continue => continuing = true,
+            CallbackGroupAction::Handled => unreachable!(),
+        }
+    }
+    continuing
+        .then_some(CallbackGroupAction::Continue)
+        .or_else(|| {
+            (terminal_depth == 1)
+                .then(|| CallbackGroupAction::for_command(routed_name))
+                .flatten()
+        })
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum InsertedCommandMode<'a> {
+    Standard(&'a CommandQueueExecution),
+    CommandAlias {
+        client_terminal: ClientTerminal,
+        queue_execution: &'a CommandQueueExecution,
+        stdin: Option<&'a RawText>,
+    },
+}
+
+impl<'a> InsertedCommandMode<'a> {
+    pub(super) fn queue_execution(self) -> &'a CommandQueueExecution {
+        match self {
+            Self::Standard(queue_execution)
+            | Self::CommandAlias {
+                queue_execution, ..
+            } => queue_execution,
+        }
+    }
+}
+
+#[derive(Default)]
+pub(super) struct InsertedCommandResult {
+    pub(super) output: RawText,
+    pub(super) exit_code: u8,
+    pub(super) yielded: bool,
+}
+
+pub(super) fn append_inserted_output(output: &mut RawText, addition: impl AsRef<[u8]>) {
+    let addition = addition.as_ref();
+    if addition.is_empty() {
+        return;
+    }
+    if !output.as_bytes().is_empty() && !output.as_bytes().ends_with(b"\n") {
+        output.push_bytes(b"\n");
+    }
+    output.push_bytes(addition);
+}
+
+pub(super) fn prepend_command_output(mut output: RawText, error: DaemonError) -> DaemonError {
+    if output.as_bytes().is_empty() {
+        return error;
+    }
+    match error {
+        DaemonError::CommandExit {
+            output: error_output,
+            exit_code,
+        } => {
+            append_inserted_output(&mut output, &error_output);
+            DaemonError::CommandExit { output, exit_code }
+        }
+        DaemonError::ReportedCommandExit {
+            output: error_output,
+            exit_code,
+        } => {
+            append_inserted_output(&mut output, &error_output);
+            DaemonError::ReportedCommandExit { output, exit_code }
+        }
+        DaemonError::CommandFailed {
+            output: error_output,
+            error,
+        } => {
+            append_inserted_output(&mut output, &error_output);
+            DaemonError::CommandFailed { output, error }
+        }
+        error => DaemonError::CommandFailed {
+            output,
+            error: Box::new(error),
+        },
+    }
+}
+
+pub(super) fn discard_all_command_output(error: DaemonError) -> DaemonError {
+    match error {
+        DaemonError::CommandExit { exit_code, .. } => DaemonError::CommandExit {
+            output: RawText::default(),
+            exit_code,
+        },
+        DaemonError::ReportedCommandExit { exit_code, .. } => DaemonError::ReportedCommandExit {
+            output: RawText::default(),
+            exit_code,
+        },
+        DaemonError::CommandFailed { error, .. } => discard_all_command_output(*error),
+        error => error,
+    }
+}
+
+pub(super) fn inserted_execution(
+    client: ClientId,
+    kind: ClientKind,
+    result: InsertedCommandResult,
+) -> Result<Execution, DaemonError> {
+    if matches!(kind, ClientKind::Command | ClientKind::Control)
+        && client != ClientId(u64::MAX)
+        && result.exit_code != 0
+    {
+        Err(DaemonError::CommandExit {
+            output: result.output,
+            exit_code: result.exit_code,
+        })
+    } else {
+        Ok(Execution {
+            output: result.output,
+            effects: Vec::new(),
+        })
+    }
+}

@@ -303,3 +303,107 @@ const fn stdout_claim_rank(claim: StdoutClaim) -> u8 {
         StdoutClaim::Raw => 2,
     }
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CommandStdinSink {
+    Argument { binary: bool },
+    Config,
+    ConfigReplay,
+    PaneInput,
+}
+
+impl CommandStdinSink {
+    #[must_use]
+    pub const fn accepts_binary(self) -> bool {
+        match self {
+            Self::Argument { binary } => binary,
+            Self::Config | Self::PaneInput | Self::ConfigReplay => true,
+        }
+    }
+
+    #[must_use]
+    pub const fn is_argument(self) -> bool {
+        matches!(self, Self::Argument { .. })
+    }
+}
+
+#[must_use]
+pub fn command_stdin_sink(canonical_name: &str, args: &[RawText]) -> Option<CommandStdinSink> {
+    match canonical_name {
+        "agent-send" => {
+            agent_send_reads_stdin(args).then_some(CommandStdinSink::Argument { binary: false })
+        }
+        "send-text" => {
+            send_text_reads_stdin(args).then_some(CommandStdinSink::Argument { binary: false })
+        }
+        "html" => artifacts::html_reads_stdin(args)
+            .then_some(CommandStdinSink::Argument { binary: false }),
+        "load-buffer" => {
+            load_buffer_reads_stdin(args).then_some(CommandStdinSink::Argument { binary: true })
+        }
+        "source-file" => Some(if source_file_reads_stdin(args) {
+            CommandStdinSink::Config
+        } else {
+            CommandStdinSink::ConfigReplay
+        }),
+        "display-message" | "split-window" | "new-pane" => (args
+            .iter()
+            .any(|argument| argument.as_bytes().contains(&b'I'))
+            && command_has_flag(canonical_name, args, "-I")
+            && !(canonical_name == "display-message"
+                && command_has_flag(canonical_name, args, "-j")))
+        .then_some(CommandStdinSink::PaneInput),
+        _ => None,
+    }
+}
+
+fn stdin_payload_has_argument_boundary(canonical_name: &str, arguments: &[RawText]) -> bool {
+    if canonical_name == "load-buffer" {
+        return true;
+    }
+    let Some(spec) = zz_protocol::catalog_command_spec(canonical_name) else {
+        return false;
+    };
+    let mut index = 0;
+    while let Some(argument) = arguments.get(index) {
+        if argument == "--" {
+            return true;
+        }
+        if !argument.starts_with('-') || argument == "-" {
+            return false;
+        }
+        let consumes_next = spec
+            .option(argument)
+            .is_some_and(|option| option.value.is_some());
+        index += if consumes_next { 2 } else { 1 };
+    }
+    false
+}
+
+pub fn append_stdin_payload(
+    canonical_name: &str,
+    arguments: &mut Vec<RawText>,
+    payload: impl Into<RawText>,
+) {
+    if !stdin_payload_has_argument_boundary(canonical_name, arguments) {
+        arguments.push("--".into());
+    }
+    arguments.push(payload.into());
+}
+
+pub(super) fn source_file_reads_stdin(args: &[RawText]) -> bool {
+    zz_protocol::command_spec("source-file").is_some_and(|spec| {
+        zz_protocol::parse_tmux_options(spec, args)
+            .is_ok_and(|parsed| parsed.positionals.iter().any(|path| path == "-"))
+    })
+}
+
+fn command_has_flag(canonical_name: &str, args: &[RawText], flag: &str) -> bool {
+    zz_protocol::command_spec(canonical_name).is_some_and(|spec| {
+        zz_protocol::parse_tmux_options(spec, args).is_ok_and(|parsed| {
+            parsed.options.iter().any(
+                |option| matches!(option, zz_protocol::TmuxOption::Flag(name) if *name == flag),
+            )
+        })
+    })
+}

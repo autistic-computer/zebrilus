@@ -132,3 +132,61 @@ impl Shared {
         (pending, progressed)
     }
 }
+
+pub(super) const CONTROL_MAXIMUM_AGE: Duration = Duration::from_mins(5);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum ControlOutputAgeAction {
+    Output(u64),
+    Pause,
+    Kill,
+}
+
+pub(super) fn control_output_age_action(
+    pause_after_ms: Option<u64>,
+    enqueued_at: Instant,
+    now: Instant,
+) -> ControlOutputAgeAction {
+    let age = now.saturating_duration_since(enqueued_at);
+    let age_ms = u64::try_from(age.as_millis()).unwrap_or(u64::MAX);
+    if let Some(pause_after_ms) = pause_after_ms {
+        if age_ms >= pause_after_ms {
+            ControlOutputAgeAction::Pause
+        } else {
+            ControlOutputAgeAction::Output(age_ms)
+        }
+    } else if age >= CONTROL_MAXIMUM_AGE {
+        ControlOutputAgeAction::Kill
+    } else {
+        ControlOutputAgeAction::Output(age_ms)
+    }
+}
+
+pub(super) fn drain_control_pane_output(
+    pending: &mut VecDeque<PendingControlOutput>,
+    limit: usize,
+    before: u64,
+    now: Instant,
+    mut bytes: Vec<u8>,
+) -> (u64, Vec<u8>) {
+    let enqueued_at = pending
+        .front()
+        .expect("pending control output is present")
+        .enqueued_at;
+    let age_ms =
+        u64::try_from(now.saturating_duration_since(enqueued_at).as_millis()).unwrap_or(u64::MAX);
+    bytes.clear();
+    bytes.reserve(limit);
+    while bytes.len() < limit {
+        let Some(chunk) = pending.front_mut().filter(|chunk| chunk.seq < before) else {
+            break;
+        };
+        let take = (limit - bytes.len()).min(chunk.bytes.len().saturating_sub(chunk.offset));
+        bytes.extend_from_slice(&chunk.bytes[chunk.offset..chunk.offset + take]);
+        chunk.offset += take;
+        if chunk.offset == chunk.bytes.len() {
+            pending.pop_front();
+        }
+    }
+    (age_ms, bytes)
+}

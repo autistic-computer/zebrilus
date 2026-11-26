@@ -1202,3 +1202,612 @@ pub(super) fn parse_target_only_args(
     }
     Ok(target)
 }
+
+pub(super) const MAX_CONTEXT_PATH_BYTES: usize = 4 * 1024;
+
+pub(super) const AGENT_SEND_WAIT_TIMEOUT: Duration = Duration::from_mins(10);
+
+const SEND_TEXT_TAIL_CHARS: usize = 40;
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(super) struct ContextReference {
+    pub(super) path: String,
+    pub(super) start: Option<u32>,
+    pub(super) end: Option<u32>,
+}
+
+impl ContextReference {
+    pub(super) fn parse(value: &str) -> Result<Self, ServerError> {
+        let invalid = |message: &str| ServerError::InvalidCommand(message.to_owned());
+        let (path, range) = match value.rsplit_once(':') {
+            Some((path, range)) if !path.is_empty() && parse_line_range(range).is_some() => {
+                (path, parse_line_range(range))
+            }
+            _ => (value, None),
+        };
+        if path.is_empty() || path.len() > MAX_CONTEXT_PATH_BYTES {
+            return Err(invalid("--context path must be 1..=4096 bytes"));
+        }
+        if path.chars().any(char::is_control) {
+            return Err(invalid(
+                "--context path must not contain control characters",
+            ));
+        }
+        let (start, end) = range.unwrap_or((None, None));
+        if let (Some(start), Some(end)) = (start, end)
+            && start > end
+        {
+            return Err(invalid("--context line range must not run backwards"));
+        }
+        Ok(Self {
+            path: path.to_owned(),
+            start,
+            end,
+        })
+    }
+
+    pub(super) fn header(&self) -> String {
+        match (self.start, self.end) {
+            (Some(start), Some(end)) => format!("{}:{start}-{end}", self.path),
+            (Some(start), None) => format!("{}:{start}", self.path),
+            _ => self.path.clone(),
+        }
+    }
+}
+
+fn parse_line_range(value: &str) -> Option<(Option<u32>, Option<u32>)> {
+    if let Some((start, end)) = value.split_once('-') {
+        return Some((Some(start.parse().ok()?), Some(end.parse().ok()?)));
+    }
+    Some((Some(value.parse().ok()?), None))
+}
+
+#[derive(Clone, Debug, Default)]
+pub(super) struct ParsedAgentSend {
+    pub(super) on_block: AgentBlockPolicy,
+    pub(super) on_block_set: bool,
+    pub(super) json: bool,
+    pub(super) final_only: bool,
+    pub(super) target: Option<String>,
+    pub(super) submit: bool,
+    pub(super) wait: bool,
+    pub(super) notify: bool,
+    pub(super) timeout: Option<Duration>,
+    pub(super) context: Option<ContextReference>,
+    pub(super) relay: Option<String>,
+    pub(super) text: Vec<String>,
+}
+
+pub(super) fn pane_wait_exit_code(
+    terminal: &TerminalSession,
+    status: &zz_terminal::SessionStatus,
+) -> u8 {
+    if let Some(completion) = terminal.completion() {
+        return completion.signal.map_or_else(
+            || u8::try_from(completion.code).unwrap_or(u8::MAX),
+            |signal| signal.saturating_add(128),
+        );
+    }
+    match status {
+        zz_terminal::SessionStatus::Exited(status) => u8::try_from(status.code).unwrap_or(u8::MAX),
+        _ => 0,
+    }
+}
+
+pub(super) fn collapse_whitespace(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+pub(super) fn echo_tail(text: &str) -> String {
+    let line = text
+        .lines()
+        .rev()
+        .find(|line| !line.trim().is_empty())
+        .unwrap_or_default();
+    let collapsed = collapse_whitespace(line);
+    let start = collapsed
+        .char_indices()
+        .rev()
+        .nth(SEND_TEXT_TAIL_CHARS.saturating_sub(1))
+        .map_or(0, |(index, _)| index);
+    collapsed[start..].to_owned()
+}
+
+#[derive(Debug)]
+pub(super) struct ParsedSendText {
+    pub(super) target: Option<String>,
+    pub(super) no_enter: bool,
+    pub(super) timeout: Duration,
+    text: Vec<String>,
+}
+
+impl ParsedSendText {
+    pub(super) fn payload(&self) -> Result<String, ServerError> {
+        let text = self.text.join(" ");
+        let text = text.trim_end_matches(['\n', '\r']);
+        check_plain_text("send-text", text)?;
+        Ok(text.to_owned())
+    }
+}
+
+#[must_use]
+pub fn send_text_reads_stdin(args: &[RawText]) -> bool {
+    parse_send_text_args(args).is_ok_and(|parsed| parsed.text.is_empty())
+}
+
+#[derive(Debug)]
+pub(super) enum PaneWaitCondition {
+    Exit,
+    Idle(Duration),
+    Until(String),
+    Regex(regex::Regex),
+}
+
+#[derive(Debug)]
+pub(super) struct ParsedWaitPane {
+    target: Option<String>,
+    pub(super) condition: PaneWaitCondition,
+    pub(super) timeout: Duration,
+    pub(super) tail: Option<usize>,
+}
+
+#[derive(Debug)]
+pub(super) struct ParsedRunPane {
+    pub(super) target: Option<String>,
+    pub(super) timeout: Duration,
+    pub(super) command: String,
+}
+
+pub(super) fn parse_pane_timeout(verb: &str, value: &str) -> Result<Duration, ServerError> {
+    let invalid = || {
+        ServerError::CommandParse(format!(
+            "{verb} --timeout needs a nonnegative number of seconds"
+        ))
+    };
+    let (whole, fraction) = value.split_once('.').unwrap_or((value, ""));
+    if whole.is_empty()
+        || !whole.bytes().all(|byte| byte.is_ascii_digit())
+        || (value.contains('.') && fraction.is_empty())
+        || !fraction.bytes().all(|byte| byte.is_ascii_digit())
+    {
+        return Err(invalid());
+    }
+    Duration::try_from_secs_f64(value.parse().map_err(|_| invalid())?).map_err(|_| invalid())
+}
+
+const RUN_PANE_LITERAL: &str = " _./,:=+@%~-";
+
+pub(super) fn run_pane_line(marker: &str, eval: &str, command: &str) -> String {
+    let mut escaped = String::with_capacity(command.len());
+    for character in command.chars() {
+        if character.is_ascii_alphanumeric()
+            || !character.is_ascii()
+            || RUN_PANE_LITERAL.contains(character)
+        {
+            escaped.push(character);
+        } else {
+            let _ = write!(escaped, "\\0{:03o}", u32::from(character));
+        }
+    }
+    format!(
+        " printf '\\n%s\\n' '{marker}-BEGIN'; {eval} \"$(printf '%b' '{escaped}')\"; printf \
+         '\\n{marker}-RC=%d=END\\n' $?"
+    )
+}
+
+pub(super) fn run_pane_command(escaped: &str) -> Option<String> {
+    let mut command = String::with_capacity(escaped.len());
+    let mut rest = escaped;
+    while let Some(index) = rest.find("\\0") {
+        command.push_str(&rest[..index]);
+        let digits = rest.get(index + 2..index + 5)?;
+        command.push(char::from(u8::from_str_radix(digits, 8).ok()?));
+        rest = &rest[index + 5..];
+    }
+    command.push_str(rest);
+    Some(command)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum RunStart {
+    Marked,
+    Dropped,
+    Joined,
+}
+
+fn run_pane_code(text: &str, prefix: &str) -> Option<(usize, u8)> {
+    text.match_indices(prefix).find_map(|(index, _)| {
+        let rest = &text[index + prefix.len()..];
+        let digits = rest.bytes().take_while(u8::is_ascii_digit).count();
+        if !rest[digits..].starts_with("=END") {
+            return None;
+        }
+        Some((index, rest[..digits].parse().ok()?))
+    })
+}
+
+pub(super) fn run_pane_result<'a>(
+    screen: &'a str,
+    marker: &str,
+    collecting: bool,
+) -> (Option<&'a str>, Option<u8>, RunStart) {
+    let begin = format!("{marker}-BEGIN");
+    let typed = format!("'{begin}'");
+    let prefix = format!("{marker}-RC=");
+    let echoed = format!("{prefix}%d=END\\n' $?");
+    let lines = screen
+        .split_inclusive('\n')
+        .rev()
+        .take(RUN_PANE_CAPTURE_LINES)
+        .collect::<Vec<_>>();
+    let mut offset = screen.len() - lines.iter().map(|line| line.len()).sum::<usize>();
+    let capture_start = offset;
+    let mut start = collecting.then_some(offset);
+    let mut inline = false;
+    let mut saw_begin = false;
+    let mut echo_end = None;
+    for line in lines.into_iter().rev() {
+        let text = line.strip_suffix('\n').unwrap_or(line);
+        let code = run_pane_code(text, &prefix);
+        let before = &text[..code.map_or(text.len(), |(index, _)| index)];
+        let boundary = |after: usize| {
+            if text[after..].trim().is_empty() {
+                (offset + line.len(), false)
+            } else {
+                (offset + after, true)
+            }
+        };
+        if let Some(index) = before
+            .match_indices(&begin)
+            .map(|(index, _)| index)
+            .filter(|index| !before[..*index].ends_with('\''))
+            .last()
+        {
+            let (at, within) = boundary(index + begin.len());
+            start = Some(at);
+            inline = within;
+            saw_begin = true;
+        } else if before.contains(&typed) {
+            let (at, within) = boundary(
+                before
+                    .rfind(&echoed)
+                    .map_or(before.len(), |index| index + echoed.len()),
+            );
+            echo_end = Some(at);
+            inline = within;
+        }
+        if let Some((index, code)) = code {
+            let begin = if saw_begin {
+                RunStart::Marked
+            } else if start.is_none() && echo_end.is_some() {
+                RunStart::Joined
+            } else {
+                RunStart::Dropped
+            };
+            let end = if text[..index].trim().is_empty() {
+                offset
+            } else {
+                offset + index
+            };
+            let segment = &screen[start.or(echo_end).unwrap_or(capture_start).min(end)..end];
+            let segment = if end > offset {
+                segment.trim_end()
+            } else {
+                segment.strip_suffix('\n').unwrap_or(segment)
+            };
+            return (
+                Some(if inline {
+                    segment.trim_start()
+                } else {
+                    segment
+                }),
+                Some(code),
+                begin,
+            );
+        }
+        offset += line.len();
+    }
+    let partial = start.map(|start| {
+        let rest = &screen[start..];
+        let kept = rest.trim_end_matches('\n').len();
+        let rest = &rest[..if kept == 0 {
+            0
+        } else {
+            (kept + 1).min(rest.len())
+        }];
+        if inline { rest.trim_start() } else { rest }
+    });
+    (partial, None, RunStart::Marked)
+}
+
+pub(super) fn parse_send_text_args(args: &[RawText]) -> Result<ParsedSendText, ServerError> {
+    let mut parsed = ParsedSendText {
+        target: None,
+        no_enter: false,
+        timeout: SEND_TEXT_TIMEOUT,
+        text: Vec::new(),
+    };
+    let mut index = 0;
+    while let Some(argument) = args.get(index) {
+        if argument == "--" {
+            parsed.text.extend(
+                args[index.saturating_add(1)..]
+                    .iter()
+                    .map(ToString::to_string),
+            );
+            break;
+        }
+        if argument == "--no-enter" {
+            parsed.no_enter = true;
+            index += 1;
+            continue;
+        }
+        if let Some(value) = option_value("send-text", args, index, &["--timeout"])? {
+            parsed.timeout = parse_pane_timeout("send-text", &value.value)?;
+            index += value.consumed;
+            continue;
+        }
+        if let Some(value) = option_value("send-text", args, index, &["-t"])? {
+            parsed.target = Some(value.value);
+            index += value.consumed;
+            continue;
+        }
+        if argument.starts_with('-') && argument != "-" {
+            return Err(ServerError::CommandParse(format!(
+                "unsupported command: send-text {argument}"
+            )));
+        }
+        parsed.text.push(argument.to_string());
+        index += 1;
+    }
+    Ok(parsed)
+}
+
+#[derive(serde::Serialize)]
+pub(super) struct AgentReplyEnvelope<'a> {
+    pub(super) pane: String,
+    pub(super) stop_reason: &'a str,
+    pub(super) duration_ms: u128,
+    pub(super) tool_calls: u32,
+    pub(super) permissions: AgentReplyPermissions,
+    pub(super) truncated: bool,
+    pub(super) final_text: &'a str,
+    pub(super) transcript: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) permission: Option<&'a serde_json::Value>,
+}
+
+#[derive(Default, serde::Serialize)]
+pub(super) struct AgentReplyPermissions {
+    pub(super) requested: u32,
+    pub(super) allowed: u32,
+    pub(super) denied: u32,
+}
+
+pub(super) fn agent_terminal_reply_output(
+    pane: PaneId,
+    text: &str,
+    duration: Duration,
+    stop_reason: &str,
+    parsed: &ParsedAgentSend,
+) -> String {
+    if !parsed.json {
+        return text.to_owned();
+    }
+    serde_json::to_string(&AgentReplyEnvelope {
+        pane: pane.to_string(),
+        stop_reason,
+        duration_ms: duration.as_millis(),
+        tool_calls: 0,
+        permissions: AgentReplyPermissions::default(),
+        truncated: false,
+        final_text: text,
+        transcript: text,
+        permission: None,
+    })
+    .expect("turn reply JSON")
+}
+
+#[cfg(feature = "agent")]
+pub(super) fn agent_permission_json(
+    permission: &zz_protocol::AgentPermissionWire,
+) -> serde_json::Value {
+    let payload: serde_json::Value =
+        serde_json::from_str(&permission.payload).expect("permission payload JSON");
+    serde_json::json!({ "request_id": permission.request_id, "tool_call": payload["toolCall"], "options": payload["options"] })
+}
+
+impl ParsedAgentSend {
+    fn wait_only(&self) -> bool {
+        self.wait && self.context.is_none() && self.text.iter().all(|text| text.trim().is_empty())
+    }
+
+    pub(super) fn wait_timeout(&self) -> Option<Duration> {
+        let timeout = self.timeout.unwrap_or(AGENT_SEND_WAIT_TIMEOUT);
+        (!timeout.is_zero()).then_some(timeout)
+    }
+
+    pub(super) fn payload(&self) -> Result<String, ServerError> {
+        let text = self.text.join(" ");
+        let text = text.trim_end_matches(['\n', '\r']);
+        check_plain_text("agent-send", text)?;
+        let payload = match &self.context {
+            Some(reference) => fenced_block(&reference.header(), text),
+            None => text.to_owned(),
+        };
+        if payload.len() > MAX_AGENT_SEND_BYTES {
+            return Err(ServerError::InvalidCommand(format!(
+                "agent-send payload is {} bytes with its context header; the limit is \
+                 {MAX_AGENT_SEND_BYTES}",
+                payload.len()
+            )));
+        }
+        Ok(payload)
+    }
+}
+
+fn fenced_block(header: &str, text: &str) -> String {
+    let widest = text
+        .split('\n')
+        .flat_map(|line| line.split(|character| character != '`'))
+        .map(str::len)
+        .max()
+        .unwrap_or(0);
+    let fence = "`".repeat(widest.saturating_add(1).max(3));
+    format!("{header}\n{fence}\n{text}\n{fence}")
+}
+
+#[must_use]
+pub fn agent_send_reads_stdin(args: &[RawText]) -> bool {
+    parse_agent_send_args(args).is_ok_and(|parsed| parsed.text.is_empty())
+}
+
+#[cfg(feature = "agent")]
+const MAX_AGENT_NOTIFY_BYTES: usize = 64 * 1024;
+
+#[cfg(feature = "agent")]
+pub(super) fn reply_tail(text: &str) -> String {
+    let mut start = text.len().saturating_sub(MAX_AGENT_NOTIFY_BYTES);
+    while !text.is_char_boundary(start) {
+        start += 1;
+    }
+    text[start..].trim().to_owned()
+}
+
+#[cfg(feature = "agent")]
+#[derive(Clone, Debug)]
+pub(super) struct ChatDelivery {
+    pub(super) from: PaneId,
+    pub(super) request: Option<u64>,
+    pub(super) text: String,
+}
+
+pub(super) fn parse_agent_send_args(args: &[RawText]) -> Result<ParsedAgentSend, ServerError> {
+    let mut parsed = ParsedAgentSend::default();
+    let mut on_block_set = false;
+    let mut progress = false;
+    let mut explicit_target = false;
+    let mut index = 0;
+    while let Some(argument) = args.get(index) {
+        if argument == "--" {
+            parsed.text.extend(
+                args[index.saturating_add(1)..]
+                    .iter()
+                    .map(ToString::to_string),
+            );
+            break;
+        }
+        if argument == "--submit" {
+            parsed.submit = true;
+            index += 1;
+            continue;
+        }
+        if argument == "--progress" {
+            progress = true;
+            index += 1;
+            continue;
+        }
+        if argument == "--wait" {
+            parsed.submit = true;
+            parsed.wait = true;
+            index += 1;
+            continue;
+        }
+        if argument == "--notify" {
+            parsed.submit = true;
+            parsed.notify = true;
+            index += 1;
+            continue;
+        }
+        if argument == "--json" || argument == "--final" {
+            parsed.json |= argument == "--json";
+            parsed.final_only |= argument == "--final";
+            index += 1;
+            continue;
+        }
+        if let Some(value) = option_value("agent-send", args, index, &["--on-block"])? {
+            parsed.on_block = match value.value.as_str() {
+                "wait" => AgentBlockPolicy::Wait,
+                "fail" => AgentBlockPolicy::Fail,
+                "allow" => AgentBlockPolicy::Allow,
+                "deny" => AgentBlockPolicy::Deny,
+                _ => {
+                    return Err(ServerError::CommandParse(
+                        "agent-send --on-block needs wait, fail, allow, or deny".to_owned(),
+                    ));
+                }
+            };
+            on_block_set = true;
+            index += value.consumed;
+            continue;
+        }
+        if let Some(value) = option_value("agent-send", args, index, &["--timeout"])? {
+            parsed.timeout = Some(parse_pane_timeout("agent-send", &value.value)?);
+            index += value.consumed;
+            continue;
+        }
+        if let Some(value) = option_value("agent-send", args, index, &["-t"])? {
+            explicit_target = true;
+            parsed.target = Some(value.value);
+            index += value.consumed;
+            continue;
+        }
+        if let Some(value) = option_value("agent-send", args, index, &["--context"])? {
+            parsed.context = Some(ContextReference::parse(&value.value)?);
+            index += value.consumed;
+            continue;
+        }
+        if let Some(value) = option_value("agent-send", args, index, &["--relay"])? {
+            parsed.relay = Some(value.value);
+            index += value.consumed;
+            continue;
+        }
+        if argument.starts_with('-') && argument != "-" {
+            return Err(ServerError::CommandParse(format!(
+                "unsupported command: agent-send {argument}"
+            )));
+        }
+        parsed.text.push(argument.to_string());
+        index += 1;
+    }
+    if (parsed.json || parsed.final_only) && !parsed.wait {
+        return Err(ServerError::CommandParse(
+            "agent-send --json and --final need --wait".to_owned(),
+        ));
+    }
+    if parsed.json && parsed.final_only {
+        return Err(ServerError::CommandParse(
+            "agent-send --json and --final cannot be combined".to_owned(),
+        ));
+    }
+    if parsed.notify && parsed.wait {
+        return Err(ServerError::CommandParse(
+            "agent-send --notify and --wait cannot be combined".to_owned(),
+        ));
+    }
+    if progress
+        && (!parsed.wait
+            || !explicit_target
+            || !parsed.target.as_deref().is_some_and(|target| {
+                target
+                    .strip_prefix('%')
+                    .is_some_and(|id| !id.is_empty() && id.bytes().all(|ch| ch.is_ascii_digit()))
+            }))
+    {
+        return Err(ServerError::NativeCommandParse(
+            "agent-send: --progress requires --wait and an explicit -t %N".to_owned(),
+        ));
+    }
+    parsed.on_block_set = on_block_set;
+    if on_block_set && !parsed.wait {
+        return Err(ServerError::CommandParse(
+            "agent-send --on-block needs --wait".to_owned(),
+        ));
+    }
+    if parsed.timeout.is_some() && !parsed.wait {
+        return Err(ServerError::CommandParse(
+            "agent-send --timeout needs --wait".to_owned(),
+        ));
+    }
+    Ok(parsed)
+}

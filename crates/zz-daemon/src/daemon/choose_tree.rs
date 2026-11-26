@@ -1880,3 +1880,151 @@ const fn choose_tree_flags(expanded: bool, has_children: bool, active: bool) -> 
     }
     flags
 }
+
+pub(super) fn bounded_choose_item_text(text: &str) -> String {
+    let mut bounded = String::with_capacity(text.len().min(MAX_CHOOSE_ITEM_TEXT_BYTES));
+    for character in text.chars() {
+        if bounded.len() + character.len_utf8() > MAX_CHOOSE_ITEM_TEXT_BYTES {
+            break;
+        }
+        bounded.push(character);
+    }
+    bounded
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum ChooserPromptKind {
+    Kill,
+    Command,
+    Filter,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct ChooserPrompt {
+    pub(super) kind: ChooserPromptKind,
+    text: String,
+    pub(super) editor: ModePrompt,
+    targets: Vec<ChooseTreeTarget>,
+}
+
+impl ChooserPrompt {
+    pub(super) fn new(
+        kind: ChooserPromptKind,
+        text: String,
+        input: &str,
+        targets: Vec<ChooseTreeTarget>,
+    ) -> Self {
+        let editor = ModePrompt::new(text.clone(), input, "");
+        Self {
+            kind,
+            text,
+            editor,
+            targets,
+        }
+    }
+
+    pub(super) const fn history_type(&self) -> CommandPromptType {
+        match self.kind {
+            ChooserPromptKind::Filter => CommandPromptType::Search,
+            ChooserPromptKind::Kill | ChooserPromptKind::Command => CommandPromptType::Command,
+        }
+    }
+
+    pub(super) fn input(&self) -> String {
+        self.editor.input()
+    }
+
+    pub(super) fn edit(
+        &mut self,
+        edit: &ChooserPromptEdit,
+        history: &[String],
+        (vi, separators): (bool, &str),
+    ) -> PromptOutcome {
+        self.editor.set_key_options(vi, separators);
+        match edit {
+            ChooserPromptEdit::Append(text) => {
+                if self.input().len().saturating_add(text.len()) > MAX_CHOOSE_TREE_QUERY_BYTES {
+                    return PromptOutcome::Handled;
+                }
+                for character in text.chars() {
+                    let outcome = self
+                        .editor
+                        .key_with_history(ModeKey::Char(character), history);
+                    if matches!(outcome, PromptOutcome::Done | PromptOutcome::Cancelled) {
+                        return outcome;
+                    }
+                }
+                PromptOutcome::Handled
+            }
+            ChooserPromptEdit::Key(key) => self.editor.key_with_history(*key, history),
+        }
+    }
+
+    pub(super) fn remembered(&self) -> Option<(CommandPromptType, String)> {
+        let input = self.input();
+        (!input.is_empty()).then(|| (self.history_type(), input))
+    }
+
+    pub(super) fn line(&self) -> String {
+        format!("{}{}", self.text, self.input())
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct ClientChooserRow {
+    pub(super) client: ClientId,
+    pub(super) name: String,
+    pub(super) text: String,
+    pub(super) activity: u64,
+    pub(super) created: u64,
+    pub(super) width: u16,
+    pub(super) height: u16,
+    pub(super) matches: bool,
+    pub(super) pane: Option<PaneId>,
+}
+
+pub(super) fn chooser_row_for_key<T>(
+    items: &[T],
+    input: &zz_terminal::KeyInput,
+    searching: bool,
+    key: impl Fn(&T) -> &str,
+) -> Option<u32> {
+    if searching {
+        return None;
+    }
+    let pressed = input_key_name(input);
+    let pressed = pressed.as_str();
+    if pressed.is_empty() {
+        return None;
+    }
+    let row = items
+        .iter()
+        .position(|item| !key(item).is_empty() && key(item) == pressed)?;
+    u32::try_from(row).ok()
+}
+
+pub(super) fn default_chooser_row_key(line: usize) -> String {
+    match line {
+        0..=9 => line.to_string(),
+        10..=35 => {
+            let offset = u8::try_from(line - 10).expect("a row below 36 fits a byte");
+            format!("M-{}", char::from(b'a' + offset))
+        }
+        _ => String::new(),
+    }
+}
+
+pub(super) fn parsed_chooser_row_key(expanded: &str) -> String {
+    let canonical = canonical_key(expanded);
+    if canonical.len() > MAX_CHOOSE_ITEM_KEY_BYTES || !is_key_name(&canonical) {
+        return String::new();
+    }
+    canonical
+}
+
+pub(super) const CHOOSER_ROW_CONTEXT_FORMATS: [&str; 1] = ["line"];
+
+pub(super) fn chooser_row_variables(line: usize) -> BTreeMap<String, String> {
+    let [line_name] = CHOOSER_ROW_CONTEXT_FORMATS;
+    BTreeMap::from([(line_name.to_owned(), line.to_string())])
+}

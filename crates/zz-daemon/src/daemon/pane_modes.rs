@@ -931,3 +931,176 @@ pub(super) fn clock_modes_are_open(inner: &ServerState) -> bool {
             .any(|mode| matches!(mode, PaneModeRequest::Clock))
     })
 }
+
+pub(super) struct PanesModeFrames {
+    pub(super) size: Option<(u16, u16)>,
+    pub(super) resized: std::cell::Cell<bool>,
+    pub(super) frames: BTreeMap<PaneId, Arc<zz_terminal::TerminalViewport>>,
+}
+
+pub(super) fn panes_mode_live_frames(
+    inner: &ServerState,
+    window: WindowId,
+) -> BTreeMap<PaneId, Arc<zz_terminal::TerminalViewport>> {
+    inner
+        .engine
+        .state
+        .windows
+        .get(&window)
+        .map(|state| {
+            state
+                .pane_order()
+                .iter()
+                .filter_map(|shown| {
+                    inner
+                        .terminals
+                        .get(shown)
+                        .map(|terminal| (*shown, terminal.latest_viewport()))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+pub(super) struct PaneModeTransition {
+    pub(super) pane: PaneId,
+    pub(super) entered: bool,
+    pub(super) previous: Option<&'static str>,
+    pub(super) current: Option<&'static str>,
+}
+
+pub(super) fn pane_mode_name(mode: &PaneModeRequest) -> &'static str {
+    match mode {
+        PaneModeRequest::Clock => "clock-mode",
+        PaneModeRequest::Customize(_) => "options-mode",
+        PaneModeRequest::Switch(_) => "switch-mode",
+        PaneModeRequest::Panes(_) => "panes-mode",
+    }
+}
+
+fn top_pane_mode_name(inner: &ServerState, pane: PaneId) -> Option<&'static str> {
+    inner
+        .modes
+        .pane_modes
+        .get(&pane)
+        .and_then(|modes| modes.last())
+        .map(pane_mode_name)
+}
+
+pub(super) fn take_pane_mode_hook_events(inner: &mut ServerState) -> Vec<PendingHookEvent> {
+    let transitions = std::mem::take(&mut inner.modes.pane_mode_transitions);
+    hook_events::server_mode_hook_events(&inner.engine, transitions)
+}
+
+fn pane_mode_lifetime(mode: &PaneModeRequest) -> (bool, bool) {
+    match mode {
+        PaneModeRequest::Clock => (false, false),
+        PaneModeRequest::Customize(mode) => (mode.kill_source, mode.zoom),
+        PaneModeRequest::Switch(mode) => (mode.kill_source, mode.zoom),
+        PaneModeRequest::Panes(mode) => (mode.kill_source, mode.zoom),
+    }
+}
+
+pub(super) fn pop_pane_mode(inner: &mut ServerState, pane: PaneId) -> bool {
+    let Some(modes) = inner.modes.pane_modes.get_mut(&pane) else {
+        return false;
+    };
+    let mode = modes.pop();
+    if modes.is_empty() {
+        inner.modes.pane_modes.remove(&pane);
+    }
+    if matches!(mode, Some(PaneModeRequest::Panes(_))) {
+        inner.modes.panes_mode_frames.remove(&pane);
+        inner.engine.set_pane_status_hidden(pane, false);
+    }
+    if let Some(popped) = mode.as_ref() {
+        let current = top_pane_mode_name(inner, pane);
+        inner.modes.pane_mode_transitions.push(PaneModeTransition {
+            pane,
+            entered: false,
+            previous: Some(pane_mode_name(popped)),
+            current,
+        });
+    }
+    if let Some((kill_source, _)) = mode
+        .as_ref()
+        .filter(|mode| !matches!(mode, PaneModeRequest::Clock))
+        .map(pane_mode_lifetime)
+    {
+        let zoom_held = inner
+            .modes
+            .pane_modes
+            .get(&pane)
+            .is_some_and(|modes| modes.iter().any(|mode| pane_mode_lifetime(mode).1));
+        if !zoom_held
+            && inner.modes.pane_mode_zooms.remove(&pane)
+            && let Some(window) = inner.engine.state.window_for_pane(pane)
+            && let Some(zoomed) = inner.engine.state.windows[&window].zoomed_pane
+        {
+            let _ = inner.engine.state.toggle_zoom(zoomed);
+        }
+        if kill_source {
+            inner.modes.pane_mode_kill_panes.push(pane);
+        }
+    }
+    mode.is_some()
+}
+
+pub(super) fn consume_pane_mode_mouse(
+    inner: &mut ServerState,
+    pane: PaneId,
+    action: Option<&zz_terminal::TerminalViewAction>,
+) -> bool {
+    let Some(modes) = inner.modes.pane_modes.get_mut(&pane) else {
+        return false;
+    };
+    if matches!(action, Some(zz_terminal::TerminalViewAction::Mouse(input))
+        if input.phase() == zz_terminal::TerminalMousePhase::Motion && input.button().is_none())
+    {
+        return true;
+    }
+    if matches!(modes.last(), Some(PaneModeRequest::Clock)) {
+        modes.pop();
+        if modes.is_empty() {
+            inner.modes.pane_modes.remove(&pane);
+        }
+        let current = top_pane_mode_name(inner, pane);
+        inner.modes.pane_mode_transitions.push(PaneModeTransition {
+            pane,
+            entered: false,
+            previous: Some("clock-mode"),
+            current,
+        });
+    }
+    true
+}
+
+pub(super) fn clock_mode_timer_needed(inner: &ServerState) -> bool {
+    inner.modes.pane_modes.iter().any(|(pane, modes)| {
+        matches!(modes.last(), Some(PaneModeRequest::Clock))
+            && inner
+                .engine
+                .state
+                .window_for_pane(*pane)
+                .and_then(|window| inner.engine.state.windows.get(&window))
+                .is_some_and(|window| {
+                    inner.clients.iter().any(|(id, client)| {
+                        client.subscriber.is_some()
+                            && client_attached_session(inner, *id) == Some(window.session)
+                            && client
+                                .ctrl_subscriptions
+                                .as_ref()
+                                .is_none_or(|subscriptions| {
+                                    subscriptions.tree != zz_protocol::TreeSubscription::None
+                                })
+                    })
+                })
+    })
+}
+
+pub(super) fn duration_to_next_second() -> Duration {
+    let now = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default();
+    Duration::from_nanos(u64::from(1_000_000_000 - now.subsec_nanos()))
+}

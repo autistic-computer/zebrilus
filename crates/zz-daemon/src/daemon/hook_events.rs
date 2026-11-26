@@ -2190,3 +2190,378 @@ impl Shared {
         }
     }
 }
+
+pub(super) fn client_lifecycle_event(
+    inner: &ServerState,
+    name: &'static str,
+    client: ClientId,
+) -> Option<PendingHookEvent> {
+    let kind = inner.client(client).and_then(|c| c.kind)?;
+    if !matches!(kind, ClientKind::Interactive | ClientKind::Control) {
+        return None;
+    }
+    let registered = inner.client(client);
+    let origin = registered
+        .and_then(|c| c.origin)
+        .or_else(|| {
+            let environment = registered.and_then(Client::local_environment)?;
+            ["TMUX_PANE", "ZZ_PANE"]
+                .into_iter()
+                .find_map(|name| environment.map().get(name)?.as_str().parse().ok())
+        })
+        .and_then(|pane| ExecutionContext::for_pane(&inner.engine.state, pane));
+    let context = client_attached_session(inner, client).map_or_else(
+        || {
+            if let Some(origin) = origin {
+                return origin;
+            }
+            inner.engine.state.most_recent_context().map_or_else(
+                ExecutionContext::default,
+                |(session, window, pane)| {
+                    ExecutionContext::new(Some(session), Some(window), Some(pane))
+                },
+            )
+        },
+        |session| hook_events::live_session_context(&inner.engine.state, session),
+    );
+    let client_name = client_format_name(inner, client);
+    let mut event = PendingHookEvent::client(name, context, client, Some(client_name.as_str()));
+    if let Some(session) = event.context.session {
+        event
+            .variables
+            .insert(HOOK_SESSION_CONTEXT_FORMAT.to_owned(), session.to_string());
+        if let Some(state) = inner.engine.state.sessions.get(&session) {
+            event.variables.insert(
+                HOOK_SESSION_NAME_CONTEXT_FORMAT.to_owned(),
+                state.name.clone(),
+            );
+        }
+    }
+    if let Some(window) = event.context.window {
+        event
+            .variables
+            .insert(HOOK_WINDOW_CONTEXT_FORMAT.to_owned(), window.to_string());
+        if let Some(state) = inner.engine.state.windows.get(&window) {
+            event.variables.insert(
+                HOOK_WINDOW_NAME_CONTEXT_FORMAT.to_owned(),
+                state.name.clone(),
+            );
+            event
+                .variables
+                .insert("hook_window_index".to_owned(), state.index.to_string());
+        }
+    }
+    if let Some(pane) = event.context.pane {
+        event
+            .variables
+            .insert(HOOK_PANE_CONTEXT_FORMAT.to_owned(), pane.to_string());
+    }
+    Some(event)
+}
+
+pub(super) fn pane_event_if_observed(
+    inner: &mut ServerState,
+    name: &'static str,
+    pane: PaneId,
+) -> Option<PendingHookEvent> {
+    let waited = hook_events::event_waited_in(&inner.waits.event_waiters, name);
+    let event = PendingHookEvent::live_pane(name, pane, &inner.engine)?;
+    let hooked = inner
+        .engine
+        .event_hook_commands(&event.context, name)
+        .is_some_and(|commands| !commands.is_empty());
+    if !hooked && !waited {
+        inner
+            .engine
+            .note_event_hook_fired(&event.context, name, unix_timestamp());
+    }
+    (hooked || waited).then_some(event)
+}
+
+#[derive(Clone, PartialEq)]
+pub(super) struct PendingHookEvent {
+    pub(super) name: &'static str,
+    pub(super) context: ExecutionContext,
+    pub(super) variables: BTreeMap<String, String>,
+    pub(super) exclude_client: Option<ClientId>,
+    pub(super) control_notified: bool,
+}
+
+pub(super) const HOOK_CONTEXT_FORMAT: &str = "hook";
+
+const HOOK_CLIENT_CONTEXT_FORMAT: &str = "hook_client";
+
+pub(super) const HOOK_PANE_CONTEXT_FORMAT: &str = "hook_pane";
+
+pub(super) const HOOK_SESSION_CONTEXT_FORMAT: &str = "hook_session";
+
+pub(super) const HOOK_SESSION_NAME_CONTEXT_FORMAT: &str = "hook_session_name";
+
+pub(super) const HOOK_WINDOW_CONTEXT_FORMAT: &str = "hook_window";
+
+const HOOK_WINDOW_NAME_CONTEXT_FORMAT: &str = "hook_window_name";
+
+#[cfg(test)]
+pub(super) const NOTIFY_ADD_CONTEXT_FORMATS: [&str; 7] = [
+    HOOK_CONTEXT_FORMAT,
+    HOOK_CLIENT_CONTEXT_FORMAT,
+    HOOK_PANE_CONTEXT_FORMAT,
+    HOOK_SESSION_CONTEXT_FORMAT,
+    HOOK_SESSION_NAME_CONTEXT_FORMAT,
+    HOOK_WINDOW_CONTEXT_FORMAT,
+    HOOK_WINDOW_NAME_CONTEXT_FORMAT,
+];
+
+#[cfg(test)]
+pub(super) const PRODUCED_NON_AFTER_PINNED_HOOKS: &[&str] = &[
+    "alert-activity",
+    "alert-bell",
+    "alert-silence",
+    "client-active",
+    "client-attached",
+    "client-closed",
+    "client-created",
+    "client-dark-theme",
+    "client-detached",
+    "client-focus-in",
+    "client-focus-out",
+    "client-light-theme",
+    "client-resized",
+    "client-session-changed",
+    "command-error",
+    "marked-pane-changed",
+    "pane-activity",
+    "pane-bell",
+    "pane-command-finished",
+    "pane-command-started",
+    "pane-created",
+    "pane-died",
+    "pane-exited",
+    "pane-focus-in",
+    "pane-focus-out",
+    "pane-mode-changed",
+    "pane-mode-entered",
+    "pane-mode-exited",
+    "pane-moved",
+    "pane-prompt-closed",
+    "pane-prompt-opened",
+    "pane-resized",
+    "pane-set-clipboard",
+    "pane-shell-prompt",
+    "pane-title-changed",
+    "session-closed",
+    "session-created",
+    "session-renamed",
+    "session-window-changed",
+    "window-closed",
+    "window-created",
+    "window-layout-changed",
+    "window-linked",
+    "window-pane-changed",
+    "window-renamed",
+    "window-resized",
+    "window-unlinked",
+    "window-unzoomed",
+    "window-zoomed",
+];
+
+#[derive(Clone)]
+pub(super) struct HookSessionState {
+    name: String,
+    active_window: WindowId,
+}
+
+#[derive(Clone)]
+pub(super) struct HookWindowState {
+    session: SessionId,
+    index: u32,
+    name: String,
+    active_pane: PaneId,
+    zoomed_pane: Option<PaneId>,
+    layout: CellLayout,
+    extent: (u16, u16),
+}
+
+#[derive(Clone)]
+pub(super) struct HookPaneState {
+    session: SessionId,
+    window: WindowId,
+    title: String,
+}
+
+#[derive(Default)]
+pub(super) struct MuxHookSnapshot {
+    pub(super) sessions: BTreeMap<SessionId, HookSessionState>,
+    pub(super) windows: BTreeMap<WindowId, HookWindowState>,
+    pub(super) panes: BTreeMap<PaneId, HookPaneState>,
+    links: BTreeSet<(SessionId, WindowId)>,
+}
+
+impl PendingHookEvent {
+    pub(super) fn session(
+        name: &'static str,
+        session: SessionId,
+        state: &HookSessionState,
+        snapshot: &MuxHookSnapshot,
+    ) -> Self {
+        hook_events::session_event(name, session, &state.name, snapshot)
+    }
+
+    #[cfg(test)]
+    pub(super) fn window(name: &'static str, window: WindowId, snapshot: &MuxHookSnapshot) -> Self {
+        hook_events::window_event(name, window, snapshot)
+    }
+
+    pub(super) fn winlink(
+        name: &'static str,
+        session: SessionId,
+        session_state: &HookSessionState,
+        window: WindowId,
+        window_state: &HookWindowState,
+        snapshot: &MuxHookSnapshot,
+    ) -> Self {
+        hook_events::winlink_event(
+            name,
+            session,
+            &session_state.name,
+            window,
+            &window_state.name,
+            snapshot,
+        )
+    }
+
+    #[cfg(test)]
+    pub(super) fn pane(
+        name: &'static str,
+        pane: PaneId,
+        state: &HookPaneState,
+        snapshot: &MuxHookSnapshot,
+    ) -> Self {
+        hook_events::pane_event(name, pane, state.session, state.window, snapshot)
+    }
+
+    fn pane_named(
+        name: &'static str,
+        pane: PaneId,
+        session: SessionId,
+        window: WindowId,
+        window_name: String,
+    ) -> Self {
+        Self {
+            name,
+            context: ExecutionContext::new(Some(session), Some(window), Some(pane)),
+            exclude_client: None,
+            control_notified: false,
+            variables: BTreeMap::from([
+                (HOOK_CONTEXT_FORMAT.to_owned(), name.to_owned()),
+                (HOOK_WINDOW_CONTEXT_FORMAT.to_owned(), window.to_string()),
+                (HOOK_WINDOW_NAME_CONTEXT_FORMAT.to_owned(), window_name),
+                (HOOK_PANE_CONTEXT_FORMAT.to_owned(), pane.to_string()),
+            ]),
+        }
+    }
+
+    pub(super) fn client(
+        name: &'static str,
+        context: ExecutionContext,
+        client: ClientId,
+        client_name: Option<&str>,
+    ) -> Self {
+        let variables = BTreeMap::from([
+            (HOOK_CONTEXT_FORMAT.to_owned(), name.to_owned()),
+            (
+                HOOK_CLIENT_CONTEXT_FORMAT.to_owned(),
+                client_name.map_or_else(|| format!("device-{}", client.0), str::to_owned),
+            ),
+        ]);
+        Self {
+            name,
+            context,
+            variables,
+            exclude_client: (name == "client-detached").then_some(client),
+            control_notified: false,
+        }
+    }
+
+    pub(super) fn paste_buffer(name: &'static str, buffer: String) -> Self {
+        Self {
+            name,
+            context: ExecutionContext::new(None, None, None),
+            exclude_client: None,
+            control_notified: false,
+            variables: BTreeMap::from([
+                (HOOK_CONTEXT_FORMAT.to_owned(), name.to_owned()),
+                ("hook_paste_buffer".to_owned(), buffer),
+            ]),
+        }
+    }
+}
+
+impl MuxHookSnapshot {
+    pub(super) fn capture(engine: &MuxEngine) -> Self {
+        let mut snapshot = Self::default();
+        for (session, state) in &engine.state.sessions {
+            snapshot.add_session(*session, &state.name, state.active_window, &state.windows);
+        }
+        for (window, state) in &engine.state.windows {
+            snapshot.add_window(engine, *window, state);
+        }
+        snapshot
+    }
+
+    fn add_session(
+        &mut self,
+        session: SessionId,
+        name: &str,
+        active_window: WindowId,
+        windows: &[WindowId],
+    ) {
+        self.sessions.insert(
+            session,
+            HookSessionState {
+                name: name.to_owned(),
+                active_window,
+            },
+        );
+        self.links
+            .extend(windows.iter().map(|window| (session, *window)));
+    }
+
+    fn add_window(&mut self, engine: &MuxEngine, window: WindowId, state: &zz_mux::Window) {
+        self.windows.insert(
+            window,
+            HookWindowState {
+                session: state.session,
+                index: state.index,
+                name: state.name.clone(),
+                active_pane: state.active_pane,
+                zoomed_pane: state.zoomed_pane,
+                layout: state.layout.clone(),
+                extent: (
+                    engine
+                        .window_extent(window, zz_protocol::Axis::Horizontal)
+                        .unwrap_or_default(),
+                    engine
+                        .window_extent(window, zz_protocol::Axis::Vertical)
+                        .unwrap_or_default(),
+                ),
+            },
+        );
+        self.panes
+            .extend(state.panes.iter().map(|(pane, pane_state)| {
+                (
+                    *pane,
+                    HookPaneState {
+                        session: state.session,
+                        window,
+                        title: pane_state.title.clone(),
+                    },
+                )
+            }));
+    }
+
+    #[cfg(test)]
+    pub(super) fn session_context(&self, session: SessionId) -> ExecutionContext {
+        hook_events::session_context(self, session)
+    }
+}

@@ -1438,3 +1438,135 @@ fn parse_pause_after_milliseconds(value: &str) -> Option<u64> {
     }
     Some(u64::from(seconds.wrapping_mul(1000)))
 }
+
+pub(super) struct ClientRegistrationGuard {
+    pub(super) shared: Arc<Shared>,
+    client: ClientId,
+    pub(super) armed: bool,
+}
+
+pub(super) struct ClientWriterRegistrationGuard {
+    shared: Arc<Shared>,
+    client: ClientId,
+    pub(super) armed: bool,
+}
+
+pub(super) struct ResponseAdmissionGuard {
+    shared: Arc<Shared>,
+    armed: bool,
+}
+
+#[derive(Default)]
+pub(super) struct ResponseAdmissionState {
+    pub(super) active: usize,
+    pub(super) frozen: bool,
+}
+
+#[derive(Default)]
+pub(super) struct ShutdownBlockerState {
+    pub(super) active: usize,
+    pub(super) detached: usize,
+    pub(super) closed: bool,
+}
+
+#[cfg(test)]
+pub(super) struct ResponseAdmissionHook {
+    pub(super) reached: crossbeam_channel::Sender<()>,
+    pub(super) release: crossbeam_channel::Receiver<()>,
+}
+
+impl ClientRegistrationGuard {
+    pub(super) fn new(shared: &Arc<Shared>, client: ClientId) -> Self {
+        Self {
+            shared: Arc::clone(shared),
+            client,
+            armed: true,
+        }
+    }
+
+    pub(super) fn unregister(&mut self) {
+        if std::mem::take(&mut self.armed) {
+            #[cfg(unix)]
+            if self.shared.loop_active.load(Ordering::Acquire) {
+                self.shared.lifecycle.release(self.client, false);
+                self.shared.accept_wake.wake();
+                return;
+            }
+            self.shared.unregister(self.client);
+        }
+    }
+}
+
+impl Drop for ClientRegistrationGuard {
+    fn drop(&mut self) {
+        self.unregister();
+    }
+}
+
+impl ClientWriterRegistrationGuard {
+    pub(super) fn new(
+        shared: &Arc<Shared>,
+        client: ClientId,
+        outbound: Arc<OutboundMailbox>,
+    ) -> Self {
+        shared.client_writers.lock().insert(client, outbound);
+        Self {
+            shared: Arc::clone(shared),
+            client,
+            armed: true,
+        }
+    }
+
+    pub(super) fn unregister(&mut self) {
+        if std::mem::take(&mut self.armed) {
+            self.shared.client_writers.lock().remove(&self.client);
+        }
+    }
+}
+
+impl Drop for ClientWriterRegistrationGuard {
+    fn drop(&mut self) {
+        self.unregister();
+    }
+}
+
+impl ResponseAdmissionGuard {
+    pub(super) fn new(shared: &Arc<Shared>) -> Option<Self> {
+        let mut state = shared.response_admissions.lock();
+        if state.frozen {
+            return None;
+        }
+        state.active = state
+            .active
+            .checked_add(1)
+            .expect("response admission overflow");
+        drop(state);
+        Some(Self {
+            shared: Arc::clone(shared),
+            armed: true,
+        })
+    }
+
+    pub(super) fn finish(&mut self) {
+        if !std::mem::take(&mut self.armed) {
+            return;
+        }
+        let mut state = self.shared.response_admissions.lock();
+        state.active = state
+            .active
+            .checked_sub(1)
+            .expect("response admission underflow");
+        let notify = state.active == 0 && state.frozen;
+        drop(state);
+        if notify {
+            self.shared.response_admissions_changed.notify_all();
+            self.shared.accept_wake.wake();
+        }
+    }
+}
+
+impl Drop for ResponseAdmissionGuard {
+    fn drop(&mut self) {
+        self.finish();
+    }
+}

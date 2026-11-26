@@ -361,3 +361,224 @@ pub(super) fn display_panes_escape_key() -> zz_terminal::KeyInput {
         unshifted_codepoint: None,
     }
 }
+
+const MAX_DISPLAY_PANE_INDICATORS: usize = 4_096;
+
+#[derive(Debug)]
+pub(super) struct DisplayPanesSession {
+    pub(super) token: u64,
+    pub(super) source_pane: PaneId,
+    source_session: SessionId,
+    selectable: bool,
+    pub(super) state: DisplayPanesState,
+    template: Option<CommandPromptTemplate>,
+    source: Option<SourceSpan>,
+    pub(super) waiter: Option<OverlayWait>,
+    pub(super) mode: Option<PaneId>,
+}
+
+pub(super) fn take_display_panes(
+    inner: &mut ServerState,
+    client: ClientId,
+) -> Option<DisplayPanesSession> {
+    inner
+        .client_mut(client)
+        .and_then(|c| c.display_panes.take())
+}
+
+pub(super) fn dismiss_display_panes(inner: &mut ServerState, client: ClientId) -> bool {
+    let Some(overlay) = take_display_panes(inner, client) else {
+        return false;
+    };
+    if let Some(host) = overlay.mode
+        && matches!(
+            inner.modes.pane_modes.get(&host).and_then(|modes| modes.last()),
+            Some(PaneModeRequest::Panes(mode)) if mode.token == overlay.token
+        )
+    {
+        pop_pane_mode(inner, host);
+    }
+    true
+}
+
+fn display_panes_overlay_mode(
+    inner: &ServerState,
+    client: ClientId,
+) -> Option<(PaneId, PanesMode)> {
+    let registered = inner.client(client)?;
+    if registered.subscriber.is_none()
+        || registered.kind != Some(ClientKind::Interactive)
+        || registered.exits_on_detach
+    {
+        return None;
+    }
+    let window = client_focused_window_for_attachment(inner, client)?;
+    let state = inner.engine.state.windows.get(&window)?;
+    std::iter::once(state.active_pane)
+        .chain(state.pane_order().iter().copied())
+        .find_map(|pane| {
+            match inner
+                .modes
+                .pane_modes
+                .get(&pane)
+                .and_then(|modes| modes.last())
+            {
+                Some(PaneModeRequest::Panes(mode)) => Some((pane, mode.as_ref().clone())),
+                _ => None,
+            }
+        })
+}
+
+pub(super) fn sync_display_panes_overlays(
+    inner: &mut ServerState,
+) -> Vec<(ClientId, Option<DisplayPanesState>)> {
+    let clients = inner.clients.keys().copied().collect::<Vec<_>>();
+    let mut updates = Vec::new();
+    for client in clients {
+        let wanted = display_panes_overlay_mode(inner, client);
+        let current = take_display_panes(inner, client);
+        let shown = current.is_some();
+        let built = wanted.and_then(|(host, mode)| {
+            let session = client_attached_session(inner, client)?;
+            let host_window = inner.engine.state.window_for_pane(host)?;
+            let source_pane = if host_window == mode.source_window {
+                host
+            } else {
+                inner
+                    .engine
+                    .state
+                    .windows
+                    .get(&mode.source_window)?
+                    .active_pane
+            };
+            let facts = borrowed_format_hook_facts(inner);
+            let (_, _, state) = build_display_panes_state(
+                &inner.engine,
+                &inner.config.config_files,
+                &facts,
+                source_pane,
+                mode.duration_ms,
+                session,
+            )
+            .ok()?;
+            Some((host, mode, session, source_pane, state))
+        });
+        let Some((host, mode, session, source_pane, state)) = built else {
+            if shown {
+                updates.push((client, None));
+            }
+            continue;
+        };
+        let current = current.filter(|overlay| {
+            overlay.token == mode.token
+                && overlay.mode == Some(host)
+                && overlay.source_session == session
+        });
+        if current
+            .as_ref()
+            .is_none_or(|overlay| overlay.state != state)
+        {
+            updates.push((client, Some(state.clone())));
+        }
+        inner
+            .client_entry(client)
+            .display_panes
+            .replace(DisplayPanesSession {
+                token: mode.token,
+                source_pane,
+                source_session: session,
+                selectable: !mode.ignore_keys,
+                state,
+                template: mode.template,
+                source: mode.source,
+                waiter: current.and_then(|overlay| overlay.waiter),
+                mode: Some(host),
+            });
+    }
+    updates
+}
+
+pub(super) fn build_display_panes_state(
+    engine: &MuxEngine,
+    config_files: &str,
+    facts: &dyn crate::status::FormatFactSource,
+    source_pane: PaneId,
+    duration_ms: u32,
+    format_client_session: SessionId,
+) -> Result<(SessionId, WindowId, DisplayPanesState), ServerError> {
+    let state = &engine.state;
+    let window_id = state
+        .window_for_pane(source_pane)
+        .ok_or_else(|| ServerError::MissingTarget(source_pane.to_string()))?;
+    let window = state
+        .windows
+        .get(&window_id)
+        .ok_or_else(|| ServerError::MissingTarget(window_id.to_string()))?;
+    let panes = window.pane_order().to_vec();
+    if panes.len() > MAX_DISPLAY_PANE_INDICATORS {
+        return Err(ServerError::Internal(format!(
+            "window {window_id} exceeds the pane indicator limit"
+        )));
+    }
+    let format = engine.display_panes_format_for_window(window_id);
+    let indicators = panes
+        .into_iter()
+        .filter(|pane| window.zoomed_pane.is_none_or(|zoomed| *pane == zoomed))
+        .map(|pane| {
+            let index = engine
+                .pane_index(window_id, pane)
+                .expect("window pane has an effective index");
+            let select_key = match index {
+                0..=9 => b'0' + u8::try_from(index).expect("digit pane index"),
+                10..=35 => b'a' + u8::try_from(index - 10).expect("letter pane index"),
+                _ => 0,
+            };
+            let label = if format.is_empty() {
+                String::new()
+            } else {
+                let mut context = engine.format_status_context_for_client(
+                    Some(window.session),
+                    Some(window_id),
+                    Some(pane),
+                    format_client_session,
+                );
+                context.set_format_value("config_files", config_files);
+                let mut hooks = DaemonFormatHooks::command(facts).with_option_engine(engine);
+                truncate_pane_indicator_label(expand_format_values(&format, &context, &mut hooks))
+            };
+            PaneIndicator {
+                pane,
+                index,
+                select_key,
+                flags: if pane == window.active_pane {
+                    PaneIndicator::ACTIVE
+                } else {
+                    0
+                },
+                label,
+            }
+        })
+        .collect();
+    let colour_context = engine.format_status_context_for_client(
+        Some(window.session),
+        Some(window_id),
+        Some(window.active_pane),
+        format_client_session,
+    );
+    let colour = |name: &str| {
+        let value = engine.format_option_value(&colour_context, name)?;
+        zz_protocol::parse_tmux_colour(&value)
+            .or_else(|| zz_protocol::parse_style(&value).and_then(|style| style.fg))
+    };
+    Ok((
+        window.session,
+        window_id,
+        DisplayPanesState {
+            window: window_id,
+            duration_ms,
+            indicators,
+            colour: colour("display-panes-colour"),
+            active_colour: colour("display-panes-active-colour"),
+        },
+    ))
+}

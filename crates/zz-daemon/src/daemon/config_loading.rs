@@ -1582,3 +1582,185 @@ pub(super) fn startup_config_preview(causes: &[String]) -> String {
     preview.push_str(STARTUP_CONFIG_PREVIEW_TRUNCATED);
     preview
 }
+
+pub(super) const MAX_SOURCE_INVOCATIONS: usize = 50;
+
+const MUX_IMPORT_MAX_BYTES: usize = 1024 * 1024;
+
+const MUX_IMPORT_END: &str = "# zz-import-tmux-end: ";
+
+pub(super) fn read_mux_import_source(path: &Path) -> Result<String, DaemonError> {
+    let read = || -> std::io::Result<String> {
+        let mut source = String::new();
+        fs::File::open(path)?
+            .take((MUX_IMPORT_MAX_BYTES + 1) as u64)
+            .read_to_string(&mut source)?;
+        if source.len() > MUX_IMPORT_MAX_BYTES {
+            return Err(std::io::Error::new(
+                ErrorKind::InvalidData,
+                "configuration exceeds the 1 MiB limit",
+            ));
+        }
+        Ok(source)
+    };
+    read().map_err(|error| {
+        std::io::Error::new(error.kind(), format!("{}: {error}", path.display())).into()
+    })
+}
+
+pub(super) fn format_config_files(files: &[PathBuf]) -> String {
+    files
+        .iter()
+        .map(|path| path.to_string_lossy().into_owned())
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+#[derive(Default)]
+pub(super) enum SourceInvocationAccounting {
+    #[default]
+    Runtime,
+    Startup {
+        used: usize,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct SourceFileRequest {
+    pub(super) path: RawText,
+    pub(super) quiet: bool,
+    pub(super) parse_only: bool,
+    pub(super) verbose: bool,
+    pub(super) context: ExecutionContext,
+    pub(super) stdin: Option<SourceStream>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) struct SourceFileLoadOptions {
+    pub(super) parse_only: bool,
+    pub(super) verbose: bool,
+    pub(super) suppress_verbose: bool,
+    pub(super) control_target: Option<(ClientId, u8)>,
+    pub(super) replay_client: Option<ClientId>,
+    pub(super) suppress_replay_output: bool,
+    pub(super) command_client: bool,
+}
+
+pub(super) struct PendingConfigFile {
+    pub(super) path: PathBuf,
+    pub(super) context: ExecutionContext,
+    pub(super) options: SourceFileLoadOptions,
+    pub(super) stdin: Option<RawText>,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(super) enum ConfigInput<'a> {
+    Text(&'a str),
+    FileBytes(&'a [u8]),
+    BufferBytes(&'a [u8]),
+}
+
+impl<'a> ConfigInput<'a> {
+    pub(super) fn startup(bytes: &'a [u8]) -> Self {
+        str::from_utf8(bytes).map_or(Self::FileBytes(bytes), Self::Text)
+    }
+
+    pub(super) fn sourced(bytes: &'a [u8]) -> Self {
+        str::from_utf8(bytes).map_or(Self::BufferBytes(bytes), Self::Text)
+    }
+
+    pub(super) fn is_empty(self) -> bool {
+        match self {
+            Self::Text(text) => text.is_empty(),
+            Self::FileBytes(bytes) | Self::BufferBytes(bytes) => bytes.is_empty(),
+        }
+    }
+}
+
+pub(super) fn non_utf8_config_error() -> std::io::Error {
+    std::io::Error::new(ErrorKind::InvalidData, "stream did not contain valid UTF-8")
+}
+
+pub(super) struct PreparedConfig {
+    pub(super) construction: Result<Vec<PreparedConfigCommand>, PreparedConfigFailure>,
+    pub(super) empty_command_item: bool,
+}
+
+pub(super) struct PreparedConfigCommand {
+    pub(super) original: CommandInvocation,
+    pub(super) routed: CommandInvocation,
+}
+
+pub(super) struct PreparedConfigFailure {
+    pub(super) original: CommandInvocation,
+    pub(super) message: String,
+}
+
+pub(super) struct DeferredControlConfigWarning {
+    pub(super) client: ClientId,
+    pub(super) text: String,
+}
+
+impl SourceInvocationAccounting {
+    pub(super) fn is_startup(&self) -> bool {
+        matches!(self, Self::Startup { .. })
+    }
+
+    pub(super) fn refuses(&mut self, depth: usize) -> bool {
+        match self {
+            Self::Runtime => depth + 2 > MAX_SOURCE_INVOCATIONS,
+            Self::Startup { used } if *used >= MAX_SOURCE_INVOCATIONS => true,
+            Self::Startup { used } => {
+                *used += 1;
+                false
+            }
+        }
+    }
+}
+
+pub(super) fn config_command_error(command: &CommandInvocation, message: &str) -> String {
+    command.source.as_ref().map_or_else(
+        || message.to_owned(),
+        |source| format!("{}:{}: {message}", source.source, source.line),
+    )
+}
+
+pub(super) enum ConfigReplayIssue {
+    SourceErrors(usize),
+    CommandError {
+        source: Option<SourceSpan>,
+        message: String,
+    },
+}
+
+pub(super) enum DeferredConfigReplayIssue {
+    Callback(CallbackParseFailure),
+    Replay(ConfigReplayIssue),
+}
+
+pub(super) struct ConfigSourceBoundary {
+    pub(super) token: cmdq::ContinuationToken,
+    pub(super) children: VecDeque<(PendingConfigFile, PreparedConfig, Vec<String>)>,
+    pub(super) command: CommandInvocation,
+    pub(super) group: Option<(String, u32)>,
+    pub(super) source_error_group: Option<usize>,
+    pub(super) source_error: Option<DaemonError>,
+    pub(super) source_command_error: bool,
+    pub(super) source_has_file: bool,
+    pub(super) warnings: Vec<DeferredControlConfigWarning>,
+}
+
+pub(super) enum ConfigFrameAction {
+    Command(Box<(source_queue::CommandFinish, Result<Execution, DaemonError>)>),
+    ReadSource(Box<source_queue::SourceRead>),
+    Continue,
+    Source(Box<ConfigSourceBoundary>),
+    Finish,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum ReplayStdoutWrite {
+    Written,
+    Dropped,
+    Denied,
+}

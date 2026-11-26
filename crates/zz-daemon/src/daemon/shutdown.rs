@@ -327,3 +327,74 @@ fn take_all_wait_wakes(
     }
     wakes
 }
+
+pub(super) struct ShutdownBlocker {
+    pub(super) shared: Arc<Shared>,
+    detached: bool,
+}
+
+impl ShutdownBlocker {
+    pub(super) fn acquire(shared: &Arc<Shared>, detached: bool) -> Option<Self> {
+        let mut blockers = shared.shutdown_blockers.lock();
+        if blockers.closed {
+            return None;
+        }
+        blockers.active = blockers
+            .active
+            .checked_add(1)
+            .expect("shutdown blocker count overflow");
+        if detached {
+            blockers.detached = blockers
+                .detached
+                .checked_add(1)
+                .expect("detached shutdown blocker count overflow");
+        }
+        drop(blockers);
+        Some(Self {
+            shared: Arc::clone(shared),
+            detached,
+        })
+    }
+
+    pub(super) fn fork(&self, detached: bool) -> Self {
+        let mut blockers = self.shared.shutdown_blockers.lock();
+        blockers.active = blockers
+            .active
+            .checked_add(1)
+            .expect("shutdown blocker count overflow");
+        if detached {
+            blockers.detached = blockers
+                .detached
+                .checked_add(1)
+                .expect("detached shutdown blocker count overflow");
+        }
+        drop(blockers);
+        Self {
+            shared: Arc::clone(&self.shared),
+            detached,
+        }
+    }
+}
+
+impl Drop for ShutdownBlocker {
+    fn drop(&mut self) {
+        let resume_shutdown = {
+            let mut blockers = self.shared.shutdown_blockers.lock();
+            blockers.active = blockers
+                .active
+                .checked_sub(1)
+                .expect("shutdown blocker count underflow");
+            if self.detached {
+                blockers.detached = blockers
+                    .detached
+                    .checked_sub(1)
+                    .expect("detached shutdown blocker count underflow");
+            }
+            blockers.closed && blockers.active == 0
+        };
+        if resume_shutdown {
+            self.shared
+                .request_shutdown_with_hooks(self.shared.shutdown_forced.load(Ordering::Acquire));
+        }
+    }
+}

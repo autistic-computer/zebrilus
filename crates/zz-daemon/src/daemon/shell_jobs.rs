@@ -1640,3 +1640,186 @@ pub(super) fn existing_job_working_directory(path: &Path) -> Cow<'_, Path> {
         Cow::Owned(fallback_job_working_directory())
     }
 }
+
+#[cfg(unix)]
+pub(super) struct ShellJobProcess {
+    pub(super) pid: u32,
+    pub(super) cancel: Arc<AtomicBool>,
+}
+
+#[cfg(unix)]
+type ShellFinish = Box<
+    dyn FnOnce(
+            &Arc<Shared>,
+            &mut ExecutionContext,
+            Option<&CommandQueueExecution>,
+            Result<ShellJobResult, ()>,
+        ) -> Result<Execution, DaemonError>
+        + Send,
+>;
+
+#[cfg(unix)]
+pub(super) struct ShellWait {
+    continuation: cmdq::WaitContinuation,
+    result: Arc<Mutex<Option<Result<ShellJobResult, ()>>>>,
+    finish: ShellFinish,
+}
+
+#[cfg(unix)]
+impl ShellWait {
+    pub(super) fn new(
+        shared: &Arc<Shared>,
+        finish: impl FnOnce(
+            &Arc<Shared>,
+            &mut ExecutionContext,
+            Option<&CommandQueueExecution>,
+            Result<ShellJobResult, ()>,
+        ) -> Result<Execution, DaemonError>
+        + Send
+        + 'static,
+    ) -> (
+        Self,
+        impl FnOnce(Result<ShellJobResult, ()>) + Send + 'static,
+    ) {
+        let continuation = cmdq::WaitContinuation::new(
+            shared
+                .command_item
+                .as_ref()
+                .and_then(|item| item.lock().wait()),
+            None,
+        );
+        let result = Arc::new(Mutex::new(None));
+        let completed = continuation.clone();
+        let output = Arc::clone(&result);
+        let wake = shared.timer_tx.clone();
+        (
+            Self {
+                continuation,
+                result,
+                finish: Box::new(finish),
+            },
+            move |result| {
+                *output.lock() = Some(result);
+                completed.complete();
+                let _ = wake.send(timers::TimerInput::HookReady);
+            },
+        )
+    }
+
+    pub(super) fn finish(
+        self,
+        shared: &Arc<Shared>,
+        context: &mut ExecutionContext,
+        queue: Option<&CommandQueueExecution>,
+    ) -> Result<Execution, DaemonError> {
+        let result = self.result.lock().take().expect("completed shell job");
+        (self.finish)(shared, context, queue, result)
+    }
+}
+
+pub(super) struct ShellJobResult {
+    pub(super) output: Vec<u8>,
+    pub(super) status: ExitStatus,
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct RunShellRoute {
+    client: ClientId,
+    kind: ClientKind,
+    control_target: Option<ClientId>,
+    foreground: bool,
+    target_requested: bool,
+    target: Option<PaneId>,
+}
+
+pub(super) struct ParsedRunShellArgs {
+    pub(super) background: bool,
+    pub(super) command_mode: bool,
+    show_stderr: bool,
+    cwd: Option<String>,
+    delay: Option<Duration>,
+    pub(super) positive_delay: bool,
+    target: Option<String>,
+    pub(super) positional: Vec<String>,
+    positional_start: usize,
+}
+
+pub(super) struct ParsedIfShellArgs {
+    pub(super) background: bool,
+    pub(super) format: bool,
+    target: Option<String>,
+    positional: Vec<String>,
+    positional_start: usize,
+}
+
+#[cfg(test)]
+pub(super) const RUN_SHELL_POSITION_CONTEXT_PATTERN: &str = "N";
+
+pub(super) fn parse_run_shell_args(args: &[RawText]) -> Result<ParsedRunShellArgs, ServerError> {
+    let parsed =
+        parse_buffer_command_args("run-shell", args, &['c', 'd', 's', 't'], &['b', 'C', 'E'])?;
+    let delay_value = parsed.value('d');
+    let delay = delay_value.map(parse_shell_delay).transpose()?;
+    let positive_delay = delay_value
+        .and_then(parse_shell_delay_seconds)
+        .is_some_and(|seconds| seconds > 0.0);
+    let positional_start = args.len().saturating_sub(parsed.positional.len());
+    Ok(ParsedRunShellArgs {
+        background: parsed.has('b'),
+        command_mode: parsed.has('C'),
+        show_stderr: parsed.has('E'),
+        cwd: parsed.value('c').map(str::to_owned),
+        delay,
+        positive_delay,
+        target: parsed.value('t').map(str::to_owned),
+        positional: parsed.positional,
+        positional_start,
+    })
+}
+
+pub(super) fn parse_if_shell_args(args: &[RawText]) -> Result<ParsedIfShellArgs, ServerError> {
+    let parsed = parse_buffer_command_args("if-shell", args, &['t'], &['b', 'F'])?;
+    let positional_start = args.len().saturating_sub(parsed.positional.len());
+    Ok(ParsedIfShellArgs {
+        background: parsed.has('b'),
+        format: parsed.has('F'),
+        target: parsed.value('t').map(str::to_owned),
+        positional: parsed.positional,
+        positional_start,
+    })
+}
+
+pub(super) fn parse_shell_delay(value: &str) -> Result<Duration, ServerError> {
+    let seconds = parse_shell_delay_seconds(value)
+        .ok_or_else(|| ServerError::InvalidCommand(format!("invalid delay time: {value}")))?;
+    Duration::try_from_secs_f64(seconds)
+        .map_err(|_| ServerError::InvalidCommand(format!("invalid delay time: {value}")))
+}
+
+fn parse_shell_delay_seconds(value: &str) -> Option<f64> {
+    if value.is_empty() {
+        return Some(0.0);
+    }
+    let value = value.trim_start_matches(char::is_whitespace);
+    if value.is_empty() {
+        return Some(0.0);
+    }
+    let (negative, unsigned) = value
+        .strip_prefix('-')
+        .map_or((false, value), |value| (true, value));
+    let unsigned = unsigned.strip_prefix('+').unwrap_or(unsigned);
+    let seconds = if let Some(hex) = unsigned
+        .strip_prefix("0x")
+        .or_else(|| unsigned.strip_prefix("0X"))
+    {
+        u64::from_str_radix(hex, 16).ok()? as f64
+    } else {
+        value.parse::<f64>().ok()?
+    };
+    let seconds = if negative { -seconds } else { seconds };
+    (seconds.is_finite() && seconds >= 0.0).then_some(seconds)
+}
+
+pub(super) fn default_job_working_directory() -> PathBuf {
+    home_directory().unwrap_or_else(|| PathBuf::from("/"))
+}

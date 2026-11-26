@@ -425,3 +425,134 @@ fn pasted_image_frames(
     image.frames = Some(Arc::clone(&frames));
     Some(frames)
 }
+
+pub(super) const MAX_PASTED_IMAGES_PER_PANE: usize = 8;
+
+pub(super) const MAX_PASTED_IMAGE_BYTES_PER_PANE: usize = 24 * 1024 * 1024;
+
+pub(super) fn paste_upload_directory(socket_path: &Path) -> PathBuf {
+    #[cfg(unix)]
+    let root = socket_path
+        .parent()
+        .map_or_else(|| PathBuf::from("paste"), |parent| parent.join("paste"));
+    #[cfg(not(unix))]
+    let root = std::env::temp_dir().join("zz").join("paste");
+    root.join(
+        socket_path
+            .file_name()
+            .unwrap_or_else(|| OsStr::new("default")),
+    )
+}
+
+#[derive(Debug)]
+pub(super) struct PendingPastedImage {
+    pub(super) token: u64,
+    pub(super) format: PastedImageFormat,
+    pub(super) bytes: Arc<[u8]>,
+}
+
+#[derive(Debug)]
+pub(super) struct StoredPastedImage {
+    pub(super) token: u64,
+    pub(super) format: PastedImageFormat,
+    pub(super) bytes: Arc<[u8]>,
+    pub(super) frames: Option<Arc<[Vec<u8>]>>,
+}
+
+#[derive(Default, Debug)]
+pub(super) struct PanePastedImages {
+    pub(super) pending: VecDeque<PendingPastedImage>,
+    pub(super) images: BTreeMap<u32, StoredPastedImage>,
+    pub(super) order: VecDeque<(u32, u64)>,
+    pub(super) pending_bytes: usize,
+    pub(super) stored_bytes: usize,
+}
+
+pub(super) struct PastedImageAdmission {
+    pub(super) evicted_numbers: Vec<u32>,
+    pub(super) retained: bool,
+}
+
+impl PanePastedImages {
+    pub(super) fn push_pending(&mut self, pending: PendingPastedImage) -> PastedImageAdmission {
+        let token = pending.token;
+        self.pending_bytes = self.pending_bytes.saturating_add(pending.bytes.len());
+        self.pending.push_back(pending);
+        let evicted_numbers = self.enforce_limits();
+        PastedImageAdmission {
+            evicted_numbers,
+            retained: self.pending.iter().any(|pending| pending.token == token),
+        }
+    }
+
+    pub(super) fn bind(&mut self, token: u64, number: u32) -> Option<Vec<u32>> {
+        let position = self
+            .pending
+            .iter()
+            .position(|pending| pending.token == token)?;
+        let pending = self.pending.remove(position)?;
+        self.pending_bytes = self.pending_bytes.saturating_sub(pending.bytes.len());
+        if let Some(replaced) = self.images.remove(&number) {
+            self.stored_bytes = self.stored_bytes.saturating_sub(replaced.bytes.len());
+            self.order.retain(|(stored_number, stored_token)| {
+                *stored_number != number || *stored_token != replaced.token
+            });
+        }
+        self.stored_bytes = self.stored_bytes.saturating_add(pending.bytes.len());
+        self.order.push_back((number, token));
+        self.images.insert(
+            number,
+            StoredPastedImage {
+                token,
+                format: pending.format,
+                bytes: pending.bytes,
+                frames: None,
+            },
+        );
+        Some(self.enforce_limits())
+    }
+
+    fn enforce_limits(&mut self) -> Vec<u32> {
+        let mut evicted = Vec::new();
+        while self.images.len().saturating_add(self.pending.len()) > MAX_PASTED_IMAGES_PER_PANE
+            || self.stored_bytes.saturating_add(self.pending_bytes)
+                > MAX_PASTED_IMAGE_BYTES_PER_PANE
+        {
+            while self.order.front().is_some_and(|(number, token)| {
+                self.images
+                    .get(number)
+                    .is_none_or(|image| image.token != *token)
+            }) {
+                self.order.pop_front();
+            }
+            if let Some((evicted_number, evicted_token)) = self.order.pop_front() {
+                if let Some(image) = self.images.get(&evicted_number)
+                    && image.token == evicted_token
+                {
+                    let image = self
+                        .images
+                        .remove(&evicted_number)
+                        .expect("the pasted image was present");
+                    self.stored_bytes = self.stored_bytes.saturating_sub(image.bytes.len());
+                    evicted.push(evicted_number);
+                }
+            } else if let Some(pending) = self.pending.pop_back() {
+                self.pending_bytes = self.pending_bytes.saturating_sub(pending.bytes.len());
+            } else {
+                break;
+            }
+        }
+        evicted
+    }
+
+    fn expire(&mut self, token: u64) {
+        if let Some(position) = self
+            .pending
+            .iter()
+            .position(|pending| pending.token == token)
+            && let Some(pending) = self.pending.remove(position)
+        {
+            self.pending_bytes = self.pending_bytes.saturating_sub(pending.bytes.len());
+        }
+    }
+}

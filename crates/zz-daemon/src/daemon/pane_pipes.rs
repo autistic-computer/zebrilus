@@ -784,3 +784,90 @@ fn run_pane_pipe(
         shared.pipe_finished(pane, token);
     }
 }
+
+pub(super) struct PanePipe {
+    token: u64,
+    pub(super) pid: u32,
+    pub(super) terminal: Arc<Mutex<Arc<TerminalSession>>>,
+    pub(super) tap_output: Option<Arc<shard_sink::PipeFeed>>,
+    #[cfg(unix)]
+    pub(super) cancel: Arc<AtomicBool>,
+    #[cfg(unix)]
+    pub(super) jobs: pipe_jobs::Client,
+    #[cfg(windows)]
+    process: Arc<Mutex<Option<Child>>>,
+    #[cfg(windows)]
+    stop: Arc<AtomicBool>,
+    #[cfg(windows)]
+    thread: Option<thread::JoinHandle<()>>,
+}
+
+impl Drop for PanePipe {
+    fn drop(&mut self) {
+        if let Some(output) = &self.tap_output {
+            output.end();
+        }
+    }
+}
+
+#[cfg(not(unix))]
+pub(super) fn terminate_copy_pipe(child: &mut Child) -> (Option<String>, Option<std::io::Error>) {
+    #[cfg(windows)]
+    let tree_result = {
+        let pid = child.id().to_string();
+        std::process::Command::new("taskkill")
+            .args(["/PID", pid.as_str(), "/T", "/F"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status_unmasked()
+            .map_err(|error| format!("could not run taskkill: {error}"))
+            .and_then(|status| {
+                if status.success() {
+                    Ok(())
+                } else {
+                    Err(format!("taskkill exited unsuccessfully ({status})"))
+                }
+            })
+    };
+    #[cfg(not(any(unix, windows)))]
+    let tree_result = Err("process-tree termination is unsupported".to_owned());
+    let child_error = child.kill().err();
+    let kill_error = tree_result.err().map(|tree_error| match child_error {
+        Some(child_error) => {
+            format!("{tree_error}; could not terminate immediate child: {child_error}")
+        }
+        None => tree_error,
+    });
+    let wait_error = child.wait().err();
+    (kill_error, wait_error)
+}
+
+#[cfg(not(unix))]
+pub(super) fn terminate_managed_process(process: &Mutex<Option<Child>>) {
+    let Some(mut child) = process.lock().take() else {
+        return;
+    };
+    let _ = terminate_copy_pipe(&mut child);
+}
+
+#[cfg(unix)]
+pub(super) fn stop_pane_pipe(pipe: PanePipe) {
+    if let Some(pid) = rustix::process::Pid::from_raw(pipe.pid as i32) {
+        let _ = rustix::process::kill_process_group(pid, rustix::process::Signal::KILL);
+    }
+    pipe.cancel.store(true, Ordering::Release);
+    pipe.jobs.wake.wake();
+    drop(pipe);
+}
+
+#[cfg(windows)]
+pub(super) fn stop_pane_pipe(mut pipe: PanePipe) {
+    pipe.stop.store(true, Ordering::Release);
+    terminate_managed_process(&pipe.process);
+    if let Some(worker) = pipe.thread.take()
+        && worker.join().is_err()
+    {
+        log::error!("pipe-pane worker panicked for pane process {}", pipe.pid);
+    }
+}
