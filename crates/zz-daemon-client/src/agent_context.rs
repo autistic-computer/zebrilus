@@ -1,3 +1,12 @@
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum AgentBlockPolicy {
+    #[default]
+    Wait,
+    Fail,
+    Allow,
+    Deny,
+}
+
 pub const PARENT_CLAUDE_SESSION_ENVIRONMENT: &[&str] = &[
     "CLAUDECODE",
     "CLAUDE_CODE_CHILD_SESSION",

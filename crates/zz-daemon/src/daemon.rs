@@ -2944,7 +2944,7 @@ fn client_file_failure(reason: &str, path: &Path) -> ServerError {
     ServerError::InvalidCommand(format!("{reason}: {}", path.display()))
 }
 
-pub(crate) use zz_protocol::agent_stream::AgentBlockPolicy;
+pub(crate) use zz_daemon_client::agent_context::AgentBlockPolicy;
 
 fn popup_other_overlay_present(inner: &ServerState, client: ClientId) -> bool {
     inner

@@ -35,7 +35,7 @@ use crate::{
         AgentSessionSummary, AgentStreamItem, AgentStreamPayload,
     },
 };
-use zz_protocol::agent_stream::AgentBlockPolicy;
+use zz_daemon_client::agent_context::AgentBlockPolicy;
 
 const PANE_INBOX_CAPACITY: usize = 64;
 const RUNTIME_COMMAND_CAPACITY: usize = 32;
