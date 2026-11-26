@@ -1225,6 +1225,7 @@ fn wait_pane_exit_shares_registration_after_another_wait_times_out() {
     while shared
         .inner
         .lock()
+        .panes
         .pane_exit_waits
         .get(&pane)
         .is_none_or(|entry| entry.current.waiters() < 2)
@@ -1246,7 +1247,14 @@ fn wait_pane_exit_shares_registration_after_another_wait_times_out() {
             Err(DaemonError::CommandExit { exit_code: 7, .. })
         ));
     }
-    assert!(!shared.inner.lock().pane_exit_waits.contains_key(&pane));
+    assert!(
+        !shared
+            .inner
+            .lock()
+            .panes
+            .pane_exit_waits
+            .contains_key(&pane)
+    );
 }
 
 #[cfg(unix)]

@@ -903,6 +903,7 @@ fn compact_resize_validates_generation_before_skipping_its_exact_report() {
     };
     let mut inner = shared.inner.lock();
     inner
+        .panes
         .terminal_geometries
         .entry(pane)
         .or_default()
@@ -919,7 +920,7 @@ fn compact_resize_validates_generation_before_skipping_its_exact_report() {
     let normalized = ctrl::normalize_resize(&mut inner, client, input);
     assert_eq!(inner.clients[&client].ctrl_layout.as_ref().unwrap().1, 1);
     assert!(normalized.is_none());
-    assert_eq!(inner.terminal_geometries[&pane][&client], geometry);
+    assert_eq!(inner.panes.terminal_geometries[&pane][&client], geometry);
     assert!(matches!(
         ctrl::normalize_resize(
             &mut inner,
@@ -949,6 +950,7 @@ fn compact_resize_forwards_each_changed_geometry_field_and_unknown_reports() {
     };
     let mut inner = shared.inner.lock();
     inner
+        .panes
         .terminal_geometries
         .entry(pane)
         .or_default()
@@ -981,9 +983,9 @@ fn compact_resize_forwards_each_changed_geometry_field_and_unknown_reports() {
             }) if (next_columns, next_rows, next_width, next_height)
                 == (columns, rows, cell_width_px, cell_height_px)
         ));
-        assert_eq!(inner.terminal_geometries[&pane][&client], geometry);
+        assert_eq!(inner.panes.terminal_geometries[&pane][&client], geometry);
     }
-    inner.terminal_geometries.remove(&pane);
+    inner.panes.terminal_geometries.remove(&pane);
     assert!(matches!(
         ctrl::normalize_resize(
             &mut inner,
@@ -1008,6 +1010,7 @@ fn legacy_resize_accepts_v2_reports_without_a_compact_generation() {
     let (client, _) = shared.register_subscribed(ClientKind::Interactive, None, None, mailbox);
     let mut inner = shared.inner.lock();
     inner
+        .panes
         .terminal_geometries
         .entry(PaneId(1))
         .or_default()
@@ -1179,15 +1182,20 @@ fn resize_application_fixture() -> (Arc<Shared>, ClientId, PaneId, ExecutionCont
     {
         let mut inner = shared.inner.lock();
         let (columns, rows) = inner.engine.pane_geometry(pane).expect("pane geometry");
-        inner.terminal_geometries.entry(pane).or_default().insert(
-            client,
-            TerminalGeometry {
-                columns,
-                rows,
-                cell_width_px: 8,
-                cell_height_px: 16,
-            },
-        );
+        inner
+            .panes
+            .terminal_geometries
+            .entry(pane)
+            .or_default()
+            .insert(
+                client,
+                TerminalGeometry {
+                    columns,
+                    rows,
+                    cell_width_px: 8,
+                    cell_height_px: 16,
+                },
+            );
         inner.client_entry(client).size.replace((80, 24));
     }
     context.no_hooks = true;
@@ -1233,7 +1241,7 @@ fn terminal_resize_is_revalidated_after_initial_admission() {
             .expect("layout changed after admission");
         let terminal = Arc::clone(&inner.terminals[&pane]);
         (
-            inner.terminal_geometries[&pane][&client],
+            inner.panes.terminal_geometries[&pane][&client],
             inner.engine.pane_geometry(pane),
             Arc::clone(&terminal),
             terminal.fresh_viewport(),
@@ -1246,7 +1254,7 @@ fn terminal_resize_is_revalidated_after_initial_admission() {
     );
     {
         let inner = shared.inner.lock();
-        assert_eq!(inner.terminal_geometries[&pane][&client], stored);
+        assert_eq!(inner.panes.terminal_geometries[&pane][&client], stored);
         assert_eq!(inner.engine.pane_geometry(pane), laid_out);
     }
     let current = terminal.fresh_viewport();
@@ -1270,7 +1278,7 @@ fn terminal_resize_is_revalidated_after_initial_admission() {
             .expect("current application")
     );
     assert_eq!(
-        shared.inner.lock().terminal_geometries[&pane][&client],
+        shared.inner.lock().panes.terminal_geometries[&pane][&client],
         current
     );
     shared
@@ -1284,7 +1292,7 @@ fn terminal_resize_is_revalidated_after_initial_admission() {
             .expect("legacy application")
     );
     assert_eq!(
-        shared.inner.lock().terminal_geometries[&pane][&client],
+        shared.inner.lock().panes.terminal_geometries[&pane][&client],
         report
     );
 }

@@ -473,7 +473,7 @@ fn client_focus_updates_activity_and_focus_in_owns_latest_geometry() {
         assert_eq!(inner.engine.pane_geometry(pane), Some((100, 30)));
         (
             inner.activity_sequence,
-            inner.terminal_input_sequence,
+            inner.panes.terminal_input_sequence,
             inner.engine.state.sessions[&session].sort_activity,
             inner.engine.state.generation(),
         )
@@ -511,7 +511,10 @@ fn client_focus_updates_activity_and_focus_in_owns_latest_geometry() {
             i64::try_from(inner.clients[&second].activity_time.unwrap()).ok(),
             Some(retained)
         );
-        assert_eq!(inner.terminal_input_sequence, terminal_input_sequence + 1);
+        assert_eq!(
+            inner.panes.terminal_input_sequence,
+            terminal_input_sequence + 1
+        );
         assert_eq!(terminal_geometry_owner(&inner, pane), Some(second));
         assert_eq!(inner.engine.pane_geometry(pane), Some((80, 20)));
         assert!(inner.engine.state.generation() > mux_generation);
@@ -573,7 +576,7 @@ fn client_focus_updates_activity_and_focus_in_owns_latest_geometry() {
             inner.engine.state.sessions[&session].activity,
             inner.engine.state.sessions[&session].sort_activity,
             inner.activity_sequence,
-            inner.terminal_input_sequence,
+            inner.panes.terminal_input_sequence,
             inner.clients[&second].activity.unwrap(),
             terminal_geometry_owner(&inner, pane),
         )
@@ -596,7 +599,7 @@ fn client_focus_updates_activity_and_focus_in_owns_latest_geometry() {
                 inner.engine.state.sessions[&session].activity,
                 inner.engine.state.sessions[&session].sort_activity,
                 inner.activity_sequence,
-                inner.terminal_input_sequence,
+                inner.panes.terminal_input_sequence,
                 inner.clients[&second].activity.unwrap(),
                 terminal_geometry_owner(&inner, pane),
             ),
@@ -611,7 +614,7 @@ fn client_focus_updates_activity_and_focus_in_owns_latest_geometry() {
         (
             inner.engine.state.sessions[&session].sort_activity,
             inner.activity_sequence,
-            inner.terminal_input_sequence,
+            inner.panes.terminal_input_sequence,
             terminal_geometry_owner(&inner, pane),
         )
     };
@@ -635,7 +638,7 @@ fn client_focus_updates_activity_and_focus_in_owns_latest_geometry() {
             inner.clients[&first].activity.unwrap(),
             focus_out_state.1 + 1
         );
-        assert_eq!(inner.terminal_input_sequence, focus_out_state.2);
+        assert_eq!(inner.panes.terminal_input_sequence, focus_out_state.2);
         assert_eq!(terminal_geometry_owner(&inner, pane), focus_out_state.3);
         assert!(inner.engine.state.pane(pane).expect("focus pane").bell);
     }
@@ -655,7 +658,7 @@ fn client_focus_updates_activity_and_focus_in_owns_latest_geometry() {
             inner.engine.state.sessions[&session].activity,
             inner.engine.state.sessions[&session].sort_activity,
             inner.activity_sequence,
-            inner.terminal_input_sequence,
+            inner.panes.terminal_input_sequence,
             inner.clients[&second].activity.unwrap(),
             terminal_geometry_owner(&inner, pane),
         )
@@ -676,7 +679,7 @@ fn client_focus_updates_activity_and_focus_in_owns_latest_geometry() {
             inner.engine.state.sessions[&session].activity,
             inner.engine.state.sessions[&session].sort_activity,
             inner.activity_sequence,
-            inner.terminal_input_sequence,
+            inner.panes.terminal_input_sequence,
             inner.clients[&second].activity.unwrap(),
             terminal_geometry_owner(&inner, pane),
         ),
@@ -1169,7 +1172,7 @@ fn client_focus_obeys_writable_command_prompt_prequeue() {
         let inner = shared.inner.lock();
         (
             inner.activity_sequence,
-            inner.terminal_input_sequence,
+            inner.panes.terminal_input_sequence,
             inner.engine.state.sessions[&session].sort_activity,
             terminal_geometry_owner(&inner, pane),
         )
@@ -1378,7 +1381,7 @@ fn client_focus_closes_display_panes_and_preserves_chooser_modes() {
         let inner = shared.inner.lock();
         (
             inner.activity_sequence,
-            inner.terminal_input_sequence,
+            inner.panes.terminal_input_sequence,
             inner.engine.state.sessions[&session].sort_activity,
             terminal_geometry_owner(&inner, pane),
         )
@@ -1705,7 +1708,7 @@ fn read_only_client_focus_updates_activity_and_focus_in_owns_stored_geometry() {
             .activity = Some(-10);
         assert!(inner.client_flags.contains(client));
         assert_eq!(
-            inner.terminal_geometries[&pane][&client],
+            inner.panes.terminal_geometries[&pane][&client],
             TerminalGeometry {
                 columns: 80,
                 rows: 20,
@@ -1718,7 +1721,7 @@ fn read_only_client_focus_updates_activity_and_focus_in_owns_stored_geometry() {
         (
             inner.engine.state.sessions[&session].sort_activity,
             inner.activity_sequence,
-            inner.terminal_input_sequence,
+            inner.panes.terminal_input_sequence,
             inner.clients[&client].display_panes.as_ref().unwrap().token,
         )
     };
@@ -1751,7 +1754,7 @@ fn read_only_client_focus_updates_activity_and_focus_in_owns_stored_geometry() {
             i64::try_from(inner.clients[&client].activity_time.unwrap()).ok(),
             Some(retained)
         );
-        assert_eq!(inner.terminal_input_sequence, focus_out_before.2);
+        assert_eq!(inner.panes.terminal_input_sequence, focus_out_before.2);
         assert_eq!(
             inner.clients[&client].display_panes.as_ref().unwrap().token,
             focus_out_before.3
@@ -1796,7 +1799,7 @@ fn read_only_client_focus_updates_activity_and_focus_in_owns_stored_geometry() {
         (
             inner.engine.state.sessions[&session].sort_activity,
             inner.activity_sequence,
-            inner.terminal_input_sequence,
+            inner.panes.terminal_input_sequence,
             inner.engine.state.generation(),
         )
     };
@@ -1827,7 +1830,7 @@ fn read_only_client_focus_updates_activity_and_focus_in_owns_stored_geometry() {
             i64::try_from(inner.clients[&client].activity_time.unwrap()).ok(),
             Some(retained)
         );
-        assert_eq!(inner.terminal_input_sequence, focus_in_before.2 + 1);
+        assert_eq!(inner.panes.terminal_input_sequence, focus_in_before.2 + 1);
         assert_eq!(
             inner.clients[&client]
                 .command_prompt
@@ -1986,6 +1989,7 @@ fn client_focus_resizes_unchanged_owner_siblings_after_layout_write_back() {
         );
         assert!(
             !inner
+                .panes
                 .terminal_geometries
                 .get(&sibling)
                 .is_some_and(|geometries| geometries.contains_key(&interactive))

@@ -221,15 +221,20 @@ fn attached_client_extents_clamp_retained_and_default_dimensions() {
         let mut inner = shared.inner.lock();
         inner.client_entry(first).size.replace((u16::MAX, 12_001));
         inner.client_entry(second).size.replace((12_002, u16::MAX));
-        inner.terminal_geometries.entry(pane).or_default().insert(
-            projected,
-            TerminalGeometry {
-                columns: u16::MAX,
-                rows: u16::MAX,
-                cell_width_px: 8,
-                cell_height_px: 16,
-            },
-        );
+        inner
+            .panes
+            .terminal_geometries
+            .entry(pane)
+            .or_default()
+            .insert(
+                projected,
+                TerminalGeometry {
+                    columns: u16::MAX,
+                    rows: u16::MAX,
+                    cell_width_px: 8,
+                    cell_height_px: 16,
+                },
+            );
     }
     let mut context = ExecutionContext::new(Some(session), Some(window), Some(pane));
     shared
@@ -305,15 +310,20 @@ fn attached_client_extents_subtract_status_project_gui_and_clamp_control() {
     {
         let mut inner = shared.inner.lock();
         inner.client_entry(outer).size.replace((200, 50));
-        inner.terminal_geometries.entry(pane).or_default().insert(
-            projected,
-            TerminalGeometry {
-                columns: 180,
-                rows: 60,
-                cell_width_px: 8,
-                cell_height_px: 16,
-            },
-        );
+        inner
+            .panes
+            .terminal_geometries
+            .entry(pane)
+            .or_default()
+            .insert(
+                projected,
+                TerminalGeometry {
+                    columns: 180,
+                    rows: 60,
+                    cell_width_px: 8,
+                    cell_height_px: 16,
+                },
+            );
     }
 
     {
@@ -2001,6 +2011,7 @@ fn multi_client_session_switch_and_unregister_clean_views_and_geometry() {
     );
     assert!(
         inner
+            .panes
             .terminal_geometries
             .values()
             .all(|geometries| !geometries.contains_key(&second_client))

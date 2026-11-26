@@ -533,6 +533,7 @@ fn multi_client_attach_uses_latest_active_geometry_and_keeps_independent_views()
     );
     assert!(
         inner
+            .panes
             .terminal_geometries
             .values()
             .all(|geometries| !geometries.contains_key(&second_client))
@@ -652,7 +653,7 @@ fn detach_releases_and_reattach_reclaims_geometry_ownership() {
     }
     {
         let inner = shared.inner.lock();
-        assert!(!inner.terminal_geometries[&pane].contains_key(&first_client));
+        assert!(!inner.panes.terminal_geometries[&pane].contains_key(&first_client));
         assert!(
             inner
                 .client(first_client)
@@ -1509,6 +1510,7 @@ fn steal_attach_notifies_peer_and_releases_focus_views_and_geometry() {
         );
         assert!(
             inner
+                .panes
                 .terminal_geometries
                 .values()
                 .all(|geometries| !geometries.contains_key(&desktop))

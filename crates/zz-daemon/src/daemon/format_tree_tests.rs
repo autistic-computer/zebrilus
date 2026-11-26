@@ -384,6 +384,7 @@ fn selected_status_client_callbacks_match_complete_capture_for_every_field() {
     }
     inner.client_entry(client).subscriber.replace(mailbox);
     inner
+        .panes
         .terminal_geometries
         .entry(target.pane.unwrap())
         .or_default()

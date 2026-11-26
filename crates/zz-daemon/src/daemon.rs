@@ -856,13 +856,13 @@ fn arm_silence_deadline_at(
     window: WindowId,
     deadline: Instant,
 ) -> SilenceDeadline {
-    inner.next_silence_token = inner.next_silence_token.wrapping_add(1);
+    inner.panes.next_silence_token = inner.panes.next_silence_token.wrapping_add(1);
     let deadline = SilenceDeadline {
         window,
-        token: inner.next_silence_token,
+        token: inner.panes.next_silence_token,
         deadline,
     };
-    inner.silence_deadlines.insert(window, deadline);
+    inner.panes.silence_deadlines.insert(window, deadline);
     deadline
 }
 
@@ -6456,6 +6456,7 @@ impl Shared {
                 }
             }
             for pane in inner
+                .panes
                 .pane_read_observations
                 .keys()
                 .copied()
@@ -6463,10 +6464,10 @@ impl Shared {
             {
                 terminal_reads::pane_changed(&mut inner, pane);
             }
-            inner.pane_read_observations.clear();
-            inner.terminal_spawns.clear();
-            inner.terminal_geometries.clear();
-            inner.reported_pane_places.clear();
+            inner.panes.pane_read_observations.clear();
+            inner.panes.terminal_spawns.clear();
+            inner.panes.terminal_geometries.clear();
+            inner.panes.reported_pane_places.clear();
             inner.attached.clear();
             for client in inner.clients.values_mut() {
                 client.visible_terminals = None;
@@ -7370,6 +7371,7 @@ impl Shared {
             }
             let mut inner = self.inner.lock();
             if inner
+                .panes
                 .pane_read_observations
                 .values()
                 .any(|observation| observation.strong_count() != 0)
@@ -7830,6 +7832,7 @@ impl Shared {
         let completion = {
             let mut inner = self.inner.lock();
             let completion = inner
+                .panes
                 .pane_exit_waits
                 .get_mut(&pane)
                 .and_then(|entry| entry.command_wait.take());
@@ -7882,7 +7885,7 @@ impl Shared {
             Self::wake_pane_exit_wait(inner, pane, exit_code);
             return;
         }
-        if let Some(entry) = inner.pane_exit_waits.get(&pane) {
+        if let Some(entry) = inner.panes.pane_exit_waits.get(&pane) {
             entry.current.kill();
         }
         pane_exit::remove_unused(inner, pane);
@@ -7890,7 +7893,7 @@ impl Shared {
     }
 
     fn wake_pane_exit_wait(inner: &mut ServerState, pane: PaneId, exit_code: u8) {
-        if let Some(entry) = inner.pane_exit_waits.get(&pane) {
+        if let Some(entry) = inner.panes.pane_exit_waits.get(&pane) {
             entry.current.complete(exit_code);
         }
         pane_exit::remove_unused(inner, pane);
@@ -10346,9 +10349,9 @@ impl Shared {
                         {
                             retire_terminal(&previous);
                         }
-                        inner.terminal_spawns.insert(*pane, spawn);
+                        inner.panes.terminal_spawns.insert(*pane, spawn);
                         if context.spawns_popup() {
-                            inner.popup_panes.insert(*pane);
+                            inner.panes.popup_panes.insert(*pane);
                         }
                         inner.engine.set_pane_runtime_facts_with_hooks(
                             *pane,
@@ -10392,7 +10395,12 @@ impl Shared {
                             agent_panes_closed.push(*pane);
                         }
                         clear_pane_modes(&mut inner, *pane);
-                        let previous = inner.terminal_spawns.get(pane).cloned().unwrap_or_default();
+                        let previous = inner
+                            .panes
+                            .terminal_spawns
+                            .get(pane)
+                            .cloned()
+                            .unwrap_or_default();
                         let history_limit = inner.engine.history_limit_for_pane(*pane)?;
                         let word_separators =
                             WordSeparators::new(inner.engine.word_separators_for_pane(*pane)?);
@@ -10519,7 +10527,7 @@ impl Shared {
                             session.set_wrap_search(terminal_options.wrap_search);
                         }
                         Self::wake_pane_exit_wait(&mut inner, *pane, 0);
-                        if let Some(entry) = inner.pane_exit_waits.get_mut(pane) {
+                        if let Some(entry) = inner.panes.pane_exit_waits.get_mut(pane) {
                             let command_wait = entry.command_wait.take();
                             *entry = PaneExitWait::new(&session);
                             entry.command_wait = command_wait;
@@ -10529,9 +10537,9 @@ impl Shared {
                         {
                             retire_terminal(&previous);
                         }
-                        inner.terminal_spawns.insert(*pane, spawn);
+                        inner.panes.terminal_spawns.insert(*pane, spawn);
                         if context.spawns_popup() {
-                            inner.popup_panes.insert(*pane);
+                            inner.panes.popup_panes.insert(*pane);
                         }
                         for streamed in inner
                             .clients
@@ -10548,7 +10556,7 @@ impl Shared {
                         {
                             feed.reset_pane(*pane);
                         }
-                        inner.preview_watched.remove(pane);
+                        inner.panes.preview_watched.remove(pane);
                         respawned_terminals = true;
                         inner.engine.set_pane_runtime_facts_with_hooks(
                             *pane,
@@ -10624,8 +10632,8 @@ impl Shared {
                         if let Some(terminal) = &replaced {
                             clear_pane_modes(&mut inner, *pane);
                             pane_summary::forget_pane_program(&mut inner, *pane);
-                            inner.program_status_panes.remove(pane);
-                            inner.pane_read_observations.remove(pane);
+                            inner.panes.program_status_panes.remove(pane);
+                            inner.panes.pane_read_observations.remove(pane);
                             for streamed in inner
                                 .clients
                                 .values_mut()
@@ -10674,6 +10682,7 @@ impl Shared {
                     MuxEffect::PaneWaitForExit { pane } => {
                         if let Some(terminal) = inner.terminals.get(pane).cloned() {
                             let entry = inner
+                                .panes
                                 .pane_exit_waits
                                 .entry(*pane)
                                 .or_insert_with(|| PaneExitWait::new(&terminal));
@@ -10729,17 +10738,17 @@ impl Shared {
                             if let Some(terminal) = inner.terminals_mut().remove(pane) {
                                 retire_terminal(&terminal);
                             }
-                            inner.name_checks.remove(pane);
+                            inner.panes.name_checks.remove(pane);
                             pane_summary::forget_pane_program(&mut inner, *pane);
-                            inner.pane_read_observations.remove(pane);
-                            inner.control_activity_pending.remove(pane);
-                            inner.program_status_panes.remove(pane);
-                            inner.popup_panes.remove(pane);
+                            inner.panes.pane_read_observations.remove(pane);
+                            inner.panes.control_activity_pending.remove(pane);
+                            inner.panes.program_status_panes.remove(pane);
+                            inner.panes.popup_panes.remove(pane);
                             #[cfg(all(feature = "agent", unix))]
                             inner.claude_peer_states.remove(pane);
-                            inner.terminal_spawns.remove(pane);
-                            inner.terminal_geometries.remove(pane);
-                            inner.reported_pane_places.remove(pane);
+                            inner.panes.terminal_spawns.remove(pane);
+                            inner.panes.terminal_geometries.remove(pane);
+                            inner.panes.reported_pane_places.remove(pane);
                             inner.modes.pane_modes.remove(pane);
                             inner.modes.pane_mode_zooms.remove(pane);
                             inner.modes.panes_mode_frames.remove(pane);
@@ -22341,6 +22350,7 @@ impl Shared {
                 return Ok(true);
             }
             inner
+                .panes
                 .terminal_geometries
                 .entry(pane)
                 .or_default()
@@ -28823,9 +28833,9 @@ impl Shared {
                 return;
             }
             let owned = if reported {
-                !inner.program_status_panes.insert(pane)
+                !inner.panes.program_status_panes.insert(pane)
             } else {
-                inner.program_status_panes.remove(&pane)
+                inner.panes.program_status_panes.remove(&pane)
             };
             #[cfg(all(feature = "agent", unix))]
             if owned != reported {
@@ -29040,10 +29050,10 @@ impl Shared {
             }
             inner.engine.touch_window_activity_for_pane(pane);
             if let Some(window) = inner.engine.state.window_for_pane(pane) {
-                if !inner.silence_deadlines.contains_key(&window) {
+                if !inner.panes.silence_deadlines.contains_key(&window) {
                     silence_schedule = schedule_window_silence(&mut inner, window);
                 }
-                if inner.control_activity_pending.contains(&pane)
+                if inner.panes.control_activity_pending.contains(&pane)
                     || (inner.engine.monitor_activity_for_window(window)
                         && !inner
                             .engine
@@ -31430,7 +31440,7 @@ impl Shared {
     fn raise_window_activity(self: &Arc<Self>, window: WindowId, pane: PaneId) {
         let (snapshot_changed, hook, notifications) = {
             let mut inner = self.inner.lock();
-            let pending = inner.control_activity_pending.remove(&pane);
+            let pending = inner.panes.control_activity_pending.remove(&pane);
             if !inner.engine.monitor_activity_for_window(window) {
                 return;
             }
@@ -31570,13 +31580,14 @@ impl Shared {
         let (snapshot_changed, hook, notifications, rearm) = {
             let mut inner = self.inner.lock();
             let due = inner
+                .panes
                 .silence_deadlines
                 .get(&scheduled.window)
                 .is_some_and(|current| *current == scheduled && scheduled.deadline <= now);
             if !due {
                 return;
             }
-            inner.silence_deadlines.remove(&scheduled.window);
+            inner.panes.silence_deadlines.remove(&scheduled.window);
             let seconds = inner.engine.monitor_silence_for_window(scheduled.window);
             if seconds == 0 {
                 return;
@@ -31664,18 +31675,19 @@ impl Shared {
                 .collect::<Vec<_>>();
             let mut schedules = Vec::new();
             let mut cancels = inner
+                .panes
                 .silence_deadlines
                 .keys()
                 .filter(|window| !inner.engine.state.windows.contains_key(window))
                 .copied()
                 .collect::<Vec<_>>()
                 .into_iter()
-                .filter_map(|window| inner.silence_deadlines.remove(&window))
+                .filter_map(|window| inner.panes.silence_deadlines.remove(&window))
                 .collect::<Vec<_>>();
             for window in windows {
                 let seconds = inner.engine.monitor_silence_for_window(window);
                 if seconds == 0 {
-                    if let Some(deadline) = inner.silence_deadlines.remove(&window) {
+                    if let Some(deadline) = inner.panes.silence_deadlines.remove(&window) {
                         cancels.push(deadline);
                     }
                 } else {
@@ -34017,7 +34029,7 @@ impl Shared {
                         .pane_runtime_facts(pane)
                         .and_then(|runtime| runtime.pid)
                         != pid
-                    || inner.program_status_panes.contains(&pane)
+                    || inner.panes.program_status_panes.contains(&pane)
                 {
                     continue;
                 }
@@ -36915,13 +36927,7 @@ struct ServerState {
     activity_sequence: u64,
     waits: Waits,
     terminals: Arc<BTreeMap<PaneId, Arc<TerminalSession>>>,
-    name_checks: BTreeMap<PaneId, timers::NameCheck>,
-    scheduled_name_check: Option<Instant>,
-    pane_read_observations: BTreeMap<PaneId, Weak<terminal_reads::Observation>>,
-    control_activity_pending: BTreeSet<PaneId>,
-    program_status_panes: BTreeSet<PaneId>,
-    popup_panes: BTreeSet<PaneId>,
-    locations: pane_summary::Locations,
+    panes: PaneTables,
     #[cfg(all(feature = "agent", unix))]
     claude_peer_states: BTreeMap<PaneId, String>,
     #[cfg(feature = "agent")]
@@ -36934,24 +36940,35 @@ struct ServerState {
     cli_exits: BTreeMap<PaneId, u32>,
     #[cfg(feature = "agent")]
     agent_forks: BTreeMap<PaneId, Option<String>>,
-    terminal_spawns: BTreeMap<PaneId, TerminalSpawn>,
     transfers: Transfers,
-    pane_exit_waits: BTreeMap<PaneId, PaneExitWait>,
     attached: BTreeMap<SessionId, BTreeSet<ClientId>>,
     destroying_unattached: BTreeSet<SessionId>,
-    terminal_geometries: BTreeMap<PaneId, BTreeMap<ClientId, TerminalGeometry>>,
-    reported_pane_places: BTreeMap<PaneId, BTreeMap<ClientId, ReportedPlace>>,
-    terminal_input_sequence: u64,
     modes: Modes,
-    silence_deadlines: BTreeMap<WindowId, SilenceDeadline>,
-    next_silence_token: u64,
     history: History,
     buffers: Buffers,
     jobs: Jobs,
     next_client_id: u64,
     control_routes: BTreeMap<ClientId, ControlRoute>,
+}
+
+#[derive(Default)]
+struct PaneTables {
+    locations: pane_summary::Locations,
+    terminal_geometries: BTreeMap<PaneId, BTreeMap<ClientId, TerminalGeometry>>,
+    pane_exit_waits: BTreeMap<PaneId, PaneExitWait>,
+    reported_pane_places: BTreeMap<PaneId, BTreeMap<ClientId, ReportedPlace>>,
+    pane_read_observations: BTreeMap<PaneId, Weak<terminal_reads::Observation>>,
+    silence_deadlines: BTreeMap<WindowId, SilenceDeadline>,
+    control_activity_pending: BTreeSet<PaneId>,
+    program_status_panes: BTreeSet<PaneId>,
+    name_checks: BTreeMap<PaneId, timers::NameCheck>,
+    terminal_spawns: BTreeMap<PaneId, TerminalSpawn>,
+    popup_panes: BTreeSet<PaneId>,
+    scheduled_name_check: Option<Instant>,
     scheduled_window_rename: Option<Instant>,
     preview_watched: BTreeSet<PaneId>,
+    terminal_input_sequence: u64,
+    next_silence_token: u64,
 }
 
 #[derive(Default)]
@@ -41803,7 +41820,7 @@ fn nested_attach_refusal(inner: &ServerState, client: ClientId) -> Option<Server
     inner
         .terminals
         .iter()
-        .filter(|(pane, _)| !inner.popup_panes.contains(pane))
+        .filter(|(pane, _)| !inner.panes.popup_panes.contains(pane))
         .any(|(_, terminal)| {
             terminal
                 .tty()
@@ -47967,15 +47984,15 @@ fn chooser_preview_panes(inner: &ServerState) -> BTreeSet<PaneId> {
 
 fn refresh_preview_watches(inner: &mut ServerState) {
     let next = chooser_preview_panes(inner);
-    if next == inner.preview_watched {
+    if next == inner.panes.preview_watched {
         return;
     }
-    for pane in inner.preview_watched.symmetric_difference(&next) {
+    for pane in inner.panes.preview_watched.symmetric_difference(&next) {
         if let Some(terminal) = inner.terminals.get(pane) {
             terminal.set_preview_watch(next.contains(pane));
         }
     }
-    inner.preview_watched = next;
+    inner.panes.preview_watched = next;
 }
 
 #[cfg(feature = "agent")]
@@ -48068,13 +48085,13 @@ fn remove_client_terminal_geometries(
     client: ClientId,
 ) -> BTreeSet<PaneId> {
     let mut affected = BTreeSet::new();
-    inner.terminal_geometries.retain(|pane, geometries| {
+    inner.panes.terminal_geometries.retain(|pane, geometries| {
         if geometries.remove(&client).is_some() {
             affected.insert(*pane);
         }
         !geometries.is_empty()
     });
-    inner.reported_pane_places.retain(|_, places| {
+    inner.panes.reported_pane_places.retain(|_, places| {
         places.remove(&client);
         !places.is_empty()
     });
@@ -48099,8 +48116,8 @@ fn forget_floating_pane_reports(inner: &mut ServerState) {
         })
         .collect::<Vec<_>>();
     for pane in floats {
-        inner.terminal_geometries.remove(&pane);
-        inner.reported_pane_places.remove(&pane);
+        inner.panes.terminal_geometries.remove(&pane);
+        inner.panes.reported_pane_places.remove(&pane);
     }
 }
 
@@ -48130,6 +48147,7 @@ fn client_display_area(inner: &ServerState, client: ClientId, pane: PaneId) -> O
     }
     let window = inner.engine.state.window_for_pane(pane)?;
     inner
+        .panes
         .terminal_geometries
         .iter()
         .filter(|(reported, _)| inner.engine.state.window_for_pane(**reported) == Some(window))
@@ -48190,7 +48208,12 @@ fn client_terminal_geometry(
     pane: PaneId,
 ) -> Option<TerminalGeometry> {
     if inner.client(client).and_then(|c| c.kind) != Some(ClientKind::Control) {
-        return inner.terminal_geometries.get(&pane)?.get(&client).copied();
+        return inner
+            .panes
+            .terminal_geometries
+            .get(&pane)?
+            .get(&client)
+            .copied();
     }
     let window = inner.engine.state.window_for_pane(pane)?;
     let session = inner.engine.state.windows.get(&window)?.session;
@@ -48274,6 +48297,7 @@ fn terminal_geometry_for_mode_from(
         .filter_map(|client| {
             let geometry = client_terminal_geometry(inner, *client, pane)?;
             let reported = inner
+                .panes
                 .reported_pane_places
                 .get(&pane)
                 .and_then(|places| places.get(client));
@@ -48429,7 +48453,7 @@ fn record_report_place(
     let reported = pane_place(inner, pane)
         .zip(extent)
         .map(|(place, extent)| ReportedPlace { place, extent });
-    let places = inner.reported_pane_places.entry(pane).or_default();
+    let places = inner.panes.reported_pane_places.entry(pane).or_default();
     match reported {
         Some(reported) => {
             places.insert(client, reported);
@@ -48602,10 +48626,11 @@ fn terminal_resizes_after_client_sequence(
 
 fn mark_client_terminal_latest(inner: &mut ServerState, client: ClientId) {
     let sequence = inner
+        .panes
         .terminal_input_sequence
         .checked_add(1)
         .expect("terminal input sequence exhausted");
-    inner.terminal_input_sequence = sequence;
+    inner.panes.terminal_input_sequence = sequence;
     inner
         .client_entry(client)
         .terminal_input_sequence
@@ -49434,7 +49459,7 @@ impl<'a> ClientFormatFields<'a> {
             clients: &inner.clients,
             attached: &inner.attached,
             client_flags: &inner.client_flags,
-            terminal_geometries: &inner.terminal_geometries,
+            terminal_geometries: &inner.panes.terminal_geometries,
             terminals: &inner.terminals,
         }
     }
@@ -49741,7 +49766,10 @@ fn split_borrowed_format_hook_facts(
         jobs: Jobs { pane_pipes, .. },
         buffers: Buffers { paste_buffers, .. },
         session_last_attached,
-        terminal_geometries,
+        panes: PaneTables {
+            terminal_geometries,
+            ..
+        },
         terminals,
         ..
     } = inner;

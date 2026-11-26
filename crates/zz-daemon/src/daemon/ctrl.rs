@@ -140,6 +140,7 @@ pub(super) fn normalize_resize(
                 .client(client)
                 .is_some_and(|c| c.ctrl_subscriptions.is_some())
                 && inner
+                    .panes
                     .terminal_geometries
                     .get(&pane)
                     .and_then(|geometries| geometries.get(&client))
@@ -657,7 +658,7 @@ impl Shared {
             }
             let changed = inner.engine.state.set_window_activity_flag(window, true);
             if changed {
-                inner.control_activity_pending.insert(pane);
+                inner.panes.control_activity_pending.insert(pane);
             }
             changed
         };

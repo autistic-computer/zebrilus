@@ -107,6 +107,7 @@ fn spawned_command(shared: &Shared, pane: PaneId) -> String {
     shared
         .inner
         .lock()
+        .panes
         .terminal_spawns
         .get(&pane)
         .and_then(|spawn| spawn.command.clone())

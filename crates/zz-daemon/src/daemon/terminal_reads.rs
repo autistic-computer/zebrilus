@@ -21,6 +21,7 @@ impl Target {
         let mut inner = shared.inner.lock();
         let registered = inner.client(client).is_some();
         let observation = inner
+            .panes
             .pane_read_observations
             .get(&pane)
             .and_then(Weak::upgrade)
@@ -31,6 +32,7 @@ impl Target {
                     notify: shared.terminal_requests.notifier(),
                 });
                 inner
+                    .panes
                     .pane_read_observations
                     .insert(pane, Arc::downgrade(&observation));
                 observation
@@ -116,12 +118,12 @@ fn pane_last_output(shared: &Shared, pane: PaneId) -> Option<Instant> {
 }
 
 pub(super) fn pane_changed(inner: &mut ServerState, pane: PaneId) {
-    if let Some(observation) = inner.pane_read_observations.get(&pane) {
+    if let Some(observation) = inner.panes.pane_read_observations.get(&pane) {
         if let Some(observation) = observation.upgrade() {
             observation.generation.fetch_add(1, Ordering::Release);
             (observation.notify)();
         } else {
-            inner.pane_read_observations.remove(&pane);
+            inner.panes.pane_read_observations.remove(&pane);
         }
     }
 }

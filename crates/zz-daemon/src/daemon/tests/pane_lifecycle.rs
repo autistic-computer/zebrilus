@@ -314,7 +314,7 @@ fn remain_on_exit_retains_and_respawns_the_same_terminal_pane() {
         assert_eq!(replacement.process_id(), None);
         assert_eq!(replacement.foreground_process_id(), None);
         assert_eq!(
-            inner.terminal_spawns[&pane].command.as_deref(),
+            inner.panes.terminal_spawns[&pane].command.as_deref(),
             Some([sleeper.to_owned()].as_slice())
         );
         replacement
@@ -351,7 +351,7 @@ fn remain_on_exit_retains_and_respawns_the_same_terminal_pane() {
         assert!(!inner.engine.state.pane(pane).unwrap().dead);
         assert_eq!(inner.engine.state.windows[&window].layout.project(), layout);
         assert_eq!(
-            inner.terminal_spawns[&pane].command.as_deref(),
+            inner.panes.terminal_spawns[&pane].command.as_deref(),
             Some([sleeper.to_owned()].as_slice())
         );
     }

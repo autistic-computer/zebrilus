@@ -107,7 +107,7 @@ fn stale_schedules_and_key_table_cancellation_leave_current_deadlines() {
             deadline: Some(live),
             freeze: false,
         });
-        inner.silence_deadlines.insert(
+        inner.panes.silence_deadlines.insert(
             window,
             SilenceDeadline {
                 window,

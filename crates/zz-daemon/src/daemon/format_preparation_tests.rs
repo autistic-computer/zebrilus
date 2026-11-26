@@ -1000,6 +1000,7 @@ fn status_preparation_bypasses_border_prefix_and_cell_dependencies() {
         assert_eq!(before.pane_borders[0].style, "fg=green,bg=black");
         let revision = inner.engine.format_cache_revision();
         inner
+            .panes
             .terminal_geometries
             .entry(context.pane.unwrap())
             .or_default()
@@ -1257,6 +1258,7 @@ fn status_preparation_tracks_viewport_changes_without_engine_revisions() {
         assert_left(&fitting, "0::");
         inner.client_mut(client).and_then(|c| c.size.take());
         inner
+            .panes
             .terminal_geometries
             .entry(context.pane.unwrap())
             .or_default()
@@ -1279,6 +1281,7 @@ fn status_preparation_tracks_viewport_changes_without_engine_revisions() {
         assert_eq!(first.pane_borders[0].style, "fg=green");
         let revision = inner.engine.format_cache_revision();
         inner
+            .panes
             .terminal_geometries
             .get_mut(&context.pane.unwrap())
             .unwrap()

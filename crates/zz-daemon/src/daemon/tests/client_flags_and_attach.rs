@@ -466,15 +466,20 @@ fn client_context_formats_share_retained_facts_across_surfaces() {
             .key_engine
             .get_or_insert_default()
             .switch_table(Some("copy-mode".to_owned()));
-        inner.terminal_geometries.entry(pane).or_default().insert(
-            client,
-            TerminalGeometry {
-                columns: 120,
-                rows: 40,
-                cell_width_px: 9,
-                cell_height_px: 19,
-            },
-        );
+        inner
+            .panes
+            .terminal_geometries
+            .entry(pane)
+            .or_default()
+            .insert(
+                client,
+                TerminalGeometry {
+                    columns: 120,
+                    rows: 40,
+                    cell_width_px: 9,
+                    cell_height_px: 19,
+                },
+            );
     }
     let format = "#{client_activity}|#{client_cell_height}|#{client_cell_width}|#{client_colours}|#{client_control_mode}|#{client_created}|#{client_discarded}|#{client_flags}|#{client_height}|#{client_key_table}|#{client_last_session}|#{client_name}|#{client_pid}|#{client_prefix}|#{client_readonly}|#{client_session}|#{client_termfeatures}|#{client_termname}|#{client_termtype}|#{client_theme}|#{client_tty}|#{client_uid}|#{client_user}|#{client_utf8}|#{client_width}|#{client_written}|#{session_last_attached}|#{session_active}";
     let listed = shared
@@ -1313,7 +1318,7 @@ fn attach_environment_refresh_runs_after_terminal_preflight_and_honors_dash_e() 
         Some(("ATTACHED_ENV".into(), Some("control".into())))
     );
     assert!(
-        shared.inner.lock().terminal_spawns[&original_pane]
+        shared.inner.lock().panes.terminal_spawns[&original_pane]
             .env
             .contains(&("ATTACHED_ENV".into(), Some("before".into())))
     );
@@ -1334,7 +1339,7 @@ fn attach_environment_refresh_runs_after_terminal_preflight_and_honors_dash_e() 
         })
         .expect("refreshed environment pane");
     assert!(
-        shared.inner.lock().terminal_spawns[&future_pane]
+        shared.inner.lock().panes.terminal_spawns[&future_pane]
             .env
             .contains(&("ATTACHED_ENV".into(), Some("control".into())))
     );

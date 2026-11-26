@@ -91,6 +91,7 @@ pub(super) fn presize_client_terminals(
         .filter(|pane| inner.engine.state.window_for_pane(*pane) == Some(window))
         .filter(|pane| {
             inner
+                .panes
                 .terminal_geometries
                 .get(pane)
                 .is_none_or(|geometries| !geometries.contains_key(&client))
@@ -103,15 +104,20 @@ pub(super) fn presize_client_terminals(
         })
         .collect::<Vec<_>>();
     for (pane, (columns, rows)) in panes {
-        inner.terminal_geometries.entry(pane).or_default().insert(
-            client,
-            TerminalGeometry {
-                columns,
-                rows,
-                cell_width_px,
-                cell_height_px,
-            },
-        );
+        inner
+            .panes
+            .terminal_geometries
+            .entry(pane)
+            .or_default()
+            .insert(
+                client,
+                TerminalGeometry {
+                    columns,
+                    rows,
+                    cell_width_px,
+                    cell_height_px,
+                },
+            );
         record_report_place(inner, client, pane, Some(extent));
         seeded.insert(pane);
     }

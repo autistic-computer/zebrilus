@@ -1496,7 +1496,7 @@ fn display_message_ignore_keys_preempts_writable_terminal_input() {
         let inner = shared.inner.lock();
         (
             inner.activity_sequence,
-            inner.terminal_input_sequence,
+            inner.panes.terminal_input_sequence,
             inner.engine.state.sessions[&session].sort_activity,
             inner.clients[&client].display_panes.as_ref().unwrap().token,
         )
@@ -1521,7 +1521,7 @@ fn display_message_ignore_keys_preempts_writable_terminal_input() {
         assert_eq!(
             (
                 inner.activity_sequence,
-                inner.terminal_input_sequence,
+                inner.panes.terminal_input_sequence,
                 inner.engine.state.sessions[&session].sort_activity,
                 inner.clients[&client].display_panes.as_ref().unwrap().token,
             ),
@@ -1727,7 +1727,7 @@ fn display_message_ignore_keys_preempts_writable_terminal_input() {
         assert_eq!(
             (
                 inner.activity_sequence,
-                inner.terminal_input_sequence,
+                inner.panes.terminal_input_sequence,
                 inner.engine.state.sessions[&session].sort_activity,
                 inner.clients[&client].display_panes.as_ref().unwrap().token,
             ),

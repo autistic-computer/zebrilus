@@ -33,7 +33,7 @@ fn read_only_terminal_view_actions_use_the_typed_navigation_allowlist() {
             let mut inner = shared.inner.lock();
             inner.engine.state.set_pane_bell(pane, true);
             assert!(inner.engine.state.pane(pane).expect("view pane").bell);
-            (inner.activity_sequence, inner.terminal_input_sequence)
+            (inner.activity_sequence, inner.panes.terminal_input_sequence)
         };
         shared
             .input(
@@ -45,7 +45,7 @@ fn read_only_terminal_view_actions_use_the_typed_navigation_allowlist() {
             .expect("apply read-only local view action");
         let inner = shared.inner.lock();
         assert_eq!(inner.activity_sequence, before.0 + 1);
-        assert_eq!(inner.terminal_input_sequence, before.1 + 1);
+        assert_eq!(inner.panes.terminal_input_sequence, before.1 + 1);
         assert!(inner.engine.state.pane(pane).expect("view pane").bell);
     }
     assert_eq!(
@@ -104,7 +104,7 @@ fn read_only_terminal_view_actions_use_the_typed_navigation_allowlist() {
         assert!(!terminal_view_action_is_read_only_safe(&action));
         let before = {
             let inner = shared.inner.lock();
-            (inner.activity_sequence, inner.terminal_input_sequence)
+            (inner.activity_sequence, inner.panes.terminal_input_sequence)
         };
         shared
             .input(
@@ -116,7 +116,7 @@ fn read_only_terminal_view_actions_use_the_typed_navigation_allowlist() {
             .expect("reject read-only shared view action");
         let inner = shared.inner.lock();
         assert_eq!(inner.activity_sequence, before.0 + 1);
-        assert_eq!(inner.terminal_input_sequence, before.1 + 1);
+        assert_eq!(inner.panes.terminal_input_sequence, before.1 + 1);
         assert_eq!(
             inner.clients[&client].copy_session.as_ref().unwrap().pane,
             pane
@@ -126,7 +126,7 @@ fn read_only_terminal_view_actions_use_the_typed_navigation_allowlist() {
 
     let before_focus = {
         let inner = shared.inner.lock();
-        (inner.activity_sequence, inner.terminal_input_sequence)
+        (inner.activity_sequence, inner.panes.terminal_input_sequence)
     };
     shared
         .input(
@@ -141,7 +141,7 @@ fn read_only_terminal_view_actions_use_the_typed_navigation_allowlist() {
         .expect("reject read-only pane focus");
     let inner = shared.inner.lock();
     assert_eq!(inner.activity_sequence, before_focus.0);
-    assert_eq!(inner.terminal_input_sequence, before_focus.1);
+    assert_eq!(inner.panes.terminal_input_sequence, before_focus.1);
     assert!(inner.engine.state.pane(pane).expect("view pane").bell);
 }
 

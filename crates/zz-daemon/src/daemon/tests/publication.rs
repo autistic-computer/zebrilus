@@ -414,6 +414,7 @@ fn terminal_preview_streams_inactive_windows_without_owning_geometry() {
         let inner = shared.inner.lock();
         assert!(
             !inner
+                .panes
                 .terminal_geometries
                 .get(&first)
                 .is_some_and(|geometries| geometries.contains_key(&first_client))

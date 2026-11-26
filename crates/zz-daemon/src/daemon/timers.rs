@@ -744,6 +744,7 @@ impl Shared {
                 if self
                     .inner
                     .lock()
+                    .panes
                     .silence_deadlines
                     .get(&deadline.window)
                     .is_some_and(|current| *current == deadline)
@@ -932,12 +933,13 @@ impl Shared {
             return;
         };
         if inner
+            .panes
             .scheduled_window_rename
             .is_some_and(|scheduled| scheduled <= deadline)
         {
             return;
         }
-        inner.scheduled_window_rename = Some(deadline);
+        inner.panes.scheduled_window_rename = Some(deadline);
         let _ = self
             .timer_tx
             .send(TimerInput::Timer(TimerCommand::Rename(deadline)));
@@ -952,7 +954,7 @@ impl Shared {
         frame: bool,
     ) -> bool {
         let identity = Arc::as_ptr(terminal) as usize;
-        let (due, admitted) = match inner.name_checks.get_mut(&pane) {
+        let (due, admitted) = match inner.panes.name_checks.get_mut(&pane) {
             Some(check)
                 if check.terminal == identity
                     && now.saturating_duration_since(check.last) < NAME_INTERVAL =>
@@ -974,7 +976,7 @@ impl Shared {
             }
             _ => {
                 let due = now + FIRST_NAME_RECHECK;
-                inner.name_checks.insert(
+                inner.panes.name_checks.insert(
                     pane,
                     NameCheck {
                         terminal: identity,
@@ -987,10 +989,11 @@ impl Shared {
             }
         };
         if inner
+            .panes
             .scheduled_name_check
             .is_none_or(|scheduled| scheduled > due)
         {
-            inner.scheduled_name_check = Some(due);
+            inner.panes.scheduled_name_check = Some(due);
             let _ = self
                 .timer_tx
                 .send(TimerInput::Timer(TimerCommand::NameCheck(due)));
@@ -1002,10 +1005,10 @@ impl Shared {
         let due = {
             let mut inner = self.inner.lock();
             let inner = &mut *inner;
-            inner.scheduled_name_check = None;
+            inner.panes.scheduled_name_check = None;
             let mut due = Vec::new();
             let mut next: Option<Instant> = None;
-            for (pane, check) in &mut inner.name_checks {
+            for (pane, check) in &mut inner.panes.name_checks {
                 let Some(deadline) = check.due else {
                     continue;
                 };
@@ -1026,7 +1029,7 @@ impl Shared {
                 }
             }
             if let Some(next) = next {
-                inner.scheduled_name_check = Some(next);
+                inner.panes.scheduled_name_check = Some(next);
                 let _ = self
                     .timer_tx
                     .send(TimerInput::Timer(TimerCommand::NameCheck(next)));
@@ -1068,7 +1071,7 @@ impl Shared {
             .collect::<Vec<_>>();
         let (renamed, events) = {
             let mut inner = self.inner.lock();
-            inner.scheduled_window_rename = None;
+            inner.panes.scheduled_window_rename = None;
             let facts = format_hook_facts(&inner);
             let mut hooks = DaemonFormatHooks::command(&facts);
             let scope = hook_events::HookScope::open(&mut inner.engine);

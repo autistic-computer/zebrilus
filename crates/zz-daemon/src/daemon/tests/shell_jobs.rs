@@ -1105,7 +1105,7 @@ fn shell_jobs_resolve_literal_tmux_through_the_private_zz_shim() {
             .expect("spawn pane with private tmux shim");
         let pane = context.pane.expect("spawned pane");
         let inner = shared.inner.lock();
-        let environment = &inner.terminal_spawns[&pane].env;
+        let environment = &inner.panes.terminal_spawns[&pane].env;
         let value = |name: &str| {
             environment
                 .iter()

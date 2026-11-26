@@ -232,7 +232,7 @@ fn detached_panes_spawn_at_their_laid_out_size() {
         .expect("create a 100x30 session");
     let pane = context.pane.expect("sized pane");
     assert_eq!(
-        shared.inner.lock().terminal_spawns[&pane].initial_size,
+        shared.inner.lock().panes.terminal_spawns[&pane].initial_size,
         Some(TerminalSize::cells(100, 30))
     );
     shared
@@ -268,7 +268,7 @@ fn default_command_is_injected_only_when_nonempty_at_create() {
         .expect("create session with default-command");
     let pane = context.pane.expect("default-command pane");
     assert_eq!(
-        shared.inner.lock().terminal_spawns[&pane]
+        shared.inner.lock().panes.terminal_spawns[&pane]
             .command
             .as_deref(),
         Some(["sleep 30".to_owned()].as_slice())
@@ -299,7 +299,11 @@ fn default_command_is_injected_only_when_nonempty_at_create() {
         )
         .expect("create session without default-command");
     let pane = context.pane.expect("integrated-shell pane");
-    assert!(shared.inner.lock().terminal_spawns[&pane].command.is_none());
+    assert!(
+        shared.inner.lock().panes.terminal_spawns[&pane]
+            .command
+            .is_none()
+    );
     shared
         .execute(
             ClientId(7),
@@ -336,7 +340,9 @@ fn respawn_with_new_argv_reuses_the_creation_shell() {
         .expect("create respawn pane");
     let pane = context.pane.expect("respawn pane");
     assert_eq!(
-        shared.inner.lock().terminal_spawns[&pane].shell.as_deref(),
+        shared.inner.lock().panes.terminal_spawns[&pane]
+            .shell
+            .as_deref(),
         Some("/bin/sh")
     );
     shared
@@ -360,11 +366,11 @@ fn respawn_with_new_argv_reuses_the_creation_shell() {
         .expect("respawn with new argv");
     let inner = shared.inner.lock();
     assert_eq!(
-        inner.terminal_spawns[&pane].command.as_deref(),
+        inner.panes.terminal_spawns[&pane].command.as_deref(),
         Some(["sleep".to_owned(), "29".to_owned()].as_slice())
     );
     assert_eq!(
-        inner.terminal_spawns[&pane].shell.as_deref(),
+        inner.panes.terminal_spawns[&pane].shell.as_deref(),
         Some("/bin/sh")
     );
     drop(inner);
@@ -517,12 +523,12 @@ fn seeded_global_environment_and_session_markers_reach_terminal_spawn() {
     let session = context.session.expect("terminal session");
     let expected_tmux = tmux_environment(&shared.socket_path, Some(session));
     assert_eq!(
-        shared.inner.lock().terminal_spawns[&pane].terminal_type,
+        shared.inner.lock().panes.terminal_spawns[&pane].terminal_type,
         Some("tmux-256color".to_owned())
     );
     {
         let inner = shared.inner.lock();
-        let environment = &inner.terminal_spawns[&pane].env;
+        let environment = &inner.panes.terminal_spawns[&pane].env;
         assert!(environment.contains(&("TMUX".into(), Some(expected_tmux.clone().into()))));
         assert!(environment.contains(&("TMUX_PANE".into(), Some(pane.to_string().into()))));
     }
@@ -580,7 +586,7 @@ fn seeded_global_environment_and_session_markers_reach_terminal_spawn() {
         )
         .expect("respawn terminal pane");
     let inner = shared.inner.lock();
-    let environment = &inner.terminal_spawns[&pane].env;
+    let environment = &inner.panes.terminal_spawns[&pane].env;
     assert!(environment.contains(&("TMUX".into(), Some(expected_tmux.into()))));
     assert!(environment.contains(&("TMUX_PANE".into(), Some(pane.to_string().into()))));
 }
@@ -596,7 +602,7 @@ fn new_session_creation_environment_reaches_the_first_terminal() {
         .seed_global_environment([("DISPLAY", "client")]);
     let mut context = ExecutionContext::default();
     let spawned_value = |pane: PaneId, name: &str| {
-        shared.inner.lock().terminal_spawns[&pane]
+        shared.inner.lock().panes.terminal_spawns[&pane]
             .env
             .iter()
             .rev()
@@ -636,7 +642,7 @@ fn new_session_creation_environment_reaches_the_first_terminal() {
         Some(OsStr::new("last"))
     );
     assert!(
-        !shared.inner.lock().terminal_spawns[&pane]
+        !shared.inner.lock().panes.terminal_spawns[&pane]
             .env
             .iter()
             .any(|(name, _)| name.is_empty())
@@ -786,7 +792,7 @@ fn new_and_split_window_apply_local_environment_and_spawn_empty_panes() {
         .expect("window pane");
     {
         let inner = shared.inner.lock();
-        let spawn = &inner.terminal_spawns[&window_pane];
+        let spawn = &inner.panes.terminal_spawns[&window_pane];
         let expected_pane = window_pane.to_string();
         let value = |name: &str| {
             spawn
@@ -841,7 +847,7 @@ fn new_and_split_window_apply_local_environment_and_spawn_empty_panes() {
         .expect("split pane");
     {
         let inner = shared.inner.lock();
-        let environment = &inner.terminal_spawns[&split_pane].env;
+        let environment = &inner.panes.terminal_spawns[&split_pane].env;
         let scrub = environment
             .iter()
             .position(|entry| entry == &("CLAUDE_CODE_CHILD_SESSION".into(), None))
@@ -912,7 +918,7 @@ fn new_and_split_window_apply_local_environment_and_spawn_empty_panes() {
         assert_eq!(inner.terminals[&pane].process_id(), None);
         assert!(!inner.engine.state.pane(pane).unwrap().dead);
         assert_eq!(
-            inner.terminal_spawns[&pane]
+            inner.panes.terminal_spawns[&pane]
                 .command
                 .as_deref()
                 .is_some_and(|command| command == [""]),
@@ -1273,7 +1279,7 @@ fn terminal_cwd_flag_prefers_a_valid_literal_and_bogus_paths_land_in_home() {
     };
     wait_for_cwd(&donor_terminal, &donor_path);
     assert_eq!(
-        shared.inner.lock().terminal_spawns[&donor].working_directory,
+        shared.inner.lock().panes.terminal_spawns[&donor].working_directory,
         Some(donor_literal.clone())
     );
     assert_eq!(
