@@ -1,5 +1,120 @@
 use super::*;
 
+pub(super) struct CommandAftermath {
+    pub(super) terminals_to_watch: Vec<(PaneId, Arc<TerminalSession>)>,
+    pub(super) client_events: Vec<EventPayload>,
+    pub(super) direct_events: Vec<EventPayload>,
+    pub(super) deferred_direct_events: Vec<DeferredClientEvent>,
+    pub(super) targeted_events: Vec<DeferredClientEvent>,
+    pub(super) source_files: Vec<SourceFileRequest>,
+    pub(super) pane_stream_inputs: Vec<(PaneId, RawText)>,
+    pub(super) removed_panes: Vec<PaneId>,
+    pub(super) agent_panes_opened: Vec<(PaneId, Option<Arc<TerminalSession>>)>,
+    pub(super) agent_briefs: Vec<(PaneId, String)>,
+    #[cfg(feature = "agent")]
+    pub(super) agent_panes_closed: Vec<PaneId>,
+    pub(super) relocated_terminal_views:
+        Vec<(Arc<TerminalSession>, BTreeSet<ClientId>, BTreeSet<ClientId>)>,
+    pub(super) retired_command_outputs: Vec<(ClientId, RetiredCommandOutput)>,
+    pub(super) deferred_terminal_commands: Vec<DeferredTerminalCommand>,
+    pub(super) terminal_wait: Option<terminal_requests::CommandWait>,
+    pub(super) key_listing: Option<(zz_mux::KeyListing, FormatHookFacts)>,
+    pub(super) injected_client_keys: Vec<(ClientId, Vec<zz_protocol::KeyToken>, u32)>,
+    pub(super) mode_table_keys: Vec<(Vec<ClientId>, PaneId, Vec<zz_protocol::KeyToken>, u32)>,
+    pub(super) pane_mode_keys: Vec<(ClientId, PaneId, Vec<zz_protocol::KeyToken>, u32)>,
+    pub(super) pane_mode_pointers: Vec<(PaneId, String, usize, usize)>,
+    pub(super) refresh_armed: bool,
+    pub(super) unfocused_copy_mode_exits: Vec<(ClientId, Arc<TerminalSession>)>,
+    pub(super) pipes_to_close: Vec<PanePipe>,
+    pub(super) panes_mode_deadline: Option<(PaneId, u64, Instant)>,
+    pub(super) panes_mode_overlays: Vec<(ClientId, Option<DisplayPanesState>)>,
+    pub(super) client_message_retires: Vec<(ClientId, ActiveClientMessage)>,
+    pub(super) client_message_schedule: Option<ClientMessageDeadline>,
+    pub(super) resume_client_terminals: bool,
+    pub(super) incremental_start: Option<CommandPromptSubmission>,
+    pub(super) prompt_cleared_message: Option<ActiveClientMessage>,
+    pub(super) activity_requeues: Vec<(WindowId, PaneId)>,
+    pub(super) silence_schedules: Vec<SilenceDeadline>,
+    pub(super) monitor_silence_changed: bool,
+    pub(super) client_terminal_changed: bool,
+    pub(super) attach: Option<(SessionId, bool, bool, bool, Option<String>, bool)>,
+    pub(super) detach: Option<(ResolvedDetach, DetachExit)>,
+    #[expect(clippy::option_option, reason = "the effect carries an optional path")]
+    pub(super) import_tmux_config: Option<Option<String>>,
+    pub(super) reload_config: bool,
+    pub(super) snapshot_changed: bool,
+    pub(super) respawned_terminals: bool,
+    pub(super) mux_options_changed: bool,
+    pub(super) mux_option_refresh_sessions: BTreeSet<SessionId>,
+    #[cfg(feature = "agent")]
+    pub(super) agent_options_changed: bool,
+    pub(super) status_formats_changed: bool,
+    pub(super) status_refresh_sessions: BTreeSet<SessionId>,
+    pub(super) mode_styles_changed: bool,
+    pub(super) force_shutdown_requested: bool,
+    pub(super) immediate_hooks: Vec<(String, Vec<Vec<CommandInvocation>>, ExecutionContext)>,
+    pub(super) option_signals: Vec<String>,
+    pub(super) pending_hook_events: Vec<PendingHookEvent>,
+}
+
+impl CommandAftermath {
+    fn new() -> Self {
+        Self {
+            terminals_to_watch: Vec::new(),
+            client_events: Vec::new(),
+            direct_events: Vec::new(),
+            deferred_direct_events: Vec::new(),
+            targeted_events: Vec::new(),
+            source_files: Vec::new(),
+            pane_stream_inputs: Vec::new(),
+            removed_panes: Vec::new(),
+            agent_panes_opened: Vec::new(),
+            agent_briefs: Vec::new(),
+            #[cfg(feature = "agent")]
+            agent_panes_closed: Vec::new(),
+            relocated_terminal_views: Vec::new(),
+            retired_command_outputs: Vec::new(),
+            deferred_terminal_commands: Vec::new(),
+            terminal_wait: None,
+            key_listing: None,
+            injected_client_keys: Vec::new(),
+            mode_table_keys: Vec::new(),
+            pane_mode_keys: Vec::new(),
+            pane_mode_pointers: Vec::new(),
+            refresh_armed: false,
+            unfocused_copy_mode_exits: Vec::new(),
+            pipes_to_close: Vec::new(),
+            panes_mode_deadline: None,
+            panes_mode_overlays: Vec::new(),
+            client_message_retires: Vec::new(),
+            client_message_schedule: None,
+            resume_client_terminals: false,
+            incremental_start: None,
+            prompt_cleared_message: None,
+            activity_requeues: Vec::new(),
+            silence_schedules: Vec::new(),
+            monitor_silence_changed: false,
+            client_terminal_changed: false,
+            attach: None,
+            detach: None,
+            import_tmux_config: None,
+            reload_config: false,
+            snapshot_changed: false,
+            respawned_terminals: false,
+            mux_options_changed: false,
+            mux_option_refresh_sessions: BTreeSet::new(),
+            #[cfg(feature = "agent")]
+            agent_options_changed: false,
+            status_formats_changed: false,
+            status_refresh_sessions: BTreeSet::new(),
+            mode_styles_changed: false,
+            force_shutdown_requested: false,
+            immediate_hooks: Vec::new(),
+            option_signals: Vec::new(),
+            pending_hook_events: Vec::new(),
+        }
+    }
+}
 impl Shared {
     pub(super) fn execute_with_mux_source_inner(
         self: &Arc<Self>,
@@ -27,61 +142,10 @@ impl Shared {
         let read_only = hook_events::command_is_read_only(command_name, &command.args);
         let split_caller_stream = matches!(command_name, "split-window" | "new-pane")
             && command_stdin_sink(command_name, &command.args) == Some(CommandStdinSink::PaneInput);
-        let mut terminals_to_watch = Vec::new();
-        let mut client_events = Vec::new();
-        let mut direct_events = Vec::new();
-        let mut deferred_direct_events = Vec::new();
-        let mut targeted_events = Vec::new();
-        let mut source_files = Vec::new();
-        let mut pane_stream_inputs: Vec<(PaneId, RawText)> = Vec::new();
-        let mut removed_panes = Vec::new();
-        let mut agent_panes_opened: Vec<(PaneId, Option<Arc<TerminalSession>>)> = Vec::new();
-        let mut agent_briefs: Vec<(PaneId, String)> = Vec::new();
-        #[cfg(feature = "agent")]
-        let mut agent_panes_closed = Vec::new();
+        let mut after = CommandAftermath::new();
         #[cfg(feature = "agent")]
         let agent_children;
-        let mut relocated_terminal_views = Vec::new();
-        let mut retired_command_outputs = Vec::new();
-        let mut deferred_terminal_commands = Vec::new();
-        let mut terminal_wait = None;
-        let mut key_listing = None;
-        let mut injected_client_keys = Vec::new();
-        let mut mode_table_keys = Vec::new();
-        let mut pane_mode_keys = Vec::new();
-        let mut pane_mode_pointers = Vec::new();
-        let mut refresh_armed = false;
-        let mut unfocused_copy_mode_exits = Vec::new();
-        let mut pipes_to_close = Vec::new();
-        let mut panes_mode_deadline: Option<(PaneId, u64, Instant)> = None;
-        let mut panes_mode_overlays: Vec<(ClientId, Option<DisplayPanesState>)> = Vec::new();
-        let mut client_message_retires = Vec::new();
-        let mut client_message_schedule = None;
-        let mut resume_client_terminals = false;
-        let mut incremental_start = None;
-        let mut prompt_cleared_message = None;
-        let mut activity_requeues = Vec::new();
-        let mut silence_schedules = Vec::new();
-        let mut monitor_silence_changed = false;
-        let mut client_terminal_changed = false;
-        let mut attach = None;
-        let mut detach = None;
-        let mut import_tmux_config = None;
-        let mut reload_config = false;
-        let mut snapshot_changed = false;
-        let mut respawned_terminals = false;
-        let mut mux_options_changed = false;
-        let mut mux_option_refresh_sessions = BTreeSet::new();
-        #[cfg(feature = "agent")]
-        let mut agent_options_changed = false;
-        let mut status_formats_changed = false;
-        let mut status_refresh_sessions = BTreeSet::new();
         let client_timers_changed;
-        let mut mode_styles_changed = false;
-        let mut force_shutdown_requested = false;
-        let mut immediate_hooks = Vec::new();
-        let mut option_signals = Vec::new();
-        let mut pending_hook_events = Vec::new();
         let (mut execution, mux_options_event, recheck_shutdown_requested) = {
             let mut inner = self.inner.lock();
             let stale_mode_events = take_pane_mode_hook_events(&mut inner);
@@ -293,7 +357,7 @@ impl Shared {
                 )
             };
             if let Some(listing) = pending_listing {
-                key_listing = Some((
+                after.key_listing = Some((
                     listing,
                     format_hook_facts_for_client(&inner, client, context),
                 ));
@@ -352,12 +416,12 @@ impl Shared {
             );
             for pane in selected_panes {
                 if inner.engine.state.clear_pane_alerts(pane) {
-                    snapshot_changed = true;
+                    after.snapshot_changed = true;
                 }
             }
             for pane in belled_panes_before {
                 if inner.engine.state.pane(pane).is_none_or(|pane| !pane.bell) {
-                    snapshot_changed = true;
+                    after.snapshot_changed = true;
                 }
             }
             let attaching_session = execution.effects.iter().find_map(|effect| match effect {
@@ -396,12 +460,12 @@ impl Shared {
             );
             for (_, window) in &changed_windows {
                 if let Some(deadline) = schedule_window_silence(&mut inner, *window) {
-                    silence_schedules.push(deadline);
+                    after.silence_schedules.push(deadline);
                 }
                 if inner.engine.monitor_activity_for_window(*window)
                     && let Some(state) = inner.engine.state.windows.get(window)
                 {
-                    activity_requeues.push((*window, state.active_pane));
+                    after.activity_requeues.push((*window, state.active_pane));
                 }
             }
             for (session, focused_window) in changed_windows {
@@ -449,7 +513,7 @@ impl Shared {
                 "read-only {command_name} moved a client's window"
             );
             let resized_panes = panes_for_windows(&inner, &resized_windows);
-            snapshot_changed |= write_back_terminal_geometries(&mut inner, &resized_panes);
+            after.snapshot_changed |= write_back_terminal_geometries(&mut inner, &resized_panes);
             let mut pane_format_output = None;
             for effect in &execution.effects {
                 match effect {
@@ -633,12 +697,14 @@ impl Shared {
                             .cloned()
                             .unwrap_or_default();
                         for client in attached_clients {
-                            deferred_terminal_commands.push(DeferredTerminalCommand::AttachView {
-                                terminal: Arc::clone(&session),
-                                view: TerminalViewId(client.0),
-                            });
+                            after.deferred_terminal_commands.push(
+                                DeferredTerminalCommand::AttachView {
+                                    terminal: Arc::clone(&session),
+                                    view: TerminalViewId(client.0),
+                                },
+                            );
                         }
-                        terminals_to_watch.push((*pane, session));
+                        after.terminals_to_watch.push((*pane, session));
                     }
                     MuxEffect::PaneRespawned {
                         pane,
@@ -649,7 +715,7 @@ impl Shared {
                     } => {
                         #[cfg(feature = "agent")]
                         if inner.agents.agent_panes.remove(pane) {
-                            agent_panes_closed.push(*pane);
+                            after.agent_panes_closed.push(*pane);
                         }
                         clear_pane_modes(&mut inner, *pane);
                         let previous = inner
@@ -814,7 +880,7 @@ impl Shared {
                             feed.reset_pane(*pane);
                         }
                         inner.panes.preview_watched.remove(pane);
-                        respawned_terminals = true;
+                        after.respawned_terminals = true;
                         inner.engine.set_pane_runtime_facts_with_hooks(
                             *pane,
                             PaneRuntimeFacts {
@@ -831,23 +897,27 @@ impl Shared {
                             .cloned()
                             .unwrap_or_default();
                         for client in attached_clients {
-                            deferred_terminal_commands.push(DeferredTerminalCommand::AttachView {
-                                terminal: Arc::clone(&session),
-                                view: TerminalViewId(client.0),
-                            });
+                            after.deferred_terminal_commands.push(
+                                DeferredTerminalCommand::AttachView {
+                                    terminal: Arc::clone(&session),
+                                    view: TerminalViewId(client.0),
+                                },
+                            );
                         }
                         if let Some((_, geometry)) = terminal_resize_for_pane(&inner, *pane) {
-                            deferred_terminal_commands.push(DeferredTerminalCommand::Resize {
-                                terminal: Arc::clone(&session),
-                                geometry,
-                            });
+                            after.deferred_terminal_commands.push(
+                                DeferredTerminalCommand::Resize {
+                                    terminal: Arc::clone(&session),
+                                    geometry,
+                                },
+                            );
                         }
                         if let Some(pipe) = inner.jobs.pane_pipes.get_mut(pane) {
                             *pipe.terminal.lock() = Arc::clone(&session);
                             #[cfg(unix)]
                             pipe.jobs.wake.wake();
                         }
-                        terminals_to_watch.push((*pane, session));
+                        after.terminals_to_watch.push((*pane, session));
                     }
                     MuxEffect::PaneCreated {
                         pane,
@@ -902,7 +972,7 @@ impl Shared {
                             terminal.terminate();
                             retire_terminal(terminal);
                         }
-                        agent_panes_opened.push((*pane, replaced));
+                        after.agent_panes_opened.push((*pane, replaced));
                     }
                     MuxEffect::AgentForked { pane, at } => {
                         #[cfg(feature = "agent")]
@@ -911,7 +981,7 @@ impl Shared {
                         let _ = (pane, at);
                     }
                     MuxEffect::AgentBrief { pane, text } => {
-                        agent_briefs.push((*pane, text.clone()));
+                        after.agent_briefs.push((*pane, text.clone()));
                     }
                     MuxEffect::PaneCreated {
                         kind:
@@ -982,12 +1052,12 @@ impl Shared {
                             .collect::<Vec<_>>();
                         for client in clients {
                             if let Some(output) = take_command_output(&mut inner, client) {
-                                retired_command_outputs.push((client, output));
+                                after.retired_command_outputs.push((client, output));
                             }
                         }
                         for pane in panes {
                             if let Some(pipe) = inner.jobs.pane_pipes.remove(pane) {
-                                pipes_to_close.push(pipe);
+                                after.pipes_to_close.push(pipe);
                             }
                             if let Some(editor) = inner.modes.editors.remove(pane) {
                                 let _ = std::fs::remove_file(&editor.path);
@@ -1015,7 +1085,7 @@ impl Shared {
                                 .transfers
                                 .paste_uploads
                                 .retain(|_, upload| upload.pane != *pane);
-                            removed_panes.push(*pane);
+                            after.removed_panes.push(*pane);
                         }
                     }
                     MuxEffect::PaneRelocated { pane, from, to } => {
@@ -1026,7 +1096,7 @@ impl Shared {
                                 &inner.config.config_files,
                                 *pane,
                             )?;
-                            deferred_terminal_commands.push(
+                            after.deferred_terminal_commands.push(
                                 DeferredTerminalCommand::SetWordSeparators {
                                     terminal: Arc::clone(&terminal),
                                     separators: WordSeparators::new(
@@ -1034,26 +1104,26 @@ impl Shared {
                                     ),
                                 },
                             );
-                            deferred_terminal_commands.push(
+                            after.deferred_terminal_commands.push(
                                 DeferredTerminalCommand::SetAllowPassthrough {
                                     terminal: Arc::clone(&terminal),
                                     enabled: terminal_options.allow_passthrough,
                                 },
                             );
-                            deferred_terminal_commands.push(
+                            after.deferred_terminal_commands.push(
                                 DeferredTerminalCommand::SetWrapSearch {
                                     terminal: Arc::clone(&terminal),
                                     enabled: terminal_options.wrap_search,
                                 },
                             );
-                            deferred_terminal_commands.push(
+                            after.deferred_terminal_commands.push(
                                 DeferredTerminalCommand::SetAppearance {
                                     terminal: Arc::clone(&terminal),
                                     appearance: terminal_options.appearance,
                                 },
                             );
                             let previewing = previewing_clients(&inner);
-                            relocated_terminal_views.push((
+                            after.relocated_terminal_views.push((
                                 terminal,
                                 inner
                                     .attachment
@@ -1087,13 +1157,13 @@ impl Shared {
                                 &inner.config.config_files,
                                 *pane,
                             )?;
-                            deferred_terminal_commands.push(
+                            after.deferred_terminal_commands.push(
                                 DeferredTerminalCommand::SetWrapSearch {
                                     terminal: Arc::clone(&output.terminal),
                                     enabled: terminal_options.wrap_search,
                                 },
                             );
-                            deferred_terminal_commands.push(
+                            after.deferred_terminal_commands.push(
                                 DeferredTerminalCommand::SetAppearance {
                                     terminal: Arc::clone(&output.terminal),
                                     appearance: terminal_options.appearance,
@@ -1118,13 +1188,17 @@ impl Shared {
                                 None => current_format_client(&inner, client),
                             };
                             if let Some(selected) = selected {
-                                pane_mode_keys.push((selected, *pane, keys.clone(), *repeat));
+                                after
+                                    .pane_mode_keys
+                                    .push((selected, *pane, keys.clone(), *repeat));
                             }
                             continue;
                         }
                         let owners = copy_mode_key_owners(&inner, client, *pane);
                         if !owners.is_empty() {
-                            mode_table_keys.push((owners, *pane, keys.clone(), *repeat));
+                            after
+                                .mode_table_keys
+                                .push((owners, *pane, keys.clone(), *repeat));
                             continue;
                         }
                         let sinks = resolve_input_sinks(&inner, *pane)?;
@@ -1135,7 +1209,7 @@ impl Shared {
                                     terminals.push(terminal);
                                 }
                                 PaneSink::Browser(target) => {
-                                    client_events.push(EventPayload::BrowserCommand {
+                                    after.client_events.push(EventPayload::BrowserCommand {
                                         pane: target,
                                         command: if *repeat == 1 {
                                             BrowserCommand::SendKeys(keys.clone())
@@ -1150,11 +1224,13 @@ impl Shared {
                             }
                         }
                         if !terminals.is_empty() {
-                            deferred_terminal_commands.push(DeferredTerminalCommand::SendTokens {
-                                terminals,
-                                keys: keys.clone(),
-                                repeat: *repeat,
-                            });
+                            after.deferred_terminal_commands.push(
+                                DeferredTerminalCommand::SendTokens {
+                                    terminals,
+                                    keys: keys.clone(),
+                                    repeat: *repeat,
+                                },
+                            );
                         }
                     }
                     MuxEffect::SendClientKeys {
@@ -1167,7 +1243,9 @@ impl Shared {
                             None => current_format_client(&inner, client),
                         };
                         if let Some(selected) = selected {
-                            injected_client_keys.push((selected, keys.clone(), *repeat));
+                            after
+                                .injected_client_keys
+                                .push((selected, keys.clone(), *repeat));
                         }
                     }
                     MuxEffect::ResetPane { pane } => {
@@ -1181,7 +1259,8 @@ impl Shared {
                             }
                         }
                         if !terminals.is_empty() {
-                            deferred_terminal_commands
+                            after
+                                .deferred_terminal_commands
                                 .push(DeferredTerminalCommand::ResetScreen { terminals });
                         }
                     }
@@ -1258,9 +1337,9 @@ impl Shared {
                             if let Some(key) = context.invoking_key()
                                 && let Some((x, y)) = mouse_pane_cell(&inner, *pane, &mouse)
                             {
-                                pane_mode_pointers.push((*pane, key.to_owned(), x, y));
+                                after.pane_mode_pointers.push((*pane, key.to_owned(), x, y));
                             }
-                            snapshot_changed = true;
+                            after.snapshot_changed = true;
                             continue;
                         }
                         if command_name == "send-keys"
@@ -1275,7 +1354,7 @@ impl Shared {
                         if matches!(action, zz_terminal::TerminalViewAction::ClearHistory)
                             && clear_pane_modes(&mut inner, *pane)
                         {
-                            snapshot_changed = true;
+                            after.snapshot_changed = true;
                         }
                         let armed_copy_kill = inner.modes.pending_copy_kill.take();
                         let armed_copy_source = inner.modes.pending_copy_source.take();
@@ -1289,11 +1368,13 @@ impl Shared {
                             .and_then(|c| c.command_output.as_ref())
                             .map(|output| Arc::clone(&output.terminal));
                         if let Some(terminal) = command_output {
-                            deferred_terminal_commands.push(DeferredTerminalCommand::ViewAction {
-                                terminal,
-                                view: TerminalViewId(client.0),
-                                action: action.clone(),
-                            });
+                            after.deferred_terminal_commands.push(
+                                DeferredTerminalCommand::ViewAction {
+                                    terminal,
+                                    view: TerminalViewId(client.0),
+                                    action: action.clone(),
+                                },
+                            );
                             continue;
                         }
                         let terminal = inner
@@ -1340,18 +1421,20 @@ impl Shared {
                             if let Some(source) = &copy_source
                                 && terminal_view_action_enters_copy_mode(action)
                             {
-                                deferred_terminal_commands.push(
+                                after.deferred_terminal_commands.push(
                                     DeferredTerminalCommand::ArmCopySource {
                                         terminal: Arc::clone(&terminal),
                                         source: Arc::clone(source),
                                     },
                                 );
                             }
-                            deferred_terminal_commands.push(DeferredTerminalCommand::ViewAction {
-                                terminal: Arc::clone(&terminal),
-                                view: TerminalViewId(target.0),
-                                action: action.clone(),
-                            });
+                            after.deferred_terminal_commands.push(
+                                DeferredTerminalCommand::ViewAction {
+                                    terminal: Arc::clone(&terminal),
+                                    view: TerminalViewId(target.0),
+                                    action: action.clone(),
+                                },
+                            );
                             if terminal_view_action_enters_copy_mode(action) {
                                 enter_copy_session(&mut inner, target, *pane)?;
                                 if copy_source.is_some()
@@ -1388,7 +1471,7 @@ impl Shared {
                             {
                                 session.refresh =
                                     !session.sourced && refresh.applied(session.refresh);
-                                refresh_armed |= session.refresh;
+                                after.refresh_armed |= session.refresh;
                             }
                         }
                     }
@@ -1396,14 +1479,14 @@ impl Shared {
                         if let Some(output) =
                             inner.client(client).and_then(|c| c.command_output.as_ref())
                         {
-                            client_events.push(EventPayload::TerminalUiCommand {
+                            after.client_events.push(EventPayload::TerminalUiCommand {
                                 pane: output.pane,
                                 command: *command,
                             });
                         } else if !inner.terminals.contains_key(pane) {
                             return Err(ServerError::PaneExited(*pane).into());
                         } else {
-                            client_events.push(EventPayload::TerminalUiCommand {
+                            after.client_events.push(EventPayload::TerminalUiCommand {
                                 pane: *pane,
                                 command: *command,
                             });
@@ -1425,14 +1508,14 @@ impl Shared {
                             &mut inner,
                             client,
                             None,
-                            &mut direct_events,
-                            &mut retired_command_outputs,
-                            &mut resume_client_terminals,
+                            &mut after.direct_events,
+                            &mut after.retired_command_outputs,
+                            &mut after.resume_client_terminals,
                         );
                         inner
                             .client_mut(client)
                             .and_then(|c| c.swallowed_keys.take());
-                        direct_events.push(EventPayload::FocusSidebar);
+                        after.direct_events.push(EventPayload::FocusSidebar);
                     }
                     MuxEffect::ChoosePath { pane, start_dir } => {
                         if kind != ClientKind::Interactive
@@ -1490,9 +1573,9 @@ impl Shared {
                             &mut inner,
                             client,
                             None,
-                            &mut direct_events,
-                            &mut retired_command_outputs,
-                            &mut resume_client_terminals,
+                            &mut after.direct_events,
+                            &mut after.retired_command_outputs,
+                            &mut after.resume_client_terminals,
                         );
                         inner
                             .client_mut(client)
@@ -1500,7 +1583,7 @@ impl Shared {
                         inner
                             .client_mut(client)
                             .and_then(|c| c.path_list_root.take());
-                        direct_events.push(EventPayload::OpenPathPicker {
+                        after.direct_events.push(EventPayload::OpenPathPicker {
                             pane: *pane,
                             start_dir: start_dir.clone(),
                         });
@@ -1545,7 +1628,7 @@ impl Shared {
                                         .map(|session| session.pane)
                                 })
                         {
-                            client_events.push(EventPayload::TerminalUiCommand {
+                            after.client_events.push(EventPayload::TerminalUiCommand {
                                 pane,
                                 command: zz_protocol::TerminalUiCommand::BeginSearch { direction },
                             });
@@ -1555,9 +1638,9 @@ impl Shared {
                             &mut inner,
                             client,
                             Some(Overlay::CommandPrompt),
-                            &mut direct_events,
-                            &mut retired_command_outputs,
-                            &mut resume_client_terminals,
+                            &mut after.direct_events,
+                            &mut after.retired_command_outputs,
+                            &mut after.resume_client_terminals,
                         );
                         if inner
                             .client(client)
@@ -1584,7 +1667,7 @@ impl Shared {
                                 .command_item
                                 .as_ref()
                                 .and_then(|item| item.lock().raising_overlay.take());
-                            prompt_cleared_message = take_client_message(&mut inner, client);
+                            after.prompt_cleared_message = take_client_message(&mut inner, client);
                             let state = prompt.state(prompt_history(&inner, prompt.prompt_type));
                             let fired =
                                 (prompt.mode == CommandPromptMode::Incremental).then(|| {
@@ -1596,8 +1679,10 @@ impl Shared {
                                 });
                             inner.client_entry(client).command_prompt.replace(prompt);
                             sync_terminal_freeze(&inner, client);
-                            direct_events.push(EventPayload::CommandPrompt { state: Some(state) });
-                            incremental_start = fired;
+                            after
+                                .direct_events
+                                .push(EventPayload::CommandPrompt { state: Some(state) });
+                            after.incremental_start = fired;
                         }
                     }
                     MuxEffect::ChooseTree {
@@ -1672,15 +1757,15 @@ impl Shared {
                             &mut inner,
                             client,
                             Some(Overlay::ChooseTree),
-                            &mut direct_events,
-                            &mut retired_command_outputs,
-                            &mut resume_client_terminals,
+                            &mut after.direct_events,
+                            &mut after.retired_command_outputs,
+                            &mut after.resume_client_terminals,
                         );
                         inner
                             .client_mut(client)
                             .and_then(|c| c.swallowed_keys.take());
                         if hold_chooser_zoom(&mut inner, client, *pane, *zoom) {
-                            snapshot_changed = true;
+                            after.snapshot_changed = true;
                             let facts = borrowed_format_hook_facts(&inner);
                             chooser.rebuild(&inner.engine, attached_session, &facts);
                         }
@@ -1689,10 +1774,10 @@ impl Shared {
                             chooser_under(&inner, client, *pane);
                         inner.client_entry(client).choose_tree.replace(chooser);
                         inner.client_entry(client).published_chooser = Default::default();
-                        direct_events.push(EventPayload::ChooseTree {
+                        after.direct_events.push(EventPayload::ChooseTree {
                             state: chooser_shown(&inner, client).then_some(state),
                         });
-                        direct_events.push(EventPayload::ChooserPresentation {
+                        after.direct_events.push(EventPayload::ChooserPresentation {
                             presentation: chooser_presentation::chooser_presentation(
                                 &inner, client,
                             )
@@ -1744,25 +1829,25 @@ impl Shared {
                             &mut inner,
                             client,
                             Some(Overlay::ChooseBuffer),
-                            &mut direct_events,
-                            &mut retired_command_outputs,
-                            &mut resume_client_terminals,
+                            &mut after.direct_events,
+                            &mut after.retired_command_outputs,
+                            &mut after.resume_client_terminals,
                         );
                         inner
                             .client_mut(client)
                             .and_then(|c| c.swallowed_keys.take());
                         if hold_chooser_zoom(&mut inner, client, *pane, *zoom) {
-                            snapshot_changed = true;
+                            after.snapshot_changed = true;
                         }
                         let state = chooser.rendered.clone();
                         inner.client_entry(client).chooser_under =
                             chooser_under(&inner, client, *pane);
                         inner.client_entry(client).choose_buffer.replace(chooser);
                         inner.client_entry(client).published_chooser = Default::default();
-                        direct_events.push(EventPayload::ChooseBuffer {
+                        after.direct_events.push(EventPayload::ChooseBuffer {
                             state: chooser_shown(&inner, client).then_some(state),
                         });
-                        direct_events.push(EventPayload::ChooserPresentation {
+                        after.direct_events.push(EventPayload::ChooserPresentation {
                             presentation: chooser_presentation::chooser_presentation(
                                 &inner, client,
                             )
@@ -1822,15 +1907,17 @@ impl Shared {
                         ) {
                             continue;
                         }
-                        snapshot_changed = true;
+                        after.snapshot_changed = true;
                         if duration_ms != 0 {
-                            panes_mode_deadline = Some((
+                            after.panes_mode_deadline = Some((
                                 *pane,
                                 token,
                                 Instant::now() + Duration::from_millis(u64::from(duration_ms)),
                             ));
                         }
-                        panes_mode_overlays.extend(sync_display_panes_overlays(&mut inner));
+                        after
+                            .panes_mode_overlays
+                            .extend(sync_display_panes_overlays(&mut inner));
                     }
                     MuxEffect::DisplayMessage {
                         pane,
@@ -1884,19 +1971,21 @@ impl Shared {
                                 *freeze,
                             );
                             if let Some(previous) = previous {
-                                client_message_retires.push((message_client, previous));
+                                after
+                                    .client_message_retires
+                                    .push((message_client, previous));
                             }
-                            client_message_schedule = schedule;
+                            after.client_message_schedule = schedule;
                             let event = DeferredClientEvent::Owned(publication);
                             if message_client == client {
                                 defer_unowned_client_events(
                                     client,
-                                    &mut direct_events,
-                                    &mut deferred_direct_events,
+                                    &mut after.direct_events,
+                                    &mut after.deferred_direct_events,
                                 );
-                                deferred_direct_events.push(event);
+                                after.deferred_direct_events.push(event);
                             } else {
-                                targeted_events.push(event);
+                                after.targeted_events.push(event);
                             }
                         } else {
                             let event = EventPayload::TimedClientMessage {
@@ -1907,9 +1996,9 @@ impl Shared {
                                 message_id: publication.message_id,
                             };
                             if message_client == client {
-                                direct_events.push(event);
+                                after.direct_events.push(event);
                             } else {
-                                targeted_events.push(DeferredClientEvent::Unowned {
+                                after.targeted_events.push(DeferredClientEvent::Unowned {
                                     client: message_client,
                                     payload: Box::new(event),
                                 });
@@ -1954,19 +2043,21 @@ impl Shared {
                                 *freeze,
                             );
                             if let Some(previous) = previous {
-                                client_message_retires.push((message_client, previous));
+                                after
+                                    .client_message_retires
+                                    .push((message_client, previous));
                             }
-                            client_message_schedule = schedule;
+                            after.client_message_schedule = schedule;
                             let event = DeferredClientEvent::Owned(publication);
                             if message_client == client {
                                 defer_unowned_client_events(
                                     client,
-                                    &mut direct_events,
-                                    &mut deferred_direct_events,
+                                    &mut after.direct_events,
+                                    &mut after.deferred_direct_events,
                                 );
-                                deferred_direct_events.push(event);
+                                after.deferred_direct_events.push(event);
                             } else {
-                                targeted_events.push(event);
+                                after.targeted_events.push(event);
                             }
                         } else {
                             append_inserted_output(&mut execution.output, text);
@@ -1985,7 +2076,7 @@ impl Shared {
                             if session.is_some_and(|target| target != pane_session) {
                                 continue;
                             }
-                            deferred_terminal_commands.push(
+                            after.deferred_terminal_commands.push(
                                 DeferredTerminalCommand::SetWordSeparators {
                                     terminal: Arc::clone(terminal),
                                     separators: WordSeparators::new(
@@ -2007,7 +2098,7 @@ impl Shared {
                             if session.is_some_and(|target| target != output_session) {
                                 continue;
                             }
-                            deferred_terminal_commands.push(
+                            after.deferred_terminal_commands.push(
                                 DeferredTerminalCommand::SetWordSeparators {
                                     terminal: Arc::clone(&output.terminal),
                                     separators: WordSeparators::new(
@@ -2032,25 +2123,25 @@ impl Shared {
                                 &inner.config.config_files,
                                 *candidate,
                             )?;
-                            deferred_terminal_commands.push(
+                            after.deferred_terminal_commands.push(
                                 DeferredTerminalCommand::SetAllowPassthrough {
                                     terminal: Arc::clone(terminal),
                                     enabled: terminal_options.allow_passthrough,
                                 },
                             );
-                            deferred_terminal_commands.push(
+                            after.deferred_terminal_commands.push(
                                 DeferredTerminalCommand::SetWrapSearch {
                                     terminal: Arc::clone(terminal),
                                     enabled: terminal_options.wrap_search,
                                 },
                             );
-                            deferred_terminal_commands.push(
+                            after.deferred_terminal_commands.push(
                                 DeferredTerminalCommand::SetEngineKnobs {
                                     terminal: Arc::clone(terminal),
                                     knobs: terminal_options.knobs,
                                 },
                             );
-                            deferred_terminal_commands.push(
+                            after.deferred_terminal_commands.push(
                                 DeferredTerminalCommand::SetAppearance {
                                     terminal: Arc::clone(terminal),
                                     appearance: terminal_options.appearance,
@@ -2075,13 +2166,13 @@ impl Shared {
                                 &inner.config.config_files,
                                 output.pane,
                             )?;
-                            deferred_terminal_commands.push(
+                            after.deferred_terminal_commands.push(
                                 DeferredTerminalCommand::SetWrapSearch {
                                     terminal: Arc::clone(&output.terminal),
                                     enabled: terminal_options.wrap_search,
                                 },
                             );
-                            deferred_terminal_commands.push(
+                            after.deferred_terminal_commands.push(
                                 DeferredTerminalCommand::SetAppearance {
                                     terminal: Arc::clone(&output.terminal),
                                     appearance: terminal_options.appearance,
@@ -2105,7 +2196,7 @@ impl Shared {
                                 &inner.config.config_files,
                                 pane,
                             )?;
-                            deferred_terminal_commands.push(
+                            after.deferred_terminal_commands.push(
                                 DeferredTerminalCommand::SetEngineKnobs {
                                     terminal: Arc::clone(terminal),
                                     knobs: options.knobs,
@@ -2120,12 +2211,14 @@ impl Shared {
                         inner
                             .engine
                             .set_manual_window_extent(*window, columns, rows)?;
-                        snapshot_changed |= inner.engine.state.generation() != generation;
+                        after.snapshot_changed |= inner.engine.state.generation() != generation;
                         let windows = BTreeSet::from([*window]);
                         let panes = panes_for_windows(&inner, &windows);
-                        snapshot_changed |= write_back_terminal_geometries(&mut inner, &panes);
+                        after.snapshot_changed |=
+                            write_back_terminal_geometries(&mut inner, &panes);
                         for (terminal, geometry) in terminal_resizes_for_panes(&inner, &panes) {
-                            deferred_terminal_commands
+                            after
+                                .deferred_terminal_commands
                                 .push(DeferredTerminalCommand::Resize { terminal, geometry });
                         }
                     }
@@ -2136,18 +2229,20 @@ impl Shared {
                             |window| BTreeSet::from([window]),
                         );
                         let panes = panes_for_windows(&inner, &windows);
-                        snapshot_changed |= write_back_terminal_geometries(&mut inner, &panes);
+                        after.snapshot_changed |=
+                            write_back_terminal_geometries(&mut inner, &panes);
                         for (terminal, geometry) in terminal_resizes_for_panes(&inner, &panes) {
-                            deferred_terminal_commands
+                            after
+                                .deferred_terminal_commands
                                 .push(DeferredTerminalCommand::Resize { terminal, geometry });
                         }
                     }
                     MuxEffect::MuxOptionChanged { option, session } => {
                         if let Some(session) = session {
-                            mux_option_refresh_sessions.insert(*session);
+                            after.mux_option_refresh_sessions.insert(*session);
                         } else {
                             let value = inner.engine.mux_option_value(*option);
-                            mux_options_changed |=
+                            after.mux_options_changed |=
                                 inner
                                     .config
                                     .mux_options
@@ -2161,7 +2256,7 @@ impl Shared {
                         }
                         #[cfg(feature = "agent")]
                         {
-                            agent_options_changed |= matches!(
+                            after.agent_options_changed |= matches!(
                                 option,
                                 MuxOptionKey::AgentCommand
                                     | MuxOptionKey::AgentClaudeCodeCommand
@@ -2169,13 +2264,13 @@ impl Shared {
                             );
                         }
                     }
-                    MuxEffect::MonitorSilenceChanged => monitor_silence_changed = true,
-                    MuxEffect::ClientTerminalChanged => client_terminal_changed = true,
+                    MuxEffect::MonitorSilenceChanged => after.monitor_silence_changed = true,
+                    MuxEffect::ClientTerminalChanged => after.client_terminal_changed = true,
                     MuxEffect::StatusFormatsChanged { session } => match session {
                         Some(session) => {
-                            status_refresh_sessions.insert(*session);
+                            after.status_refresh_sessions.insert(*session);
                         }
-                        None => status_formats_changed = true,
+                        None => after.status_formats_changed = true,
                     },
                     MuxEffect::StatusRowsChanged { session } => {
                         let sessions = session.map_or_else(
@@ -2187,10 +2282,11 @@ impl Shared {
                             resized.extend(recalculate_window_extents(&mut inner, session));
                         }
                         if !resized.is_empty() {
-                            snapshot_changed = true;
+                            after.snapshot_changed = true;
                             let panes = panes_for_windows(&inner, &resized);
                             for (terminal, geometry) in terminal_resizes_for_panes(&inner, &panes) {
-                                deferred_terminal_commands
+                                after
+                                    .deferred_terminal_commands
                                     .push(DeferredTerminalCommand::Resize { terminal, geometry });
                             }
                         }
@@ -2203,7 +2299,7 @@ impl Shared {
                         flags,
                         update_environment,
                     } => {
-                        attach = Some((
+                        after.attach = Some((
                             *session,
                             *detach_others,
                             *detach_others_hangup,
@@ -2268,7 +2364,7 @@ impl Shared {
                                 }
                             }
                         };
-                        detach = scope.map(|scope| {
+                        after.detach = scope.map(|scope| {
                             (
                                 scope,
                                 DetachExit {
@@ -2285,7 +2381,7 @@ impl Shared {
                         verbose,
                         context,
                         stdin,
-                    } => source_files.push(SourceFileRequest {
+                    } => after.source_files.push(SourceFileRequest {
                         path: path.clone(),
                         quiet: *quiet,
                         parse_only: *parse_only,
@@ -2294,7 +2390,7 @@ impl Shared {
                         stdin: stdin.clone(),
                     }),
                     MuxEffect::PaneStreamInput { pane, bytes } => {
-                        pane_stream_inputs.push((*pane, bytes.clone()));
+                        after.pane_stream_inputs.push((*pane, bytes.clone()));
                     }
                     MuxEffect::RunHook {
                         name,
@@ -2304,7 +2400,11 @@ impl Shared {
                         inner
                             .engine
                             .note_event_hook_fired(context, name, unix_timestamp());
-                        immediate_hooks.push((name.clone(), commands.clone(), context.clone()));
+                        after.immediate_hooks.push((
+                            name.clone(),
+                            commands.clone(),
+                            context.clone(),
+                        ));
                     }
                     MuxEffect::PaneFormatOutput {
                         pane,
@@ -2316,16 +2416,16 @@ impl Shared {
                             Some((*pane, format.clone(), *active_session, *format_client));
                     }
                     MuxEffect::ReloadConfig => {
-                        reload_config = true;
+                        after.reload_config = true;
                     }
                     MuxEffect::ImportTmuxConfig(path) => {
-                        import_tmux_config = Some(path.clone());
+                        after.import_tmux_config = Some(path.clone());
                     }
-                    MuxEffect::KillServer => force_shutdown_requested = true,
-                    MuxEffect::SnapshotChanged => snapshot_changed = true,
-                    MuxEffect::ModeStylesChanged => mode_styles_changed = true,
+                    MuxEffect::KillServer => after.force_shutdown_requested = true,
+                    MuxEffect::SnapshotChanged => after.snapshot_changed = true,
+                    MuxEffect::ModeStylesChanged => after.mode_styles_changed = true,
                     MuxEffect::UserOptionChanged { channel } => {
-                        option_signals.push(channel.clone());
+                        after.option_signals.push(channel.clone());
                     }
                     MuxEffect::PaneModeChanged { pane, mode } => {
                         let changed = match mode {
@@ -2333,7 +2433,7 @@ impl Shared {
                             None => clear_pane_modes(&mut inner, *pane),
                         };
                         if changed {
-                            snapshot_changed = true;
+                            after.snapshot_changed = true;
                         }
                     }
                 }
@@ -2354,7 +2454,8 @@ impl Shared {
                 {
                     execution.output = RawText::default();
                     drop(inner);
-                    let wait = terminal_wait
+                    let wait = after
+                        .terminal_wait
                         .get_or_insert_with(|| terminal_requests::CommandWait::new(self));
                     wait.pane_output(
                         self,
@@ -2388,8 +2489,8 @@ impl Shared {
                 }
             }
             let recheck_shutdown_requested = self.should_shutdown_if_empty(&inner);
-            if snapshot_changed {
-                unfocused_copy_mode_exits = unfocused_copy_sessions(&mut inner);
+            if after.snapshot_changed {
+                after.unfocused_copy_mode_exits = unfocused_copy_sessions(&mut inner);
                 let clients = inner
                     .clients
                     .iter()
@@ -2403,7 +2504,7 @@ impl Shared {
                     .collect::<Vec<_>>();
                 for client in clients {
                     if let Some(output) = take_command_output(&mut inner, client) {
-                        retired_command_outputs.push((client, output));
+                        after.retired_command_outputs.push((client, output));
                     }
                 }
             }
@@ -2411,15 +2512,15 @@ impl Shared {
                 !read_only || inner.engine.state.generation() == generation_before,
                 "read-only {command_name} moved the tree generation"
             );
-            pending_hook_events.extend(stale_mode_events);
+            after.pending_hook_events.extend(stale_mode_events);
             let prompt_events = hook_events::pane_prompt_hook_events(&mut inner);
             if event_hooks_enabled {
-                pending_hook_events.extend(prompt_events);
+                after.pending_hook_events.extend(prompt_events);
             }
-            let hook_events_before = pending_hook_events.len();
+            let hook_events_before = after.pending_hook_events.len();
             if event_hooks_enabled && let Some(scope) = hook_scope {
                 let pane_focus_before = pane_focus_before.map(|scope| scope.close(&inner));
-                let anchor = pending_hook_events.len();
+                let anchor = after.pending_hook_events.len();
                 {
                     let transitions = std::mem::take(&mut inner.modes.pane_mode_transitions);
                     let mut diff = scope.finish(&inner.engine, command_name);
@@ -2428,16 +2529,18 @@ impl Shared {
                         &execution.effects,
                         &mut diff.events,
                     );
-                    pending_hook_events.append(&mut diff.events);
-                    pending_hook_events.extend(hook_events::server_mode_hook_events(
-                        &inner.engine,
-                        transitions,
-                    ));
+                    after.pending_hook_events.append(&mut diff.events);
+                    after
+                        .pending_hook_events
+                        .extend(hook_events::server_mode_hook_events(
+                            &inner.engine,
+                            transitions,
+                        ));
                     for session in diff.closed_sessions(&inner.engine.state) {
                         if let Some(clients) = inner.attachment.attached.get(&session) {
                             for attached_client in clients {
                                 let client_name = client_format_name(&inner, *attached_client);
-                                pending_hook_events.push(PendingHookEvent::client(
+                                after.pending_hook_events.push(PendingHookEvent::client(
                                     "client-detached",
                                     diff.before_session_context(session),
                                     *attached_client,
@@ -2448,37 +2551,43 @@ impl Shared {
                     }
                     if let Some(copy_modes_before) = copy_modes_before.as_ref() {
                         let copy_modes_after = active_copy_mode_panes(&inner);
-                        pending_hook_events.extend(hook_events::pane_mode_hook_events(
-                            &inner.engine,
-                            &diff.before,
-                            copy_modes_before,
-                            &copy_modes_after,
-                        ));
+                        after
+                            .pending_hook_events
+                            .extend(hook_events::pane_mode_hook_events(
+                                &inner.engine,
+                                &diff.before,
+                                copy_modes_before,
+                                &copy_modes_after,
+                            ));
                     }
                 }
                 if let Some(pane_focus_before) = pane_focus_before.as_ref() {
                     let focus = pane_focus_hook_events(&mut inner, pane_focus_before);
-                    splice_pane_focus_events(&mut pending_hook_events, anchor, focus);
+                    splice_pane_focus_events(&mut after.pending_hook_events, anchor, focus);
                 }
             }
             inner.modes.pane_mode_transitions.clear();
             debug_assert!(
-                !read_only || pending_hook_events.len() == hook_events_before,
+                !read_only || after.pending_hook_events.len() == hook_events_before,
                 "read-only {command_name} raised hook events"
             );
             client_timers_changed = monitors_before != inner.engine.has_format_monitors()
                 || refresh_before.is_some_and(|before| before != copy_mode_refresh_needed(&inner))
                 || clock_before.is_some_and(|before| before != clock_mode_timer_needed(&inner));
-            (execution, mux_options_changed, recheck_shutdown_requested)
+            (
+                execution,
+                after.mux_options_changed,
+                recheck_shutdown_requested,
+            )
         };
 
-        if let Some(path) = import_tmux_config {
+        if let Some(path) = after.import_tmux_config {
             let output = self.import_tmux_configuration(path.as_deref(), context)?;
             append_inserted_output(&mut execution.output, &output);
-            reload_config = true;
+            after.reload_config = true;
         }
 
-        if force_shutdown_requested {
+        if after.force_shutdown_requested {
             if let Some((control, _)) = context.control_command_target() {
                 if let Some(queue_execution) = queue_execution
                     && queue_execution.detached
@@ -2506,7 +2615,7 @@ impl Shared {
             }
         }
 
-        for (name, commands, context) in immediate_hooks {
+        for (name, commands, context) in after.immediate_hooks {
             let mut variables = context.format_variables.clone();
             if name.starts_with('@')
                 && variables.get("hook_event") == Some(&name)
@@ -2530,7 +2639,7 @@ impl Shared {
             append_inserted_output(&mut execution.output, &hook_output);
         }
 
-        let deferred_shutdown_request = if force_shutdown_requested {
+        let deferred_shutdown_request = if after.force_shutdown_requested {
             DeferredShutdown::Force
         } else if recheck_shutdown_requested {
             DeferredShutdown::Recheck
@@ -2552,24 +2661,26 @@ impl Shared {
             }
         }
 
-        for pipe in pipes_to_close {
+        for pipe in after.pipes_to_close {
             stop_pane_pipe(pipe);
         }
 
-        if let Some((listing, facts)) = key_listing {
-            let wait =
-                terminal_wait.get_or_insert_with(|| terminal_requests::CommandWait::new(self));
+        if let Some((listing, facts)) = after.key_listing {
+            let wait = after
+                .terminal_wait
+                .get_or_insert_with(|| terminal_requests::CommandWait::new(self));
             cmdq::render_key_listing(self, client, listing, facts, format_variables, wait.start());
         }
-        if deferred_terminal_commands.iter().any(|command| {
+        if after.deferred_terminal_commands.iter().any(|command| {
             matches!(command, DeferredTerminalCommand::ArmCopySource { .. })
                 || command.copy_mode_terminal().is_some()
         }) {
-            let wait =
-                terminal_wait.get_or_insert_with(|| terminal_requests::CommandWait::new(self));
-            wait.effects(self, deferred_terminal_commands);
+            let wait = after
+                .terminal_wait
+                .get_or_insert_with(|| terminal_requests::CommandWait::new(self));
+            wait.effects(self, after.deferred_terminal_commands);
         } else {
-            for command in deferred_terminal_commands {
+            for command in after.deferred_terminal_commands {
                 #[cfg(test)]
                 let wrap_search = command.wrap_search();
                 command.run();
@@ -2579,38 +2690,38 @@ impl Shared {
                 }
             }
         }
-        if respawned_terminals && !snapshot_changed {
+        if after.respawned_terminals && !after.snapshot_changed {
             self.refresh_terminal_visibility();
         }
-        for (selected, pane, keys, repeat) in pane_mode_keys {
+        for (selected, pane, keys, repeat) in after.pane_mode_keys {
             self.inject_pane_mode_keys(selected, context, pane, &keys, repeat)?;
         }
-        for (pane, key, x, y) in pane_mode_pointers {
+        for (pane, key, x, y) in after.pane_mode_pointers {
             self.pane_mode_mouse(client, context, pane, &key, x, y);
         }
         self.reap_pane_mode_kill_panes(client, kind, context);
-        for (target, keys, repeat) in injected_client_keys {
+        for (target, keys, repeat) in after.injected_client_keys {
             self.inject_client_keys(target, &keys, repeat);
         }
-        for (owners, pane, keys, repeat) in mode_table_keys {
+        for (owners, pane, keys, repeat) in after.mode_table_keys {
             self.inject_mode_table_keys(&owners, pane, &keys, repeat);
         }
-        if refresh_armed {
+        if after.refresh_armed {
             self.arm_copy_mode_refresh();
         }
         if clock_modes_are_open(&self.inner.lock()) {
             self.arm_pane_mode_clock();
         }
-        for (client, terminal) in unfocused_copy_mode_exits {
+        for (client, terminal) in after.unfocused_copy_mode_exits {
             terminal.view_action(
                 TerminalViewId(client.0),
                 zz_terminal::TerminalViewAction::CopyMode(zz_terminal::CopyModeAction::Cancel),
             );
         }
-        for (client, output) in retired_command_outputs {
+        for (client, output) in after.retired_command_outputs {
             self.retire_command_output(client, output);
         }
-        for (terminal, previous, next) in relocated_terminal_views {
+        for (terminal, previous, next) in after.relocated_terminal_views {
             for client in previous.difference(&next) {
                 terminal.detach_view(TerminalViewId(client.0));
             }
@@ -2618,7 +2729,7 @@ impl Shared {
                 terminal.attach_view(TerminalViewId(client.0));
             }
         }
-        match detach {
+        match after.detach {
             None => {}
             Some((_, exit)) if exit.exec.as_deref() == Some("") => {}
             Some((scope, exit)) => {
@@ -2646,7 +2757,7 @@ impl Shared {
             read_only,
             flags,
             update_environment,
-        )) = attach
+        )) = after.attach
         {
             let eviction = if detach_others_hangup {
                 ClientExitAction::ParentHangup
@@ -2676,7 +2787,7 @@ impl Shared {
                 let _held = self.hold_attach_terminals(client);
                 let (mut snapshot, attach_hook_events) =
                     self.attach_collect_event_hooks(client, session, event_hooks_enabled)?;
-                pending_hook_events.extend(attach_hook_events);
+                after.pending_hook_events.extend(attach_hook_events);
                 if detach_others {
                     self.evict_clients_with_event_hooks(
                         Some(session),
@@ -2705,11 +2816,11 @@ impl Shared {
                 self.publish_snapshot();
             }
         }
-        for (pane, terminal) in terminals_to_watch {
+        for (pane, terminal) in after.terminals_to_watch {
             self.watch_terminal(pane, &terminal)?;
-            snapshot_changed |= self.locate_moved_pane(pane);
+            after.snapshot_changed |= self.locate_moved_pane(pane);
         }
-        for event in client_events {
+        for event in after.client_events {
             let pane = match &event {
                 EventPayload::BrowserCommand { pane, .. }
                 | EventPayload::TerminalUiCommand { pane, .. } => *pane,
@@ -2717,31 +2828,35 @@ impl Shared {
             };
             self.publish_for_pane(pane, &event);
         }
-        defer_unowned_client_events(client, &mut direct_events, &mut deferred_direct_events);
-        for event in deferred_direct_events {
+        defer_unowned_client_events(
+            client,
+            &mut after.direct_events,
+            &mut after.deferred_direct_events,
+        );
+        for event in after.deferred_direct_events {
             self.publish_deferred_client_event(event);
         }
-        for event in targeted_events {
+        for event in after.targeted_events {
             self.publish_deferred_client_event(event);
         }
-        for (target, retired) in client_message_retires {
+        for (target, retired) in after.client_message_retires {
             self.retire_client_message(target, retired, true);
         }
-        if let Some(retired) = prompt_cleared_message {
+        if let Some(retired) = after.prompt_cleared_message {
             self.retire_client_message(client, retired, true);
         }
-        if resume_client_terminals {
+        if after.resume_client_terminals {
             self.resume_client_terminals(client);
         }
-        if let Some(deadline) = client_message_schedule {
+        if let Some(deadline) = after.client_message_schedule {
             let _ = self.timer_tx.send(timers::TimerInput::ClientMessage(
                 ClientMessageDeadlineCommand::Schedule(deadline),
             ));
         }
-        for (viewer, state) in panes_mode_overlays {
+        for (viewer, state) in after.panes_mode_overlays {
             self.publish_to_client(viewer, EventPayload::DisplayPanes { state });
         }
-        if let Some((pane, token, deadline)) = panes_mode_deadline {
+        if let Some((pane, token, deadline)) = after.panes_mode_deadline {
             let shared = Arc::downgrade(&self.server_owner());
             let _ = self.timer_tx.send(timers::TimerInput::Callback {
                 deadline: Some(deadline),
@@ -2752,25 +2867,25 @@ impl Shared {
                 }),
             });
         }
-        if monitor_silence_changed {
+        if after.monitor_silence_changed {
             self.reset_all_silence_timers();
         }
-        for deadline in silence_schedules {
+        for deadline in after.silence_schedules {
             let _ = self.timer_tx.send(timers::TimerInput::Silence(
                 SilenceDeadlineCommand::Schedule(deadline),
             ));
         }
-        for (window, pane) in activity_requeues {
+        for (window, pane) in after.activity_requeues {
             self.raise_window_activity(window, pane);
         }
         #[cfg(feature = "agent")]
         {
-            if agent_options_changed {
+            if after.agent_options_changed {
                 self.reconfigure_agents();
             }
-            self.close_agent_panes(&removed_panes);
-            self.close_agent_panes(&agent_panes_closed);
-            for (pane, replaced) in agent_panes_opened {
+            self.close_agent_panes(&after.removed_panes);
+            self.close_agent_panes(&after.agent_panes_closed);
+            for (pane, replaced) in after.agent_panes_opened {
                 self.open_agent_pane(pane, replaced);
                 self.request_pane_location(pane);
             }
@@ -2786,35 +2901,42 @@ impl Shared {
                     } => Some(*pane),
                     _ => None,
                 });
-                self.open_created_chat(client, kind, context, command_name, created, agent_briefs);
+                self.open_created_chat(
+                    client,
+                    kind,
+                    context,
+                    command_name,
+                    created,
+                    after.agent_briefs,
+                );
             }
-            self.close_orphaned_chats(&removed_panes);
+            self.close_orphaned_chats(&after.removed_panes);
         }
         #[cfg(not(feature = "agent"))]
-        let _ = (agent_panes_opened, agent_briefs);
-        for pane in removed_panes {
+        let _ = (after.agent_panes_opened, after.agent_briefs);
+        for pane in after.removed_panes {
             self.cancel_pane_files(pane);
             self.publish(EventPayload::PaneRemoved(pane));
         }
-        if client_terminal_changed {
+        if after.client_terminal_changed {
             self.publish_terminal_negotiation();
         }
         if mux_options_event {
             self.publish_effective_mux_options(None);
-        } else if !mux_option_refresh_sessions.is_empty() {
-            self.publish_effective_mux_options(Some(&mux_option_refresh_sessions));
+        } else if !after.mux_option_refresh_sessions.is_empty() {
+            self.publish_effective_mux_options(Some(&after.mux_option_refresh_sessions));
         }
-        if mode_styles_changed {
+        if after.mode_styles_changed {
             self.refresh_published_appearance();
         }
         self.restyle_client_overlays();
-        for channel in option_signals {
+        for channel in after.option_signals {
             if let Some(pane) = channel
                 .strip_prefix("@agent_state@")
                 .filter(|target| target.starts_with('%'))
                 .and_then(|target| target.parse::<PaneId>().ok())
             {
-                snapshot_changed |= pane_summary::mirror_agent_state(
+                after.snapshot_changed |= pane_summary::mirror_agent_state(
                     &mut self.inner.lock(),
                     pane,
                     unix_timestamp(),
@@ -2859,25 +2981,26 @@ impl Shared {
                 .strip_prefix("@name@")
                 .and_then(|pane| pane.parse().ok())
             {
-                snapshot_changed |= pane_summary::mirror_pane_name(&mut self.inner.lock(), pane);
+                after.snapshot_changed |=
+                    pane_summary::mirror_pane_name(&mut self.inner.lock(), pane);
                 #[cfg(all(feature = "agent", unix))]
                 self.update_terminal_peer(pane);
             }
             self.signal_wait_channel(&channel);
         }
-        if snapshot_changed {
+        if after.snapshot_changed {
             self.publish_snapshot();
-        } else if status_formats_changed {
+        } else if after.status_formats_changed {
             self.refresh_status();
-        } else if !status_refresh_sessions.is_empty() {
-            self.refresh_status_for_sessions(Some(&status_refresh_sessions));
+        } else if !after.status_refresh_sessions.is_empty() {
+            self.refresh_status_for_sessions(Some(&after.status_refresh_sessions));
         }
         let replay_client = context.replay_client();
         let source_client = replay_client.unwrap_or(client);
         let cwd_client = replay_client
             .or_else(|| context.control_command_target().map(|(client, _)| client))
             .unwrap_or(client);
-        for (pane, bytes) in pane_stream_inputs {
+        for (pane, bytes) in after.pane_stream_inputs {
             self.feed_pane_stream_input(pane, bytes.as_bytes());
         }
         if split_caller_stream
@@ -2912,13 +3035,14 @@ impl Shared {
                     .and_then(|c| c.kind)
                     .unwrap_or(kind)
             };
-            let source_session_working_directory = (reload_config || !source_files.is_empty())
-                .then(|| {
-                    client_attached_session(&inner, cwd_client)
-                        .and_then(|session| inner.engine.state.session_working_directory(session))
-                        .map(Path::to_owned)
-                })
-                .flatten();
+            let source_session_working_directory = (after.reload_config
+                || !after.source_files.is_empty())
+            .then(|| {
+                client_attached_session(&inner, cwd_client)
+                    .and_then(|session| inner.engine.state.session_working_directory(session))
+                    .map(Path::to_owned)
+            })
+            .flatten();
             let source_client_terminal = if context.has_no_client() {
                 ClientTerminal::NoClient
             } else if replay_client.is_some() && registered {
@@ -2938,15 +3062,16 @@ impl Shared {
                 source_client_terminal,
             )
         };
-        let source_working_directory = (reload_config || !source_files.is_empty()).then(|| {
-            startup_source_client_working_directory
-                .clone()
-                .or(source_session_working_directory)
-                .or(source_client_working_directory)
-                .or_else(|| context.client_working_directory().map(Path::to_owned))
-                .or_else(home_directory)
-                .unwrap_or_else(|| PathBuf::from("/"))
-        });
+        let source_working_directory = (after.reload_config || !after.source_files.is_empty())
+            .then(|| {
+                startup_source_client_working_directory
+                    .clone()
+                    .or(source_session_working_directory)
+                    .or(source_client_working_directory)
+                    .or_else(|| context.client_working_directory().map(Path::to_owned))
+                    .or_else(home_directory)
+                    .unwrap_or_else(|| PathBuf::from("/"))
+            });
         let source_client_base = startup_source_client_working_directory.or_else(|| {
             if cwd_client != ClientId(u64::MAX) && source_client_registered {
                 source_working_directory.clone()
@@ -2970,16 +3095,16 @@ impl Shared {
         let mut source_diagnostics_output = RawText::default();
         let mut source_invocations = SourceInvocationAccounting::default();
         let mut pending_source_files = Vec::new();
-        let source_invocation = !source_files.is_empty();
+        let source_invocation = !after.source_files.is_empty();
         let mut reported_source_failure = false;
         let mut reported_source_callback_failure = false;
         let control_source_invocation = control_target.is_some() && source_invocation;
         let suppress_source_replay_output = source_kind == ClientKind::Command
             && queue_execution.is_some_and(CommandQueueExecution::is_draining);
         let captured_control_source = control_client.is_some_and(|client| {
-            !source_files.is_empty() && self.is_capturing_control_command_events(client)
+            !after.source_files.is_empty() && self.is_capturing_control_command_events(client)
         });
-        for request in source_files {
+        for request in after.source_files {
             let path = request.path;
             if path == "-" {
                 if let Some(SourceStream::Bytes(stream)) = request.stdin {
@@ -3161,15 +3286,15 @@ impl Shared {
                 reported_source_callback_failure,
                 control_source_invocation,
                 suppress_source_replay_output,
-                reload_config,
+                reload_config: after.reload_config,
                 read_only,
                 client_timers_changed,
-                status_formats_changed,
-                status_refresh_sessions,
-                pending_hook_events,
+                status_formats_changed: after.status_formats_changed,
+                status_refresh_sessions: after.status_refresh_sessions,
+                pending_hook_events: after.pending_hook_events,
                 notifications_only,
-                incremental_start,
-                terminal_wait,
+                incremental_start: after.incremental_start,
+                terminal_wait: after.terminal_wait,
                 pending: pending_source_files.into(),
                 parsed: VecDeque::new(),
                 read: None,
@@ -3442,7 +3567,7 @@ impl Shared {
                 streams.control_error = control_source_errors.join("\n");
             }
         }
-        if reload_config
+        if after.reload_config
             && let Err(error) = self.reload_user_config_with_source_base(
                 source_client,
                 context,
@@ -3456,27 +3581,30 @@ impl Shared {
         if !read_only {
             self.publish_key_tables_if_changed();
         }
-        if client_timers_changed || status_formats_changed || !status_refresh_sessions.is_empty() {
+        if client_timers_changed
+            || after.status_formats_changed
+            || !after.status_refresh_sessions.is_empty()
+        {
             self.nudge_client_timers();
         }
-        pending_hook_events.extend(std::mem::take(
+        after.pending_hook_events.extend(std::mem::take(
             &mut self.inner.lock().waits.deferred_event_hooks,
         ));
-        if !pending_hook_events.is_empty() {
+        if !after.pending_hook_events.is_empty() {
             self.wake_control_queue(client, kind);
         }
         if notifications_only {
-            self.run_event_hooks(pending_hook_events);
+            self.run_event_hooks(after.pending_hook_events);
         } else if let Some(queue_execution) = queue_execution {
-            self.publish_event_control_notifications(&mut pending_hook_events);
+            self.publish_event_control_notifications(&mut after.pending_hook_events);
             queue_execution
                 .pending_event_hooks
                 .borrow_mut()
-                .extend(pending_hook_events);
+                .extend(after.pending_hook_events);
         } else {
-            self.run_event_hooks(pending_hook_events);
+            self.run_event_hooks(after.pending_hook_events);
         }
-        if let Some(submission) = incremental_start {
+        if let Some(submission) = after.incremental_start {
             self.submit_command_prompt(source_client, source_kind, context, &submission);
         }
         if suppress_source_replay_output
@@ -3511,7 +3639,7 @@ impl Shared {
                 output: execution.output,
                 exit_code: 1,
             }),
-            None => match terminal_wait {
+            None => match after.terminal_wait {
                 Some(wait) => wait.finish(self, execution),
                 None => Ok(execution),
             },
