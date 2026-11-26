@@ -3,14 +3,14 @@ type: Design Plan
 title: "Delegating from an agent chat"
 description: "The composer can mention a child agent or an existing chat. The daemon retains the parent and routes replies and asks."
 status: "Built 2026-11-23"
-resource: crates/zz-daemon/src/daemon.rs
+resource: crates/zz-daemon/src/daemon/agent_commands.rs
 tags:
 - agent
 - agent-pane
 - mentions
 - delegation
 - design-plan
-timestamp: 2026-11-24T00:00:00-03:00
+timestamp: 2026-11-26T00:00:00-03:00
 ---
 
 # Mentions and ownership
@@ -93,4 +93,4 @@ The reports and per-run results live under `bench/agents/mentions/results/`. The
 
 The remaining design questions are whether to pass a child context beyond its brief and working directory, and whether to limit `agent-send` to chat panes. The November review also identified candidate protocol messages without callers. Each needs its own dispatch and compatibility check before removal.
 
-Daemon routing is in `crates/zz-daemon/src/daemon.rs`, `daemon/agent_inbox.rs` and `daemon/agent_relay.rs`. See [agent panes](/concepts/agent-panes.md) for current CLI behavior and [native drivers](/designs/native-agent-drivers.md) for provider behavior.
+Daemon routing is in `crates/zz-daemon/src/daemon/agent_commands.rs` (`agent_send`), `daemon/agent_chats.rs`, `daemon/agent_inbox.rs` and `daemon/agent_relay.rs`. See [agent panes](/concepts/agent-panes.md) for current CLI behavior and [native drivers](/designs/native-agent-drivers.md) for provider behavior.

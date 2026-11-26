@@ -4,7 +4,7 @@ title: Session persistence and daemon lifecycle
 description: What survives detach, which state belongs to each viewer and what ends when the daemon restarts.
 resource: crates/zz-daemon/src/daemon.rs
 tags: [daemon, persistence, attach, detach, lifecycle]
-timestamp: 2026-11-24T00:00:00Z
+timestamp: 2026-11-26T00:00:00-03:00
 ---
 
 ## Lifetime
@@ -75,7 +75,7 @@ mode. Layout, active pane, zoom, process and scrollback belong to the workspace.
 PTY sizing uses `window-size`. Latest uses one geometry owner, largest and
 smallest aggregate eligible clients' dimensions, and manual uses the stored
 extent. `aggressive-resize` narrows eligibility to viewers of the window.
-See `terminal_resize_for_pane` in `crates/zz-daemon/src/daemon.rs`.
+See `terminal_resize_for_pane` in `crates/zz-daemon/src/daemon/terminal_geometry.rs`.
 
 A lost connection detaches that client. A reconnecting desktop host can keep
 the last snapshot visible and reattach to the same session, or to the default

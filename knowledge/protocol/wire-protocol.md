@@ -4,7 +4,7 @@ title: zz wire protocol
 description: Frame layout, connection handshakes, wire epochs, revision floors, and the steps for adding a capability-gated message.
 resource: crates/zz-protocol/src/framing.rs
 tags: [protocol, wire, framing, postcard, versioning]
-timestamp: 2026-11-24T00:00:00-03:00
+timestamp: 2026-11-26T00:00:00-03:00
 ---
 
 # Framing
@@ -95,7 +95,7 @@ alone requires neither repair. See [snapshots](/protocol/snapshots.md) and
    table to 63 names.
 4. Handle an incoming request in both daemon dispatchers. Unix uses `Session::message` in
    `crates/zz-daemon/src/daemon/connection.rs`. Windows uses `handle_connection_message` in
-   `crates/zz-daemon/src/daemon.rs`. Both have catch-all arms. One-shot exec logic likewise
+   `crates/zz-daemon/src/daemon/connection_messages.rs`. Both have catch-all arms. One-shot exec logic likewise
    has a Unix `LoopExec` and Windows `serve_exec`/`serve_exec_ready` in
    `crates/zz-daemon/src/daemon/exec.rs`. On Unix the event loop handles transport-level
    messages such as control stdio and TTY handoff in `EventLoop::dispatch` before the session.
@@ -124,7 +124,7 @@ length. `PastePath` writes the image on the daemon host and pastes the resulting
 pane. `RecordPastedImage` retains the bytes for a numbered placeholder that the client can
 retrieve with `FetchPastedImage`. The wire limit is 6 MiB and a chunk is at most 1 MiB.
 The daemon admits up to two in-flight uploads per client. See `finish_paste_upload` in
-`crates/zz-daemon/src/daemon.rs`.
+`crates/zz-daemon/src/daemon/paste_uploads.rs`.
 
 File editing has a separate request/reply exchange. `FileReadRequest`, `FileWriteRequest`
 and their responses require `file-edit-v1`. Both sides must advertise it for the round trip.

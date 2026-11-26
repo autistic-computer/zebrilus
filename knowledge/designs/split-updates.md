@@ -9,7 +9,7 @@ tags:
 - update
 - daemon
 - design-plan
-timestamp: 2026-11-11T00:00:00-03:00
+timestamp: 2026-11-26T00:00:00-03:00
 ---
 
 # Overview
@@ -131,7 +131,7 @@ Not in this plan: keeping sessions alive across a daemon restart. A daemon resta
   missing, or from `zz fleet install`, and it reinstalls unless both the version string and the
   protocol version already match.
 - What the daemon launches later stays on its own build: `pinned_executable`
-  (`crates/zz-daemon/src/daemon.rs`) pins the `zz` and `tmux` that panes and status jobs run, and
+  (`crates/zz-daemon/src/daemon/tmux_shim.rs`) pins the `zz` and `tmux` that panes and status jobs run, and
   on macOS every daemon of one build shares one copy, `$TMPDIR/zz-pinned/<dev-inode-size-mtime>/`,
   with a `pin` hard link in its `zz-tmux-shim-<pid>-<seq>/` holding it; a daemon start removes
   builds no daemon links that are over a minute old. A fresh copy per daemon made macOS scan 170 MB
@@ -316,7 +316,8 @@ row in [session persistence](/concepts/session-persistence.md).
 - `crates/zz-protocol/src/control.rs` `Welcome`, `CAPABILITY_NAMES`, `Welcome::has_capability`
 - `crates/zz-protocol/src/snapshot.rs` `PaneKindSnapshot`
 - `crates/zz-daemon/src/daemon/ctrl.rs` `shared_tree`
-- `crates/zz-daemon/src/daemon.rs` `validate_hello`, `client_features_fact`
+- `crates/zz-daemon/src/daemon/connection_messages.rs` `validate_hello`
+- `crates/zz-daemon/src/daemon/client_facts.rs` `client_features_fact`
 - `crates/zz-daemon-client/src/lifecycle.rs` `terminate_incompatible_daemon`
 - `crates/zz-daemon-client/src/endpoint.rs` `remote_install_script`
 - `crates/zz-config/src/update.rs` `fetch_latest`

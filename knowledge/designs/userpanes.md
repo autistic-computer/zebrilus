@@ -13,7 +13,7 @@ tags:
 - agent-pane
 - artifacts
 - design-plan
-timestamp: 2026-11-24T00:00:00-03:00
+timestamp: 2026-11-26T00:00:00-03:00
 ---
 
 # Overview
@@ -48,7 +48,7 @@ zz html [--float] [--reply] [-t %N] [--] <path | ->
   the user's browsing.
 
 It is a daemon-level verb wired like `capture-browser` (`DaemonCommandDispatch`,
-`crates/zz-daemon/src/daemon.rs`), with a `CommandSpec` in `crates/zz-protocol/src/catalog.rs`,
+`crates/zz-daemon/src/daemon/command_routing.rs`), with a `CommandSpec` in `crates/zz-protocol/src/catalog.rs`,
 a `native-command:html` item in `compat/tmux-gaps.json`, and a section in `WORKSPACE_TOOLS_BROWSER`
 so agents find it through `zz tools browser`. The handler and the table live in
 `crates/zz-daemon/src/daemon/artifacts.rs`.

@@ -4,7 +4,7 @@ title: Named terminal peers
 description: How Claude Code on the same Unix host discovers and sends messages to a named terminal pane.
 resource: crates/zz-agent/src/claude_peers.rs
 tags: [architecture, agent, messaging, claude-code]
-timestamp: 2026-11-24T00:00:00Z
+timestamp: 2026-11-26T00:00:00-03:00
 ---
 
 With the daemon's `agent` feature on Unix, a pane-scoped `@name` makes a terminal
@@ -18,7 +18,7 @@ zz set-option -pu -t %3 @name
 
 ## Registration
 
-`Shared::update_terminal_peer` in `crates/zz-daemon/src/daemon.rs` checks the pane kind,
+`Shared::update_terminal_peer` in `crates/zz-daemon/src/daemon/agent_runtime.rs` checks the pane kind,
 pane option and live shell PID. If Claude Code already owns a matching record, it keeps
 its own registration. Matching checks the pane component and process ancestry because
 pane numbers repeat across servers.

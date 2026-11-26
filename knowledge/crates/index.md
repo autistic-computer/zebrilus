@@ -6,7 +6,7 @@
 * [zz-cli crate](zz-cli.md) - Headless executable, CLI dispatch and daemon startup shared with the desktop app, remote host targeting and owned updates.
 * [zz-client crate](zz-client.md) - Renderer-independent client state, input routing, scrollback, layout and presentation rules shared by zz clients.
 * [zz-daemon-client crate](zz-daemon-client.md) - Command and interactive connections, local and remote routes, host discovery, identity and process facts shared with the server.
-* [zz-daemon crate](zz-daemon.md) - Server ownership of mux state, PTYs, agent runtimes, connection dispatch and per-client publication.
+* [zz-daemon crate](zz-daemon.md) - Map of the daemon crate, from connection to command routing, effect application and publication, with the state layout and the file that owns each concern.
 * [zz-mux crate](zz-mux.md) - The mux model, cell layout, tmux command execution, target resolution, config parser, formats and change journal.
 * [zz-protocol crate](zz-protocol.md) - Shared Rust types and codecs for daemon messages, terminal frames, layout, agent chat, command discovery and keys.
 * [zz-terminal crate](zz-terminal.md) - Terminal session actors, PTY and libghostty-vt ownership, and the renderer-independent viewport, input and appearance types.

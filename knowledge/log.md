@@ -1,5 +1,9 @@
 # Update Log
 
+## 2026-11-26
+
+* The daemon's `daemon.rs` now holds only the core state, the `Daemon` entry point and shared helpers; the `Shared` methods moved into subject files under `daemon/`, and effect application split into per-subject helpers and named post-lock drain steps. The [zz-daemon](/crates/zz-daemon.md) page is now a map of the request flow, the `ServerState` layout and the file that owns each concern, and [daemon lock order](/architecture/daemon-locks.md) records which mutexes come before and after `inner`. Pages that named `daemon.rs` for moved code point at the new files.
+
 ## 2026-11-25
 
 * The desktop app marks hosts on an older zz and updates them on request. An outdated host carries an arrow in a ring on its sidebar row, and Settings › Hosts is a table with each host's version and Update or Restart. The dialog that opened on connect is gone. See [host updates in the app](/designs/host-update-ui.md).

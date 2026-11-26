@@ -9,7 +9,7 @@ tags:
 - browser
 - kitty-graphics
 - remote
-timestamp: 2026-10-23T00:00:00-03:00
+timestamp: 2026-11-26T00:00:00-03:00
 last_updated: 2026-09-09
 ---
 
@@ -48,7 +48,7 @@ Ship each rung independently; never let a higher rung block a lower one.
    2026-09-09, `split-window` without a command creates a terminal; native
    `split-picker` creates the pane-kind picker. The daemon test
    `configured_split_window_binding_creates_a_terminal_without_rewriting_the_command`
-   in `crates/zz-daemon/src/daemon.rs` covers configured split bindings.
+   in `crates/zz-daemon/src/daemon/tests/terminal_spawn.rs` covers configured split bindings.
 2. **Agent panes as text.** ACP transcripts are structured data; a terminal is
    their native habitat. Composer input, permission prompts, and the attention
    rollup map to plain TUI affordances. (Dropped 2026-10-23: the Agent pane was

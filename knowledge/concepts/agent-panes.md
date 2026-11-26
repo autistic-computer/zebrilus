@@ -4,7 +4,7 @@ title: Agent panes and the flip
 description: Native agent chats, switching to a provider's terminal UI, accounts, inter-pane messages and replay.
 resource: crates/zz-agent/src/host.rs
 tags: [agent, chat, terminal, replay]
-timestamp: 2026-11-24T00:00:00Z
+timestamp: 2026-11-26T00:00:00-03:00
 ---
 
 ## Agent panes
@@ -112,7 +112,7 @@ tails are bounded to 256 KiB of final text and 1 MiB of transcript.
 `#{agent_state}` exposes `starting`, `idle`, `working`, `needs-approval`,
 `needs-input` or `failed` for a chat. `#{agent_pending_permission}` gives the
 request ID. Both are available through `inspect` and `list-panes -F`.
-See `agent_chat_facts` and the `agent-send` command in `crates/zz-daemon/src/daemon.rs`.
+See `agent_chat_facts` in `crates/zz-daemon/src/daemon/agent_publisher.rs` and the `agent-send` command in `crates/zz-daemon/src/daemon/agent_commands.rs`.
 
 A recognized terminal agent rejects a new `agent-send` prompt and directs the
 caller to flip. On terminal integrations that publish `@agent_state`, a wait
@@ -125,7 +125,8 @@ A chat an agent opens is for work the user watches or steers: a task they asked 
 hand off, a fork of a conversation, a task for another machine. The startup context and
 the `zz tools` guide tell agents to keep background work of their own (searches, reading,
 split-up edits) in their own subagents. See `WORKSPACE_CONTEXT` in
-`crates/zz-daemon/src/daemon.rs`.
+`crates/zz-daemon-client/src/agent_context.rs` and the guide text in
+`crates/zz-daemon/src/daemon/workspace_tools_text.rs`.
 
 The daemon records a chat's origin, attributes messages to the sending pane
 and delivers child replies to the calling chat. Child chats automatically approve tool permissions unless `agent-auto-approve`
