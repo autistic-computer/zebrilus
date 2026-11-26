@@ -4,7 +4,7 @@ title: tmux command set
 description: Find a command, follow alias and target resolution, and identify which component executes it.
 resource: crates/zz-protocol/src/catalog.rs
 tags: [tmux, commands, mux-engine, targets, effects]
-timestamp: 2026-11-24T00:00:00-03:00
+timestamp: 2026-11-26T00:00:00-03:00
 ---
 
 # CLI contract
@@ -36,6 +36,6 @@ A target's type comes from the command. Stable session, window and pane IDs use 
 
 # Effects
 
-`MuxEngine::execute` in `crates/zz-mux/src/command.rs` applies a command to [mux state](/crates/zz-mux.md) and returns an `Execution` with output and effects. The [daemon](/crates/zz-daemon.md) applies effects that need a live client, PTY, clipboard, file or job. For commands that consume caller stdin or write binary output, see the [command stream channel](/designs/command-stream-channel.md). For example, a split changes the [layout](/concepts/split-pane-layout.md) and emits a pane creation effect. A copy action selects an action on the [terminal view](/tmux/copy-mode.md), and a chooser opens state owned by the invoking client. Use `crates/zz-daemon/src/daemon.rs` for the runtime and `crates/zz-cli/src/lib.rs` for local help, attach, transport and exit handling.
+`MuxEngine::execute` in `crates/zz-mux/src/command.rs` applies a command to [mux state](/crates/zz-mux.md) and returns an `Execution` with output and effects. The [daemon](/crates/zz-daemon.md) applies effects that need a live client, PTY, clipboard, file or job. For commands that consume caller stdin or write binary output, see the [command stream channel](/designs/command-stream-channel.md). For example, a split changes the [layout](/concepts/split-pane-layout.md) and emits a pane creation effect. A copy action selects an action on the [terminal view](/tmux/copy-mode.md), and a chooser opens state owned by the invoking client. Use the [daemon map](/crates/zz-daemon.md) (`crates/zz-daemon/src/daemon/`) for the runtime and `crates/zz-cli/src/lib.rs` for local help, attach, transport and exit handling.
 
 The native roster in the catalog and the `commands.native-superset` registry entry identify extensions. `zz tools` includes the current syntax for running work in another pane, sending an [agent turn](/concepts/agent-panes.md), waiting for a pane, or taking a browser screenshot. List formats expose the [program status](/terminal/program-status.md) that a terminal pane publishes. For a regression involving tmux syntax, run the smallest [differential scenario](/playbooks/compat-harness.md) that observes it.

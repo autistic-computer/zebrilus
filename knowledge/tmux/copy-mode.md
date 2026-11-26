@@ -4,14 +4,14 @@ title: Copy mode and view mode
 description: How a client navigates frozen pane history, copies text and handles output views and application clipboard writes.
 resource: crates/zz-terminal/src/session/mode_revision.rs
 tags: [tmux, copy-mode, view-mode, selection, search]
-timestamp: 2026-11-24T00:00:00-03:00
+timestamp: 2026-11-26T00:00:00-03:00
 ---
 
 # Entry, mode keys and search
 
 `copy-mode` (default prefix then `[`) gives the invoking client a frozen revision of the target pane's grid and scrollback. The [terminal engine](/crates/zz-terminal.md) keeps processing PTY output. See [terminal interaction](/terminal/interaction.md) for ordinary pointer selection and paste. Another attached client can keep its own position and selection. `copy-mode -u` enters and pages up, `-t` selects the pane and `copy-mode -q` cancels. Mouse bindings can also enter copy mode with `-M` when they have a pane target.
 
-The window's `mode-keys` selects the emacs `copy-mode` table or `copy-mode-vi`. Use `zz list-keys -T copy-mode-vi` for the active bindings. The daemon's `enter_copy_session`, `retarget_copy_mode_tables` and `reconcile_copy_session` in `crates/zz-daemon/src/daemon.rs` keep the client's key table and terminal view together. In the stock vi table, Escape clears the selection and `q` exits. See [key tables](/tmux/key-tables.md).
+The window's `mode-keys` selects the emacs `copy-mode` table or `copy-mode-vi`. Use `zz list-keys -T copy-mode-vi` for the active bindings. The daemon's `enter_copy_session` (`crates/zz-daemon/src/daemon/copy_mode.rs`), `retarget_copy_mode_tables` (`daemon/pane_modes.rs`) and `reconcile_copy_session` (`daemon/publication.rs`) keep the client's key table and terminal view together. In the stock vi table, Escape clears the selection and `q` exits. See [key tables](/tmux/key-tables.md).
 
 # Actions and selection text
 

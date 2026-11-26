@@ -4,7 +4,7 @@ title: tmux config parsing and replay
 description: How zz chooses mux config files, parses commands and assignments, reports failures and reapplies stored overrides.
 resource: crates/zz-mux/src/parser.rs
 tags: [tmux, parser, config, tokenizer, mux-conf]
-timestamp: 2026-11-24T00:00:00-03:00
+timestamp: 2026-11-26T00:00:00-03:00
 ---
 
 # Config selection
@@ -36,6 +36,6 @@ The daemon applies settings in this order.
 2. The chosen mux file or explicit startup files.
 3. Stored mux overrides from the [application config](/configuration/app-config.md).
 
-The stored overrides are also reapplied after `reload-config` and after an interactive `source-file`. A successful runtime command can then change the option again. For example, if a sourced prefix keeps reverting, inspect the settings override. `apply_stored_mux_config_overrides`, `replay_mux_config_files` and `parse_config_input` in `crates/zz-daemon/src/daemon.rs` own these transitions.
+The stored overrides are also reapplied after `reload-config` and after an interactive `source-file`. A successful runtime command can then change the option again. For example, if a sourced prefix keeps reverting, inspect the settings override. `apply_stored_mux_config_overrides` in `crates/zz-daemon/src/daemon/config.rs`, and `replay_mux_config_files` and `parse_config_input` in `crates/zz-daemon/src/daemon/config_loading.rs`, own these transitions.
 
 For an input grammar change, run the parser's closest test or the `smoke/config-grammar` scenario. Use `smoke/source-replay-diagnostics` for execution-time diagnostics and `compat/startup-diagnostics.sh` for causes delivered to a client on attach. See the [harness](/playbooks/compat-harness.md) and [key tables](/tmux/key-tables.md).

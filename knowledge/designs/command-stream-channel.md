@@ -9,7 +9,7 @@ tags:
 - compatibility
 - protocol
 - cli
-timestamp: 2026-09-17T00:00:00-03:00
+timestamp: 2026-11-26T00:00:00-03:00
 ---
 
 # Why
@@ -56,7 +56,7 @@ The daemon keeps the stream in the invoking client's `CommandStreams` request re
 removes when producing the response. Replayed files and alias members use that same record through
 `ExecutionContext::replay_client`; they cannot restart or duplicate the reader.
 
-**The sinks** are what the payload is for. `command_stdin_sink` in `crates/zz-daemon/src/daemon.rs`
+**The sinks** are what the payload is for. `command_stdin_sink` in `crates/zz-daemon/src/daemon/command_stdout.rs`
 is the one resolver; it takes a canonical command name and its arguments and answers at most one
 sink. The daemon asks it when each command executes. `ConfigReplay` leaves the caller stream
 available for readers in the sourced file. Each actual reader chooses whether to accept binary bytes.

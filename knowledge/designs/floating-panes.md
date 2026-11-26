@@ -11,7 +11,7 @@ tags:
 - tmux-3.8
 - mux
 - design-plan
-timestamp: 2026-10-23T00:00:00-03:00
+timestamp: 2026-11-26T00:00:00-03:00
 ---
 
 # Decisions
@@ -110,10 +110,10 @@ item `{ new-pane; join-pane }` works.
 
 # display-popup becomes a modal pane
 
-`display_popup` (`crates/zz-daemon/src/daemon.rs:18335`) builds a `new-pane -O` request. Placement
-keeps `popup_position` (`:43372`), `parse_popup_dimension` (`:49960`) and the position variables
-(`:43236`, `:43327`), measured against the target window instead of the client
-(`popup_client_geometry`, `:43136`). Mapping, from master `cmd-display-menu.c:372-569`:
+`display_popup` (`crates/zz-daemon/src/daemon/overlays.rs`) builds a `new-pane -O` request.
+Placement keeps `popup_position`, `parse_popup_dimension` and the position variables
+(`popup_position_variables`, `popup_mouse_position_values`), measured against the target window
+instead of the client (`popup_client_geometry`), all in the same file. Mapping, from master `cmd-display-menu.c:372-569`:
 
 | Flag | Becomes |
 |---|---|
@@ -156,13 +156,13 @@ menu's Tile and Move items replace it.
 **PTY size** is the pane's allocation, as `layout_fix_panes` (`layout.c:420-485`) gives it: a float's
 `sx` x `sy`; the zoom target, float or not, the whole window under the same pane-status rule as a
 zoomed tile (a 20x6 float zoomed in 80x24 runs at the window size and returns to 20x6 on unzoom); a
-float hidden by zoom keeps its last size. `apply_terminal_size_report` (`daemon.rs:21237`) ignores
+float hidden by zoom keeps its last size. `apply_terminal_size_report` (`crates/zz-daemon/src/daemon/input.rs`) ignores
 size reports for floats.
 
 **Clamping** ports `layout_clamp_floating_panes` (`layout.c:772-812`): shrink to the window minus
 border pads (minimum 1), then move left or up only to cure right or bottom overflow; negative offsets
 stay, floats never grow back. It runs on every window extent change (`recalculate_window_extents`,
-`daemon.rs:40501`).
+`crates/zz-daemon/src/daemon/window_extents.rs`).
 
 **Zoom** ports `window_zoom`, `window_unzoom`, `window_push_zoom` and `window_pop_zoom`
 (`window.c:970-1145`) onto `zoomed_pane` and `was_zoomed`. Zoom needs two panes, floats counted; the
@@ -186,8 +186,9 @@ empty space has no anchor today; `MouseKey` appends `press: Option<(u16, u16)>`,
 button-down that latched the gesture (`latch.press`), sent on every drag and release report and
 translated to window cells like `column`/`row`. These commands then arm a per-client drag, the
 `c->tty.mouse_drag_update` of 3.8: later reports of the same gesture go to it, not to the key tables,
-until release. That drag state is `popup_pointer`'s `PopupPointerState` (`daemon.rs:38035`),
-generalised from the popup to a pane; its move-left/resize-right popup policy goes.
+until release. That drag state is the client's `mouse_drag`, a `MouseDrag` (`crates/zz-mux/src/command.rs`)
+that `update_mouse_drag` in `crates/zz-daemon/src/daemon/key_input.rs` applies, generalised from
+the popup to a pane; the popup's move-left/resize-right policy goes.
 
 # Snapshot and wire (append under v108)
 
