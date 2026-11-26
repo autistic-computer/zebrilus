@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 
+use super::drag::*;
 use super::test_support::*;
 use super::tests::*;
 use super::*;
