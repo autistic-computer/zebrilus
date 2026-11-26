@@ -4,7 +4,7 @@ title: Cell-authoritative split-pane layout
 description: How the mux measures tiled and floating panes, identifies dividers, and restores layout strings.
 resource: crates/zz-mux/src/layout.rs
 tags: [layout, splits, panes, cells, tmux]
-timestamp: 2026-11-24T00:00:00Z
+timestamp: 2026-11-26T15:00:00Z
 ---
 
 ## Cell layout
@@ -38,8 +38,9 @@ pane indices, the active and last panes, and floating z-order. Applying v1
 restores the tiled layout and links existing floats back into it. v2 applies
 its selection and stacking information. If there are extra cells, the parser
 trims from the bottom right before checking sizes. Too few cells for the
-target window's panes produces an error. See `Window::layout_string` and
-`MuxState::select_layout_string` in `crates/zz-mux/src/model.rs`.
+target window's panes produces an error. See `Window::layout_string` in
+`crates/zz-mux/src/model.rs` and `MuxState::select_layout_string` in
+`crates/zz-mux/src/model/layout.rs`.
 
 ## Window extent
 

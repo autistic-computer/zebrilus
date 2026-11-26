@@ -4,7 +4,7 @@ title: zz system overview
 description: How desktop, thin and terminal clients share a daemon, and which process owns each kind of pane.
 resource: crates/zz-protocol/src/snapshot.rs
 tags: [architecture, overview, multiplexer, daemon]
-timestamp: 2026-11-24T00:00:00Z
+timestamp: 2026-11-26T15:00:00Z
 ---
 
 The daemon owns sessions, windows, layout, terminal processes and native agent chats.
@@ -20,7 +20,7 @@ Layouts are measured in cells and projected into snapshots for the clients.
 | Terminal | A daemon-owned PTY feeds libghostty-vt. Clients receive frames for their own views. [PTY worker](/concepts/pty-worker.md) |
 | Agent | A daemon-owned driver runs Claude Code, Codex, Antigravity, Grok or Cursor. Clients draw the chat from its event stream. Supported providers can switch between chat and their terminal UI in the same pane. [Agent panes](/concepts/agent-panes.md) |
 | Browser | The daemon keeps the tab descriptors. The desktop client runs Chromium through CEF and paints its frames. Native mobile clients use platform web views. [Browser lifecycle](/browser/lifecycle.md) |
-| Picker, view and editor | The picker materializes a pane, a view displays referenced content, and the editor is feature- and config-gated. The mux also supports an iOS Simulator pane on supported hosts. See `PaneKindSnapshot` in `crates/zz-protocol/src/snapshot.rs` and `simulator_descriptor` in `crates/zz-mux/src/model.rs`. |
+| Picker, view and editor | The picker materializes a pane, a view displays referenced content, and the editor is feature- and config-gated. The mux also supports an iOS Simulator pane on supported hosts. See `PaneKindSnapshot` in `crates/zz-protocol/src/snapshot.rs` and `simulator_descriptor` in `crates/zz-mux/src/model/pane_metadata.rs`. |
 
 ## Clients and crates
 
