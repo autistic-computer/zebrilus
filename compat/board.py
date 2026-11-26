@@ -36,14 +36,16 @@ DEFAULT_LEASE = "6h"
 EDIT_GRACE = timedelta(seconds=1)
 
 ZONES = {
-    "mux-command": ["crates/zz-mux/src/command.rs"],
+    "mux-command": ["crates/zz-mux/src/command.rs", "crates/zz-mux/src/command/"],
     "mux-model": [
         "crates/zz-mux/src/model.rs",
+        "crates/zz-mux/src/model/",
         "crates/zz-mux/src/layout.rs",
         "crates/zz-mux/src/sort.rs",
     ],
     "mux-formats": [
         "crates/zz-mux/src/formats.rs",
+        "crates/zz-mux/src/formats/",
         "crates/zz-mux/src/status.rs",
     ],
     "mux-options": [
@@ -51,7 +53,7 @@ ZONES = {
         "crates/zz-mux/src/honest_knobs.rs",
     ],
     "config-parser": ["crates/zz-mux/src/parser.rs"],
-    "daemon-core": ["crates/zz-daemon/src/daemon.rs"],
+    "daemon-core": ["crates/zz-daemon/src/daemon.rs", "crates/zz-daemon/src/daemon/"],
     "daemon-status": ["crates/zz-daemon/src/status.rs"],
     "control-client": ["crates/zz-cli/src/control_mode.rs"],
     "client-core": ["crates/zz-client/src/"],
