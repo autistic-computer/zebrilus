@@ -2,9 +2,9 @@
 type: Subsystem
 title: PTY drain topology (the IO fast path)
 description: How macOS keeps its tuned inline PTY actor while Linux reads idle panes on their shard and lends busy ones to a bounded gather stage that overlaps reads with VT parsing; includes the probe and benchmark results behind each platform choice.
-resource: crates/zz-terminal/src/session.rs
+resource: crates/zz-terminal/src/session/pty_io.rs
 tags: [pty, throughput, drain, spin-bridge, poll, benchmark, session]
-timestamp: 2026-11-24T00:00:00Z
+timestamp: 2026-11-26T00:00:00-03:00
 ---
 
 # Overview
@@ -12,7 +12,7 @@ timestamp: 2026-11-24T00:00:00Z
 `PaneActor` owns live libghostty state, commands and frame publication. In
 `crates/zz-terminal/src/session/`, `pane_actor.rs` implements its turns and
 `shard.rs` drives multiple actors on one thread. The dedicated-thread path uses
-`run_terminal` in `session.rs`. macOS drains the PTY inline. Linux starts an idle
+`run_terminal` in `session/publisher.rs`. macOS drains the PTY inline. Linux starts an idle
 pane on the shard and can lend a busy PTY to a gather thread, overlapping reads
 with parsing. Windows uses a blocking reader. See [libghostty-vt](/terminal/libghostty-vt.md).
 
@@ -132,8 +132,10 @@ once per 256 KiB turn.
 
 # The code, piece by piece
 
-Within `crates/zz-terminal/src/`, `session.rs` defines the drain limits, `DirectReader`,
-`PtyGather`, `PtyWriter` and the non-Unix `read_pty`.
+Within `crates/zz-terminal/src/`, `session.rs` defines the drain limits and the
+`DirectReader`, `PtyGather` and `PtyWriter` structs. `session/linux_gather.rs` holds the
+Linux gather stage and the `DirectReader` and `PtyGather` methods, and `session/pty_io.rs`
+holds the `PtyWriter` methods and the non-Unix `read_pty`.
 `session/pane_actor.rs` selects the reader for each platform and processes its output.
 
 ## The Linux gather pipeline (`DirectReader`, `PtyGather`)

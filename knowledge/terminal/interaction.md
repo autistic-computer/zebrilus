@@ -4,7 +4,7 @@ title: Terminal interaction (input, selection, paste, words)
 description: The renderer-neutral pointer, keyboard, word-boundary, and paste layer that turns client gestures into libghostty encoding, native selection, and copy-mode actions, plus the client-side local scroll overlay.
 resource: crates/zz-terminal/src/interaction.rs
 tags: [interaction, input, mouse, selection, paste, copy-mode, keyboard]
-timestamp: 2026-11-24T00:00:00Z
+timestamp: 2026-11-26T00:00:00-03:00
 ---
 
 # Overview
@@ -16,7 +16,7 @@ pane: pointer gestures, keyboard input, word/line selection, and paste. It spans
 transform). None of these types are GPUI-specific; the client sends them and the worker thread applies
 them by driving [`libghostty-vt`](/terminal/libghostty-vt.md) encoders, selection, and copy-mode state.
 The routing logic itself (`route_mouse_input`, `wheel_route`, `hover_link_at`, `plain_uri_at`) lives in
-`session.rs`.
+`session/view_actions.rs`.
 
 # Action model (`interaction.rs`)
 
@@ -75,7 +75,7 @@ and bounded (`SeparatorTooLarge`, `OutputTooLarge`). Prepared bytes reach the te
 `TerminalSession::paste_prepared_bytes`, which lets the worker emit bracketed-paste markers only when the
 application has enabled bracketed paste; bytes are not forced through UTF-8 again.
 
-# Routing (in `session.rs`)
+# Routing (in `session/view_actions.rs`)
 
 Pointer and wheel events are routed by precedence: native mux chrome/overlays, then active copy/view mode,
 then a forced local-selection modifier, then terminal application mouse reporting, then live local
