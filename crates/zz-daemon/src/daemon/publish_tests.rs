@@ -515,9 +515,12 @@ fn status_interval_work_respects_subscriptions_and_keeps_independent_timers() {
     assert!(!Shared::client_timers_have_work(&inner));
     #[cfg(all(feature = "agent", unix))]
     {
-        inner.claude_peer_states.insert(pane, "Ready".to_owned());
+        inner
+            .agents
+            .claude_peer_states
+            .insert(pane, "Ready".to_owned());
         assert!(Shared::client_timers_have_work(&inner));
-        inner.claude_peer_states.clear();
+        inner.agents.claude_peer_states.clear();
         assert!(!Shared::client_timers_have_work(&inner));
     }
     inner.engine.set_automatic_rename_throttle(true);

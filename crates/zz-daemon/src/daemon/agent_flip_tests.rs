@@ -158,7 +158,7 @@ fn a_terminal_running_the_cli_flips_into_a_chat_once_the_cli_exits() {
     run(&shared, client, &["flip-agent", "-t", &pane.to_string()]).expect("flip");
     wait_for("the chat", || {
         matches!(kind(&shared, pane), Some(PaneKind::Agent(agent)) if agent.provider == AgentProvider::ClaudeCode)
-            && shared.inner.lock().agent_panes.contains(&pane)
+            && shared.inner.lock().agents.agent_panes.contains(&pane)
     });
     assert!(!shared.inner.lock().terminals.contains_key(&pane));
     assert!(
@@ -341,6 +341,6 @@ fn a_busy_chat_refuses_then_flips_to_its_cli_when_idle() {
         "{command}"
     );
     assert!(runtime.pane_generation(pane).is_none(), "the driver closed");
-    assert!(!shared.inner.lock().agent_panes.contains(&pane));
+    assert!(!shared.inner.lock().agents.agent_panes.contains(&pane));
     shared.request_shutdown();
 }

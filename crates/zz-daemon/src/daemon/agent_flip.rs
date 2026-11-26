@@ -174,7 +174,7 @@ impl Shared {
             {
                 return false;
             }
-            inner.agent_panes.insert(pane);
+            inner.agents.agent_panes.insert(pane);
         }
         self.refresh_agent_visibility();
         let spec = AgentPaneSpec {
@@ -392,7 +392,7 @@ impl Shared {
         if let FlipStep::ToChat { session, .. } = step
             && let Some(pid) = session.pid
         {
-            self.inner.lock().cli_exits.insert(pane, pid);
+            self.inner.lock().agents.cli_exits.insert(pane, pid);
         }
         let Some(mut context) = ExecutionContext::for_pane(&self.inner.lock().engine.state, pane)
         else {
@@ -412,7 +412,7 @@ impl Shared {
     pub(super) fn arm_flip(self: &Arc<Self>, pane: PaneId) {
         let first = {
             let mut inner = self.inner.lock();
-            let first = inner.armed_flips.insert(pane);
+            let first = inner.agents.armed_flips.insert(pane);
             inner
                 .engine
                 .state
@@ -432,7 +432,7 @@ impl Shared {
                     let Some(shared) = shared.upgrade() else {
                         return;
                     };
-                    if !shared.inner.lock().armed_flips.contains(&pane) {
+                    if !shared.inner.lock().agents.armed_flips.contains(&pane) {
                         return;
                     }
                     match shared.flip_plan(pane) {
@@ -459,7 +459,7 @@ impl Shared {
     pub(super) fn disarm_flip(&self, pane: PaneId) {
         let changed = {
             let mut inner = self.inner.lock();
-            let armed = inner.armed_flips.remove(&pane);
+            let armed = inner.agents.armed_flips.remove(&pane);
             let cleared = inner
                 .engine
                 .state

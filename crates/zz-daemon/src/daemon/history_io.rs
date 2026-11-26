@@ -154,3 +154,392 @@ impl Shared {
         }
     }
 }
+
+impl Shared {
+    pub(super) fn publish_status_message(
+        self: &Arc<Self>,
+        client: ClientId,
+        context: &ExecutionContext,
+        text: String,
+    ) {
+        let (publication, retired, deadline) = {
+            let mut inner = self.inner.lock();
+            let client_name = server_log_client_name(&inner, client);
+            push_server_message(&mut inner, format!("{client_name} message: {text}"));
+            let duration_ms = client_attached_session(&inner, client).map_or(750, |session| {
+                inner.engine.display_time_for_session(session)
+            });
+            let message_id = next_timed_message_id(&mut inner);
+            if duration_ms != 0 {
+                let _ = inner
+                    .client_mut(client)
+                    .is_some_and(|client| std::mem::take(&mut client.message_ignore_keys));
+            }
+            let freeze = !inner.client(client).is_some_and(|c| c.native_chooser);
+            let (retired, deadline) =
+                arm_client_message(&mut inner, client, message_id, duration_ms, freeze);
+            let publication = OwnedClientMessagePublication {
+                client,
+                pane: context.pane,
+                kind: ClientMessageKind::Error,
+                text,
+                duration_ms,
+                message_id,
+            };
+            (publication, retired, deadline)
+        };
+        self.publish_owned_client_message(publication);
+        if let Some(retired) = retired {
+            self.retire_client_message(client, retired, true);
+        }
+        if let Some(deadline) = deadline {
+            let _ = self.timer_tx.send(timers::TimerInput::ClientMessage(
+                ClientMessageDeadlineCommand::Schedule(deadline),
+            ));
+        }
+    }
+
+    pub(super) fn show_messages(
+        &self,
+        name: &str,
+        args: &[RawText],
+    ) -> Result<Execution, DaemonError> {
+        let parsed = parse_buffer_command_args(name, args, &['t'], &['J', 'T'])?;
+        require_no_positionals(name, &parsed)?;
+        if parsed.has('T') || parsed.has('J') {
+            let mut lines = Vec::new();
+            if parsed.has('T') {
+                let inner = self.inner.lock();
+                let target = parsed
+                    .value('t')
+                    .and_then(|target| find_attached_client_with_aliases(&inner, target, true));
+                lines = terminal_descriptions(&inner, parsed.value('t').is_some(), target);
+            }
+            if parsed.has('J') {
+                let summaries = self.status.lock().job_summaries();
+                if !lines.is_empty() && !summaries.is_empty() {
+                    lines.push(String::new());
+                }
+                lines.extend(summaries);
+            }
+            return Ok(Execution {
+                output: lines.join("\n").into(),
+                effects: Vec::new(),
+            });
+        }
+        let mut inner = self.inner.lock();
+        inner.engine.set_format_now(unix_timestamp());
+        let context =
+            server_format_context(&inner.engine, &inner.config.config_files, None, None, None);
+        let output = inner
+            .history
+            .message_log
+            .iter()
+            .rev()
+            .map(|message| {
+                let facts = FormatHookFacts {
+                    message: Some(MessageFormatFacts {
+                        number: message.number,
+                        text: message.text.clone(),
+                        time: message.time,
+                    }),
+                    ..FormatHookFacts::default()
+                };
+                let mut hooks =
+                    DaemonFormatHooks::command(&facts).with_option_engine(&inner.engine);
+                expand_format_values("#{t/p:message_time}: #{message_text}", &context, &mut hooks)
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        Ok(Execution {
+            output: output.into(),
+            effects: Vec::new(),
+        })
+    }
+
+    pub(super) fn prompt_history_command(
+        self: &Arc<Self>,
+        name: &str,
+        args: &[RawText],
+    ) -> Result<Execution, DaemonError> {
+        self.ensure_prompt_history();
+        let parsed = parse_buffer_command_args(name, args, &['T'], &[])?;
+        require_no_positionals(name, &parsed)?;
+        let prompt_type = parsed
+            .value('T')
+            .map(|value| match value {
+                "command" => Ok(CommandPromptType::Command),
+                "search" => Ok(CommandPromptType::Search),
+                _ => Err(ServerError::InvalidCommand(format!(
+                    "invalid type: {value}"
+                ))),
+            })
+            .transpose()?;
+
+        if name == "clear-prompt-history" {
+            self.clear_prompt_history(prompt_type);
+            return Ok(Execution::default());
+        }
+
+        let inner = self.inner.lock();
+        let mut output = String::new();
+        match prompt_type {
+            Some(CommandPromptType::Command) => {
+                append_prompt_history_output(
+                    &mut output,
+                    "command",
+                    &inner.history.command_history,
+                );
+            }
+            Some(CommandPromptType::Search) => {
+                append_prompt_history_output(&mut output, "search", &inner.history.search_history);
+            }
+            None => {
+                append_prompt_history_output(
+                    &mut output,
+                    "command",
+                    &inner.history.command_history,
+                );
+                append_prompt_history_output(&mut output, "search", &inner.history.search_history);
+            }
+        }
+        Ok(Execution {
+            output: output.into(),
+            effects: Vec::new(),
+        })
+    }
+
+    pub(super) fn record_prompt_history(
+        self: &Arc<Self>,
+        prompt_type: CommandPromptType,
+        input: &str,
+    ) {
+        self.record_prompt_history_with_persist_observer(prompt_type, input, || {}, || {});
+    }
+
+    pub(super) fn record_prompt_history_with_persist_observer<BeforeLock, AfterLock>(
+        self: &Arc<Self>,
+        prompt_type: CommandPromptType,
+        input: &str,
+        before_lock: BeforeLock,
+        after_lock: AfterLock,
+    ) where
+        BeforeLock: FnOnce(),
+        AfterLock: FnOnce(),
+    {
+        if input.is_empty() {
+            return;
+        }
+        self.ensure_prompt_history();
+        let changed = {
+            let mut inner = self.inner.lock();
+            let limit = inner.engine.prompt_history_limit();
+            let history = match prompt_type {
+                CommandPromptType::Command => &mut inner.history.command_history,
+                CommandPromptType::Search => &mut inner.history.search_history,
+            };
+            add_command_prompt_history(history, input, limit)
+        };
+        if changed {
+            self.persist_prompt_history_with_observer(before_lock, after_lock);
+        }
+    }
+
+    fn clear_prompt_history(self: &Arc<Self>, prompt_type: Option<CommandPromptType>) {
+        self.clear_prompt_history_with_persist_observer(prompt_type, || {}, || {});
+    }
+
+    pub(super) fn clear_prompt_history_with_persist_observer<BeforeLock, AfterLock>(
+        self: &Arc<Self>,
+        prompt_type: Option<CommandPromptType>,
+        before_lock: BeforeLock,
+        after_lock: AfterLock,
+    ) where
+        BeforeLock: FnOnce(),
+        AfterLock: FnOnce(),
+    {
+        {
+            let mut inner = self.inner.lock();
+            match prompt_type {
+                Some(CommandPromptType::Command) => inner.history.command_history.clear(),
+                Some(CommandPromptType::Search) => inner.history.search_history.clear(),
+                None => {
+                    inner.history.command_history.clear();
+                    inner.history.search_history.clear();
+                }
+            }
+        }
+        self.persist_prompt_history_with_observer(before_lock, after_lock);
+    }
+
+    pub(super) fn retire_client_message(
+        self: &Arc<Self>,
+        client: ClientId,
+        retired: ActiveClientMessage,
+        notify: bool,
+    ) {
+        if retired.deadline.is_some() {
+            let _ = self.timer_tx.send(timers::TimerInput::ClientMessage(
+                ClientMessageDeadlineCommand::Cancel {
+                    client,
+                    token: retired.token,
+                },
+            ));
+        }
+        if notify {
+            self.publish_to_client(
+                client,
+                EventPayload::TimedClientMessageCleared {
+                    message_id: retired.token,
+                },
+            );
+        }
+        if retired.freeze {
+            self.resume_client_terminals(client);
+        }
+    }
+
+    pub(super) fn expire_client_message(
+        self: &Arc<Self>,
+        scheduled: ClientMessageDeadline,
+        now: Instant,
+    ) {
+        let retired = {
+            let mut inner = self.inner.lock();
+            let due = inner
+                .client(scheduled.client)
+                .and_then(|c| c.message.as_ref())
+                .is_some_and(|current| {
+                    current.token == scheduled.token
+                        && current.deadline == Some(scheduled.deadline)
+                        && scheduled.deadline <= now
+                });
+            if !due {
+                return;
+            }
+            take_client_message(&mut inner, scheduled.client)
+        };
+        if let Some(retired) = retired {
+            self.retire_client_message(scheduled.client, retired, true);
+        }
+    }
+
+    pub(super) fn dismiss_client_message(self: &Arc<Self>, client: ClientId) {
+        let Some(retired) = ({
+            let mut inner = self.inner.lock();
+            take_client_message(&mut inner, client)
+        }) else {
+            return;
+        };
+        self.retire_client_message(client, retired, true);
+    }
+}
+
+fn append_prompt_history_output(output: &mut String, prompt_type: &str, history: &[String]) {
+    let _ = writeln!(output, "History for {prompt_type}:\n");
+    for (index, entry) in history.iter().enumerate() {
+        let _ = writeln!(output, "{}: {entry}", index + 1);
+    }
+    output.push('\n');
+}
+
+fn client_negotiated_features(inner: &ServerState, client: ClientId) -> String {
+    client_negotiated_features_from_source(&ClientFormatSource::from_inner(inner), client)
+}
+
+fn terminal_descriptions(
+    inner: &ServerState,
+    targeted: bool,
+    target: Option<ClientId>,
+) -> Vec<String> {
+    let features = inner.engine.terminal_features_option();
+    let overrides = inner.engine.terminal_overrides_option();
+    let mut lines = Vec::new();
+    let mut number = 0;
+    for client in inner
+        .clients
+        .iter()
+        .rev()
+        .filter_map(|(id, client)| client.has_terminal.then_some(*id))
+    {
+        if targeted && target.is_some_and(|target| target != client) {
+            continue;
+        }
+        let term = client_environment_value(inner, client, "TERM").unwrap_or_default();
+        let Some(terminal) = client_terminal_facts(
+            term,
+            client_environment_value(inner, client, "COLORTERM"),
+            &client_negotiated_features(inner, client),
+            &features,
+            &overrides,
+        ) else {
+            continue;
+        };
+        lines.push(format!(
+            "Terminal {number}: {term} for {}, flags=0x{:x}:",
+            client_format_name(inner, client),
+            terminal.flags()
+        ));
+        lines.extend(terminal.describe());
+        number += 1;
+    }
+    lines
+}
+
+pub(super) fn prompt_history_path(path: &str) -> Option<PathBuf> {
+    if path.is_empty() {
+        None
+    } else if Path::new(path).is_absolute() {
+        Some(PathBuf::from(path))
+    } else {
+        path.strip_prefix("~/")
+            .and_then(|rest| home_directory().map(|home| home.join(rest)))
+    }
+}
+
+pub(super) fn load_command_prompt_history(path: &Path, limit: usize) -> (Vec<String>, Vec<String>) {
+    let Ok(contents) = fs::read_to_string(path) else {
+        return (Vec::new(), Vec::new());
+    };
+    let mut command = Vec::new();
+    let mut search = Vec::new();
+    for line in contents.split('\n').filter(|line| !line.is_empty()) {
+        if let Some(entry) = line.strip_prefix("command:") {
+            add_command_prompt_history(&mut command, entry, limit);
+        } else if let Some(entry) = line.strip_prefix("search:") {
+            add_command_prompt_history(&mut search, entry, limit);
+        } else {
+            add_command_prompt_history(&mut command, line, limit);
+        }
+    }
+    (command, search)
+}
+
+pub(super) fn add_command_prompt_history(
+    history: &mut Vec<String>,
+    input: &str,
+    limit: usize,
+) -> bool {
+    let added = history.last().is_none_or(|entry| entry != input);
+    if added {
+        history.push(input.to_owned());
+    }
+    let removed = history.len().saturating_sub(limit);
+    if history.len() > limit {
+        history.drain(..removed);
+    }
+    removed != 0 || (added && limit != 0)
+}
+
+pub(super) fn save_command_prompt_history(path: &Path, command: &[String], search: &[String]) {
+    let mut contents = String::new();
+    for entry in command {
+        let _ = writeln!(contents, "command:{entry}");
+    }
+    for entry in search {
+        let _ = writeln!(contents, "search:{entry}");
+    }
+    if let Err(error) = fs::write(path, contents) {
+        log::debug!("failed to save prompt history {}: {error}", path.display());
+    }
+}

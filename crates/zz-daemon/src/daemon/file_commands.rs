@@ -229,3 +229,211 @@ pub(super) fn root(
         events: None,
     }
 }
+
+impl Shared {
+    pub(super) fn read_file(args: &[RawText]) -> Result<Execution, DaemonError> {
+        use std::io::{Read as _, Seek as _};
+        let usage =
+            || ServerError::CommandParse("usage: read-file [-s OFFSET] [-n BYTES] PATH".to_owned());
+        let number = |value: &str| value.parse::<u64>().map_err(|_| usage());
+        let (mut offset, mut length, mut path) = (0, FILE_CHUNK_BYTES, None);
+        let mut index = 0;
+        while let Some(argument) = args.get(index) {
+            if let Some(value) = option_value("read-file", args, index, &["-s"])? {
+                offset = number(&value.value)?;
+                index += value.consumed;
+            } else if let Some(value) = option_value("read-file", args, index, &["-n"])? {
+                length = number(&value.value)?.min(FILE_CHUNK_BYTES);
+                index += value.consumed;
+            } else if argument == "--" && path.is_none() && index + 2 == args.len() {
+                index += 1;
+            } else if path.is_none() {
+                path = Some(file_path("read-file", argument.as_str())?);
+                index += 1;
+            } else {
+                return Err(usage().into());
+            }
+        }
+        let path = path.ok_or_else(usage)?;
+        let failed = |error: std::io::Error| {
+            ServerError::InvalidCommand(format!("read-file: {}: {error}", path.display()))
+        };
+        let mut file = std::fs::File::open(&path).map_err(failed)?;
+        if !file.metadata().map_err(failed)?.is_file() {
+            return Err(ServerError::InvalidCommand(format!(
+                "read-file: {} is not a file",
+                path.display()
+            ))
+            .into());
+        }
+        file.seek(std::io::SeekFrom::Start(offset))
+            .map_err(failed)?;
+        let mut bytes = Vec::new();
+        file.take(length).read_to_end(&mut bytes).map_err(failed)?;
+        Ok(Execution {
+            output: zz_protocol::file_hex::encode(&bytes).into(),
+            effects: Vec::new(),
+        })
+    }
+
+    pub(super) fn write_file(args: &[RawText]) -> Result<Execution, DaemonError> {
+        use std::io::Write as _;
+        let usage = || ServerError::CommandParse("usage: write-file [-a] PATH HEX".to_owned());
+        let (append, rest) = match args {
+            [flag, rest @ ..] if flag == "-a" => (true, rest),
+            rest => (false, rest),
+        };
+        let rest = match rest {
+            [dashes, rest @ ..] if dashes == "--" => rest,
+            rest => rest,
+        };
+        let [path, hex] = rest else {
+            return Err(usage().into());
+        };
+        let path = file_path("write-file", path.as_str())?;
+        let bytes = zz_protocol::file_hex::decode(hex.as_str()).ok_or_else(usage)?;
+        let failed = |error: std::io::Error| {
+            ServerError::InvalidCommand(format!("write-file: {}: {error}", path.display()))
+        };
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .append(append)
+            .truncate(!append)
+            .open(&path)
+            .map_err(failed)?;
+        file.write_all(&bytes).map_err(failed)?;
+        Ok(Execution::default())
+    }
+
+    fn client_file_operation(
+        self: &Arc<Self>,
+        client: Option<ClientId>,
+        path: &Path,
+        operation: ClientFileOperation,
+        pane: Option<PaneId>,
+        complete: file_commands::Completion,
+    ) -> Result<(), DaemonError> {
+        let client = client.filter(|client| {
+            self.read_client(*client, |c| c.and_then(|c| c.kind)) == Some(ClientKind::Command)
+        });
+        let Some(client) = client else {
+            return self
+                .submit_helper(helpers::Task::File {
+                    path: path.to_owned(),
+                    operation,
+                    complete,
+                })
+                .map_err(Into::into);
+        };
+        #[cfg(windows)]
+        self.go_live_exec(client);
+        let writer = self.client_writers.lock().get(&client).cloned();
+        let Some(writer) = writer else {
+            return self
+                .submit_helper(helpers::Task::File {
+                    path: path.to_owned(),
+                    operation,
+                    complete,
+                })
+                .map_err(Into::into);
+        };
+        let request_id = self.insert_client_file_waiter(ClientFileWaiter {
+            client,
+            path: path.to_owned(),
+            pane,
+            complete,
+        })?;
+        if !writer.enqueue_reliable(&ProtocolMessage::ClientFileRequest(ClientFileRequest {
+            request_id,
+            path: path.to_string_lossy().into_owned(),
+            operation,
+        })) {
+            self.complete_client_file(
+                client,
+                ClientFileResponse {
+                    request_id,
+                    data: Vec::new(),
+                    error: Some("the invoking client is gone".to_owned()),
+                },
+            );
+        }
+        Ok(())
+    }
+
+    pub(super) fn insert_client_file_waiter(
+        &self,
+        waiter: ClientFileWaiter,
+    ) -> Result<u64, DaemonError> {
+        let mut inner = self.inner.lock();
+        if !inner.clients.contains_key(&waiter.client) {
+            return Err(client_file_failure("the invoking client is gone", &waiter.path).into());
+        }
+        inner.transfers.next_client_file_request = inner
+            .transfers
+            .next_client_file_request
+            .wrapping_add(1)
+            .max(1);
+        let request_id = inner.transfers.next_client_file_request;
+        inner
+            .transfers
+            .client_file_waiters
+            .insert(request_id, waiter);
+        Ok(request_id)
+    }
+
+    pub(super) fn cancel_pane_files(self: &Arc<Self>, pane: PaneId) {
+        let files = self
+            .inner
+            .lock()
+            .transfers
+            .client_file_waiters
+            .extract_if(.., |_, waiter| waiter.pane == Some(pane))
+            .map(|(_, waiter)| waiter)
+            .collect::<Vec<_>>();
+        for waiter in files {
+            (waiter.complete)(self, Err(ServerError::PaneExited(pane).into()));
+        }
+    }
+
+    pub(super) fn complete_client_file(
+        self: &Arc<Self>,
+        client: ClientId,
+        response: ClientFileResponse,
+    ) {
+        let waiter = {
+            let mut inner = self.inner.lock();
+            if inner
+                .transfers
+                .client_file_waiters
+                .get(&response.request_id)
+                .is_none_or(|waiter| waiter.client != client)
+            {
+                return;
+            }
+            inner
+                .transfers
+                .client_file_waiters
+                .remove(&response.request_id)
+                .unwrap()
+        };
+        let result = response.error.map_or(Ok(response.data), |error| {
+            Err(client_file_failure(&error, &waiter.path).into())
+        });
+        (waiter.complete)(self, result);
+        self.accept_wake.wake();
+    }
+}
+
+const FILE_CHUNK_BYTES: u64 = zz_protocol::file_hex::CHUNK_BYTES as u64;
+
+fn file_path(verb: &str, path: &str) -> Result<PathBuf, ServerError> {
+    let expanded = expand_path(path);
+    if expanded.is_absolute() {
+        Ok(expanded)
+    } else {
+        Err(ServerError::InvalidCommand(format!(
+            "{verb}: {path} must be an absolute path or start with ~/"
+        )))
+    }
+}

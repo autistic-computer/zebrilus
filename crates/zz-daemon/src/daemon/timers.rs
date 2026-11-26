@@ -1168,7 +1168,7 @@ impl Shared {
 
     #[cfg(all(feature = "agent", unix))]
     pub(super) fn peer_scan_armed(inner: &ServerState) -> bool {
-        !inner.claude_peer_states.is_empty()
+        !inner.agents.claude_peer_states.is_empty()
     }
 
     #[cfg(not(all(feature = "agent", unix)))]

@@ -212,3 +212,91 @@ pub(super) fn wait(
     shared.report_command_queue_park();
     wait.finish(shared, Execution::default())
 }
+
+impl Shared {
+    pub(super) fn wait_for_pane_command(
+        self: &Arc<Self>,
+        client: ClientId,
+        kind: ClientKind,
+        result: Result<Execution, DaemonError>,
+    ) -> (Result<Execution, DaemonError>, Option<Arc<AtomicU8>>) {
+        let Ok(execution) = result else {
+            return (result, None);
+        };
+        let Some(pane) = execution.effects.iter().find_map(|effect| match effect {
+            MuxEffect::PaneWaitForExit { pane } => Some(*pane),
+            _ => None,
+        }) else {
+            return (Ok(execution), None);
+        };
+        let completion = {
+            let mut inner = self.inner.lock();
+            let completion = inner
+                .panes
+                .pane_exit_waits
+                .get_mut(&pane)
+                .and_then(|entry| entry.command_wait.take());
+            pane_exit::remove_unused(&mut inner, pane);
+            completion
+        };
+        let Some(completion) = completion else {
+            return (Ok(execution), None);
+        };
+        if !matches!(kind, ClientKind::Command | ClientKind::Control) {
+            return (Ok(execution), None);
+        }
+        let wait = terminal_requests::CommandWait::new(self);
+        let status = Arc::new(AtomicU8::new(0));
+        completion.subscribe(client, wait.start(), Some(Arc::clone(&status)));
+        self.report_command_queue_park();
+        (wait.finish(self, execution), Some(status))
+    }
+
+    pub(super) fn finish_pane_command(
+        &self,
+        client: ClientId,
+        execution: Execution,
+        exit_code: u8,
+    ) -> Result<Execution, DaemonError> {
+        if exit_code == 0 {
+            return Ok(execution);
+        }
+        let attached = {
+            let inner = self.inner.lock();
+            client_attached_session(&inner, client).is_some()
+        };
+        if attached {
+            Ok(execution)
+        } else {
+            Err(DaemonError::CommandExit {
+                output: execution.output,
+                exit_code,
+            })
+        }
+    }
+
+    pub(super) fn release_removed_pane_wait(inner: &mut ServerState, pane: PaneId) {
+        let exit_code = inner
+            .terminals
+            .get(&pane)
+            .filter(|terminal| terminal.completion().is_some())
+            .map(|terminal| pane_wait_exit_code(terminal, &terminal.latest_viewport().status));
+        if let Some(exit_code) = exit_code {
+            Self::wake_pane_exit_wait(inner, pane, exit_code);
+            return;
+        }
+        if let Some(entry) = inner.panes.pane_exit_waits.get(&pane) {
+            entry.current.kill();
+        }
+        pane_exit::remove_unused(inner, pane);
+        terminal_reads::pane_changed(inner, pane);
+    }
+
+    pub(super) fn wake_pane_exit_wait(inner: &mut ServerState, pane: PaneId, exit_code: u8) {
+        if let Some(entry) = inner.panes.pane_exit_waits.get(&pane) {
+            entry.current.complete(exit_code);
+        }
+        pane_exit::remove_unused(inner, pane);
+        terminal_reads::pane_changed(inner, pane);
+    }
+}

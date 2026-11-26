@@ -91,7 +91,15 @@ fn an_unchanged_registry_skips_the_peer_scan_and_any_change_runs_it() {
         );
     };
     set_pid(std::process::id());
-    let state = || shared.inner.lock().claude_peer_states.get(&pane).cloned();
+    let state = || {
+        shared
+            .inner
+            .lock()
+            .agents
+            .claude_peer_states
+            .get(&pane)
+            .cloned()
+    };
     let (completed, completions) = crossbeam_channel::unbounded();
     let probe = || probe(&shared, &completed, &completions);
 

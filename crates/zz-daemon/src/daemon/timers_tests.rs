@@ -240,7 +240,7 @@ fn helper_peer_samples_and_their_hooks_apply_as_loop_queue_work() {
     )])));
     {
         let inner = shared.inner.lock();
-        assert_eq!(inner.claude_peer_states[&pane], "working");
+        assert_eq!(inner.agents.claude_peer_states[&pane], "working");
         assert_eq!(
             inner
                 .engine

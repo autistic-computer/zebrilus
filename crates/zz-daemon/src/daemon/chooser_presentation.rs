@@ -988,3 +988,208 @@ fn tree_preview(
         }
     }
 }
+
+impl Shared {
+    pub(super) fn chooser_key_binding(
+        self: &Arc<Self>,
+        client: ClientId,
+        kind: ClientKind,
+        context: &mut ExecutionContext,
+        source_pane: PaneId,
+        input: &zz_terminal::KeyInput,
+    ) -> Result<ChooserKey, DaemonError> {
+        let key = input_key_name(input);
+        let (decision, repeat_binding) = self.overlay_key_decision(client, &key);
+        let claimed = decision != KeyDecision::Pass;
+        let result = match decision {
+            KeyDecision::Pass => Ok(ChooserKey::Pass),
+            KeyDecision::Prefix | KeyDecision::Ignore => Ok(ChooserKey::Claimed),
+            KeyDecision::Commands(commands) => {
+                if let Some(prefix) = self.chooser_send_prefix(&commands) {
+                    Ok(ChooserKey::Key(prefix))
+                } else {
+                    let pane = context.pane.unwrap_or(source_pane);
+                    let previous = context.invoking_key().map(str::to_owned);
+                    context.set_invoking_key(Some(key.as_str().to_owned()));
+                    let dispatched = self.execute_key_commands(
+                        client,
+                        kind,
+                        context,
+                        pane,
+                        &commands,
+                        repeat_binding,
+                    );
+                    context.set_invoking_key(previous);
+                    dispatched.map(|()| ChooserKey::Claimed)
+                }
+            }
+        };
+        self.sync_key_table(client, claimed);
+        result
+    }
+
+    fn chooser_send_prefix(&self, commands: &[CommandInvocation]) -> Option<zz_terminal::KeyInput> {
+        let [command] = commands else {
+            return None;
+        };
+        if command.name != "send-prefix" {
+            return None;
+        }
+        let second = match command.args.as_slice() {
+            [] => false,
+            [flag] if flag.as_bytes() == b"-2" => true,
+            _ => return None,
+        };
+        let inner = self.inner.lock();
+        let key = if second {
+            inner.engine.keys.prefix2()?
+        } else {
+            inner.engine.keys.prefix()
+        };
+        crate::keys::client_key_inputs(&zz_protocol::KeyToken::Named(key.to_owned()))
+            .into_iter()
+            .next()
+    }
+
+    pub(super) fn chooser_search_key(
+        self: &Arc<Self>,
+        client: ClientId,
+        kind: ClientKind,
+        context: &mut ExecutionContext,
+        source_pane: PaneId,
+        text: &str,
+    ) -> Result<Option<(Option<zz_terminal::KeyInput>, String)>, DaemonError> {
+        let table_armed = self
+            .inner
+            .lock()
+            .client(client)
+            .and_then(|c| c.key_engine.as_ref())
+            .is_some_and(|engine| engine.shown_table(Instant::now()).is_some());
+        let mut characters = text.chars();
+        let Some(first) = characters.next().filter(|_| table_armed) else {
+            return Ok(None);
+        };
+        let Some(input) =
+            crate::keys::client_key_inputs(&zz_protocol::KeyToken::Literal(first.to_string()))
+                .into_iter()
+                .next()
+        else {
+            return Ok(None);
+        };
+        let rest = characters.as_str().to_owned();
+        Ok(
+            match self.chooser_key_binding(client, kind, context, source_pane, &input)? {
+                ChooserKey::Pass => None,
+                ChooserKey::Key(key) => Some((Some(key), rest)),
+                ChooserKey::Claimed => Some((None, rest)),
+            },
+        )
+    }
+
+    pub(super) fn chooser_route(
+        &self,
+        client: ClientId,
+        tree: bool,
+    ) -> Option<(PaneId, bool, bool, Option<PaneId>)> {
+        let inner = self.inner.lock();
+        let state = inner.client(client)?;
+        let source_pane = if tree {
+            state.choose_tree.as_ref()?.source_pane
+        } else {
+            state.choose_buffer.as_ref()?.source_pane
+        };
+        Some((
+            source_pane,
+            chooser_shown(&inner, client),
+            chooser_takes_keys(&inner, client),
+            client_context_pane(&inner, client),
+        ))
+    }
+
+    pub(super) fn release_closed_chooser_zoom(self: &Arc<Self>, client: ClientId) {
+        let pending = {
+            let inner = self.inner.lock();
+            inner
+                .client(client)
+                .is_some_and(|c| c.chooser_zoom.is_some())
+                && inner.client(client).is_none_or(|c| c.choose_tree.is_none())
+                && inner
+                    .client(client)
+                    .is_none_or(|c| c.choose_buffer.is_none())
+        };
+        if pending {
+            self.publish_snapshot();
+        }
+    }
+
+    pub(super) fn reap_chooser_kill_panes(
+        self: &Arc<Self>,
+        client: ClientId,
+        kind: ClientKind,
+        context: &mut ExecutionContext,
+    ) {
+        let panes = std::mem::take(&mut self.inner.lock().modes.chooser_kill_panes);
+        for pane in panes {
+            let target = pane.to_string();
+            if let Err(error) = self.execute(
+                client,
+                kind,
+                context,
+                &CommandInvocation::new("kill-pane", ["-t", target.as_str()]),
+            ) {
+                log::debug!(
+                    target: "zz_daemon::diagnostics::chooser",
+                    "failed to kill chooser source pane={pane}: {error}"
+                );
+            }
+        }
+    }
+
+    pub(super) fn execute_chooser_command(
+        self: &Arc<Self>,
+        client: ClientId,
+        context: &mut ExecutionContext,
+        template: &str,
+        replacement: &str,
+        title: &str,
+        then: Option<OverlaySourceThen>,
+    ) {
+        let command = MuxEngine::substitute_command_prompt_template(template, &[replacement]);
+        self.execute_overlay_source_with_error_case(client, context, &command, title, true, then);
+    }
+
+    pub(super) fn publish_chooser_state(&self, client: ClientId) {
+        let (tree, buffer) = {
+            let inner = self.inner.lock();
+            let shown = chooser_shown(&inner, client);
+            let state = inner.client(client);
+            (
+                state
+                    .and_then(|c| c.choose_tree.as_ref())
+                    .map(|chooser| shown.then(|| chooser.rendered.clone())),
+                state
+                    .and_then(|c| c.choose_buffer.as_ref())
+                    .map(|chooser| shown.then(|| chooser.rendered.clone())),
+            )
+        };
+        if tree.is_none() && buffer.is_none() {
+            return;
+        }
+        if let Some(state) = tree {
+            self.publish_to_client(client, EventPayload::ChooseTree { state });
+        }
+        if let Some(state) = buffer {
+            self.publish_to_client(client, EventPayload::ChooseBuffer { state });
+        }
+        self.publish_chooser_presentation(client);
+    }
+
+    pub(super) fn publish_chooser_presentation(&self, client: ClientId) {
+        let presentation = {
+            let mut inner = self.inner.lock();
+            refresh_preview_watches(&mut inner);
+            chooser_presentation::chooser_presentation(&inner, client).map(Box::new)
+        };
+        self.publish_to_client(client, EventPayload::ChooserPresentation { presentation });
+    }
+}
