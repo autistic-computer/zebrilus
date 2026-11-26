@@ -4,7 +4,7 @@ title: tmux command set
 description: Find a command, follow alias and target resolution, and find the file that executes it.
 resource: crates/zz-protocol/src/catalog.rs
 tags: [tmux, commands, mux-engine, targets, effects]
-timestamp: 2026-11-26T00:00:00-03:00
+timestamp: 2026-11-26T12:00:00-03:00
 ---
 
 # CLI contract
@@ -32,7 +32,7 @@ The server's indexed `command-alias[]` option supplies user aliases. `MuxEngine:
 
 `parse_tmux_command_options` applies the catalog to a `CommandInvocation`, including which arguments are typed command blocks. Option parsing handles short clusters, value arity, a bare `--` and the first positional. Commands with distinct flag or positional semantics validate them before acting. The pin's accepted grammar is in `compat/tmux-oracle.json`. Remaining mismatches have IDs in the [gap registry](/tmux/gaps.md).
 
-A target's type comes from the command. Stable session, window and pane IDs use `$N`, `@N` and `%N`. Quote session IDs in the shell. A pane target can also use `session:window.pane`, and `-t :.1` selects pane index 1 in the current window. An omitted target uses the invoking context. See `MuxState::resolve_session`, `resolve_window` and `resolve_pane` in `crates/zz-mux/src/model.rs` for name matching, marked targets, relative indexes and ambiguity.
+A target's type comes from the command. Stable session, window and pane IDs use `$N`, `@N` and `%N`. Quote session IDs in the shell. A pane target can also use `session:window.pane`, and `-t :.1` selects pane index 1 in the current window. An omitted target uses the invoking context. See `MuxState::resolve_session`, `resolve_window` and `resolve_pane` in `crates/zz-mux/src/model/targets.rs` for name matching, marked targets, relative indexes and ambiguity.
 
 # Effects
 

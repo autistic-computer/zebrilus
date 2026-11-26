@@ -4,7 +4,7 @@ title: zz-mux crate
 description: The mux model, cell layout, tmux command execution, target resolution, config parser, formats and change journal.
 resource: crates/zz-mux/src/lib.rs
 tags: [mux, tmux, state-machine, crate, layout]
-timestamp: 2026-11-26T00:00:00-03:00
+timestamp: 2026-11-26T12:00:00-03:00
 ---
 
 # From a command to a visible change
@@ -20,11 +20,13 @@ the daemon to act on an effect. Catalog entries and key table types are shared w
 | --- | --- |
 | `command.rs` | `MuxEngine` and its fields, `ExecutionContext`, `Execution`, `MuxEffect` and the other shared types, the dispatch `match` from a command name to its handler, alias resolution, target and format helpers, `source-file`, `TMUX_OPTION_CONSUMERS` and the format context tables |
 | `command/*.rs` | One file per subject, most with an `impl MuxEngine` block. The table below lists them |
-| `model.rs` | `MuxState`, sessions, windows, panes, target lookup, IDs and `snapshot` |
+| `model.rs` | `MuxState`, `Session`, `Window`, `Pane` and the other model types, the `Window` methods, ID allocation and `MuxState::validate` |
+| `model/*.rs` | One file per subject of the `MuxState` methods. The table below lists them |
 | `layout.rs` | `CellLayout`, cell dimensions and positions, dividing and moving panes, layout strings |
 | `journal.rs` | `open_change_window` and `changes_since` for recording mutations that feed publication |
 | `parser.rs` | tmux configuration syntax, expansions, command groups and diagnostics |
-| `formats.rs`, `status.rs` | Format expansion, client/window facts, status formats and `StatusHooks` |
+| `formats.rs`, `status.rs` | Format expansion entry points, the format types (`StatusContext`, `FormatUniverse`, `FormatContext`, `Expander`), `StatusHooks`, status formats |
+| `formats/*.rs` | One file per subject of format expansion. The table below lists them |
 
 A window has pane order and z-order, an active pane, optional zoom, a tiled layout and
 separate floating/modal records. Its internal `PaneKind` variants are Picker, Terminal,
@@ -32,6 +34,46 @@ Browser, Editor, Agent, View and Simulator. The picker holds a place in the layo
 the user chooses a runtime. Simulator projects to `PaneKindSnapshot::Other` with a gated
 descriptor event. The model's cell tree projects to the binary `LayoutNode` tree with stable
 divider IDs that clients use to resize splits. `MuxState::validate` checks model invariants.
+
+# Model files
+
+Paths below are relative to `crates/zz-mux/src/model`. Each holds an `impl MuxState` block
+and the free helpers only it uses.
+
+| File | Holds |
+| --- | --- |
+| `sessions.rs` | Creating, renaming and killing sessions, session working directories and activity marks |
+| `windows.rs` | Creating, indexing, moving, swapping, renumbering, renaming, selecting and killing windows, window activity and alert flags |
+| `panes.rs` | Splitting, selecting, zooming, killing, swapping, rotating, breaking and joining panes, dead panes, input-off, directional and ordered navigation |
+| `floats.rs` | Floating panes, their geometry and z-order, and pushed zoom |
+| `layout.rs` | Resizing panes, windows and splits, named and serialized layouts, layout history |
+| `pane_metadata.rs` | Pane titles, bells, status and summaries, pane kind changes, browser, editor, view and simulator descriptors |
+| `options.rs` | The synchronize-panes, automatic-rename and aggressive-resize settings and their overrides |
+| `targets.rs` | `resolve_session`, `resolve_window`, `resolve_pane` and their helpers, marked panes, glob matching (`fnmatch`, `GlobPattern`) |
+| `snapshot.rs` | `MuxState::snapshot` and the window projection |
+
+Tests sit beside them as `model/<subject>_tests.rs`, with shared layout helpers in
+`model/test_support.rs`.
+
+# Format files
+
+Paths below are relative to `crates/zz-mux/src/formats`.
+
+| File | Holds |
+| --- | --- |
+| `variables.rs` | The `FORMAT_VARIABLES` table, the `variable!` macro that builds it and the variable lookups |
+| `status_values.rs` | `StatusValues` and the `StatusContext` methods: value lookup, detaching and capture |
+| `universe.rs` | The `FormatUniverse` and `FormatUniverseRef` methods: loop rows, option rows and environments |
+| `engine.rs` | The `impl MuxEngine` blocks that build format contexts, loop items and status values |
+| `expander.rs` | The `Expander` methods: format parsing, conditionals, comparisons, loops and lookups |
+| `modifiers.rs` | Modifier parsing and flags, the modifier table and the loop sort and row helpers |
+| `matching.rs` | The `m` modifier: glob and regex matching, fuzzy matching, and `s` substitution |
+| `text.rs` | Padding, colours, width, trimming, quoting, path and UTF-8 helpers |
+| `time.rs` | Time formatting for `t` modifiers and `pretty_time` |
+| `tree.rs`, `compiled.rs` | Borrowed format trees and the compiled format cache |
+
+Tests sit beside them as `formats/<subject>_tests.rs`, with shared helpers in
+`formats/test_support.rs`.
 
 # Command files
 
