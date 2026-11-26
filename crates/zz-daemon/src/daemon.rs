@@ -9003,7 +9003,7 @@ impl Shared {
         let publish_snapshot = {
             let inner = self.inner.lock();
             let current = inner.engine.state.generation();
-            current != generation && inner.last_published_mux_generation != current
+            current != generation && inner.publication.last_published_mux_generation != current
         };
         if publish_snapshot {
             self.publish_snapshot();
@@ -13247,13 +13247,13 @@ impl Shared {
                 inner.engine.keys.ensure_table(&table);
             }
             let generation = inner.engine.keys.generation();
-            let publication = if generation == inner.key_tables_generation
+            let publication = if generation == inner.publication.key_tables_generation
                 || timers::KeyTablePublishHold::active(self)
                 || inner.clients.values().all(|c| c.subscriber.is_none())
             {
                 None
             } else {
-                inner.key_tables_generation = generation;
+                inner.publication.key_tables_generation = generation;
                 let full = inner
                     .clients
                     .iter()
@@ -13269,7 +13269,11 @@ impl Shared {
                 if full {
                     let ServerState {
                         engine,
-                        key_table_generations,
+                        publication:
+                            Publication {
+                                key_table_generations,
+                                ..
+                            },
                         ..
                     } = &mut *inner;
                     Some(
@@ -22195,7 +22199,8 @@ impl Shared {
                     .and_then(|c| c.published_snapshot.take());
             }
             resize_split && result.is_ok()
-                || current != generation && inner.last_published_mux_generation != current
+                || current != generation
+                    && inner.publication.last_published_mux_generation != current
         };
         if publish_snapshot {
             self.publish_snapshot();
@@ -24447,7 +24452,7 @@ impl Shared {
         let publish = {
             let inner = self.inner.lock();
             let current = inner.engine.state.generation();
-            current != generation && inner.last_published_mux_generation != current
+            current != generation && inner.publication.last_published_mux_generation != current
         };
         if publish {
             self.publish_snapshot();
@@ -29379,9 +29384,10 @@ impl Shared {
             publish_agent_parents(&mut inner);
             let simulators = changed_simulator_panes(&mut inner);
             let generation = inner.engine.state.generation();
-            let tracked = owns_generation || inner.last_published_mux_generation == generation;
+            let tracked =
+                owns_generation || inner.publication.last_published_mux_generation == generation;
             if tracked {
-                inner.last_published_mux_generation = generation;
+                inner.publication.last_published_mux_generation = generation;
             }
             let appearance_updates = if inner.engine.has_window_style_settings() {
                 terminal_appearance_updates(&inner)
@@ -36847,7 +36853,7 @@ struct ServerState {
     clients: BTreeMap<ClientId, Box<Client>>,
     engine: MuxEngine,
     cold_bootstrap: ColdBootstrapLease,
-    last_published_mux_generation: u64,
+    publication: Publication,
     artifact_state: ArtifactState,
     published_agent_parents: BTreeMap<PaneId, PaneId>,
     appearance: Arc<TerminalAppearance>,
@@ -36859,7 +36865,6 @@ struct ServerState {
     startup_source_client_working_directory: Option<PathBuf>,
     mux_options: MuxOptions,
     mux_option_underlay: MuxOptions,
-    key_table_generations: BTreeMap<String, u64>,
     active_color_scheme: TerminalColorScheme,
     client_flags: ClientFlags,
     pane_focus: BTreeSet<PaneId>,
@@ -36914,9 +36919,15 @@ struct ServerState {
     next_client_id: u64,
     next_display_panes_token: u64,
     control_routes: BTreeMap<ClientId, ControlRoute>,
-    key_tables_generation: u64,
     scheduled_window_rename: Option<Instant>,
     preview_watched: BTreeSet<PaneId>,
+}
+
+#[derive(Default)]
+struct Publication {
+    last_published_mux_generation: u64,
+    key_table_generations: BTreeMap<String, u64>,
+    key_tables_generation: u64,
     ctrl_trees: BTreeMap<(u8, Option<SessionId>), MuxSnapshot>,
     border_presentations_cache: Mutex<Option<CachedBorderPresentations>>,
     status_parameters_cache: Mutex<Option<CachedStatusParameters>>,
@@ -43573,7 +43584,7 @@ fn status_request_with_selected_options(
         .map(|session| client_focused_window(inner, client, session));
     let mut reuse_admission = false;
     if let Some(revision) = revision {
-        let mut cache = inner.status_preparation_cache.lock();
+        let mut cache = inner.publication.status_preparation_cache.lock();
         let options = option_snapshot.get_or_insert_with(|| {
             cache
                 .as_ref()
@@ -43733,7 +43744,7 @@ fn status_request_with_selected_options(
         let cached = reusable.then(|| {
             CachedStatusPreparation::new(inner, attached, window, revision, request.clone())
         });
-        *inner.status_preparation_cache.lock() =
+        *inner.publication.status_preparation_cache.lock() =
             cached.filter(|cached| cached.retained_bytes <= STATUS_PREPARATION_MAX_BYTES);
     }
     request
@@ -44026,7 +44037,7 @@ fn status_parameters(
 ) -> Arc<StatusParameters> {
     let (state, options, data, _) = inner.engine.format_cache_revision();
     let key = (attached, state, options, data);
-    if let Some(cached) = inner.status_parameters_cache.lock().as_ref()
+    if let Some(cached) = inner.publication.status_parameters_cache.lock().as_ref()
         && cached.key == key
         && Arc::ptr_eq(&cached.option_snapshot, option_snapshot)
     {
@@ -44085,7 +44096,7 @@ fn status_parameters(
         fact_selection,
         client_fact_selection,
     });
-    *inner.status_parameters_cache.lock() = (parameters
+    *inner.publication.status_parameters_cache.lock() = (parameters
         .retained_bytes()
         .saturating_add(option_snapshot.retained_bytes())
         <= 1024 * 1024)
@@ -44564,7 +44575,7 @@ fn cached_live_border_presentations(
 ) -> Option<Arc<Vec<zz_protocol::PaneBorderPresentation>>> {
     let window = window?;
     inner.engine.state.windows.get(&window)?;
-    let cache = inner.border_presentations_cache.lock();
+    let cache = inner.publication.border_presentations_cache.lock();
     let cached = cache.as_ref()?;
     let second = if cached.clock_dependent {
         second()
@@ -44603,7 +44614,7 @@ fn border_presentations_at(
     };
     let option_snapshot = inner.engine.cached_format_option_snapshot();
     {
-        let cache = inner.border_presentations_cache.lock();
+        let cache = inner.publication.border_presentations_cache.lock();
         if let Some(cached) = cache.as_ref()
             && cached.matches(
                 revision,
@@ -44627,7 +44638,7 @@ fn border_presentations_at(
     let Some(mut callbacks) =
         border_format_callbacks(&inner.engine, &first_context, &option_snapshot, &references)
     else {
-        *inner.border_presentations_cache.lock() = None;
+        *inner.publication.border_presentations_cache.lock() = None;
         return uncached_border_presentations(inner, client, session, facts);
     };
     let pane_in_mode = callbacks.iter().any(|name| name == "pane_in_mode");
@@ -44692,7 +44703,7 @@ fn border_presentations_at(
         clock_dependent,
     };
     let result = cached.presentations();
-    *inner.border_presentations_cache.lock() =
+    *inner.publication.border_presentations_cache.lock() =
         (cached.retained_bytes() <= BORDER_FORMAT_CACHE_BYTES).then_some(cached);
     result
 }
@@ -45494,7 +45505,7 @@ fn stamped_snapshot_sends(
         inner.engine.state.bump_generation();
         let generation = inner.engine.state.generation();
         if tracked {
-            inner.last_published_mux_generation = generation;
+            inner.publication.last_published_mux_generation = generation;
         }
         for client in unchanged {
             if let Some((_, sent_generation)) = inner

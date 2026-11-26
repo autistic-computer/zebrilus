@@ -205,7 +205,7 @@ fn border_format_cache_reuses_default_styles_at_twenty_windows() {
     assert_eq!(second, first);
     assert!(Arc::ptr_eq(&first, &second));
     assert_eq!(expansions(), before);
-    let cache = inner.border_presentations_cache.lock();
+    let cache = inner.publication.border_presentations_cache.lock();
     let retained = cache.as_ref().unwrap().retained_bytes();
     eprintln!("twenty-window border cache retained {retained} bytes");
     assert!(retained <= BORDER_FORMAT_CACHE_BYTES);
@@ -386,6 +386,7 @@ fn border_format_cache_keeps_clock_guards_for_raw_nested_and_time_modifier_sourc
         let first = borders(&inner, client, session, &facts);
         assert!(
             inner
+                .publication
                 .border_presentations_cache
                 .lock()
                 .as_ref()
@@ -448,7 +449,11 @@ fn border_format_cache_bypasses_loops_jobs_terminal_and_unknown_inputs() {
         assert_eq!(second, first, "{source}");
         assert_eq!(expansions(), before + 1, "{source}");
         assert!(
-            inner.border_presentations_cache.lock().is_none(),
+            inner
+                .publication
+                .border_presentations_cache
+                .lock()
+                .is_none(),
             "{source}"
         );
     }
@@ -474,7 +479,13 @@ fn border_format_cache_bypasses_oversized_retained_inputs() {
     let before = expansions();
     borders(&inner, client, context.session.unwrap(), &facts);
     assert_eq!(expansions(), before + 1);
-    assert!(inner.border_presentations_cache.lock().is_none());
+    assert!(
+        inner
+            .publication
+            .border_presentations_cache
+            .lock()
+            .is_none()
+    );
 }
 
 #[test]
@@ -564,7 +575,13 @@ fn border_format_cache_preserves_borrowed_window_client_callbacks() {
     };
     assert_eq!(second[0].style, "fg=red");
     assert_eq!(expansions(), 2);
-    assert!(inner.border_presentations_cache.lock().is_none());
+    assert!(
+        inner
+            .publication
+            .border_presentations_cache
+            .lock()
+            .is_none()
+    );
 }
 
 #[test]
@@ -600,7 +617,7 @@ fn border_format_cache_checks_borrowed_mode_counts_without_materializing_maps() 
     };
     assert!(first.iter().all(|pane| pane.style == "fg=green"));
     {
-        let cache = inner.border_presentations_cache.lock();
+        let cache = inner.publication.border_presentations_cache.lock();
         let cache = cache.as_ref().unwrap();
         assert!(cache.callbacks.is_empty());
         assert!(
@@ -848,6 +865,7 @@ fn border_format_cache_pins_one_mode_count_for_style_and_expected_callbacks() {
     assert_eq!(facts.reads.get(), 1);
     assert_eq!(
         inner
+            .publication
             .border_presentations_cache
             .lock()
             .as_ref()
@@ -868,6 +886,7 @@ fn border_format_cache_pins_one_mode_count_for_style_and_expected_callbacks() {
     assert_eq!(facts.reads.get(), 4);
     assert_eq!(
         inner
+            .publication
             .border_presentations_cache
             .lock()
             .as_ref()

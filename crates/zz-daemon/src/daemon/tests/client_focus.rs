@@ -515,7 +515,7 @@ fn client_focus_updates_activity_and_focus_in_owns_latest_geometry() {
         assert_eq!(terminal_geometry_owner(&inner, pane), Some(second));
         assert_eq!(inner.engine.pane_geometry(pane), Some((80, 20)));
         assert!(inner.engine.state.generation() > mux_generation);
-        assert!(inner.last_published_mux_generation > mux_generation);
+        assert!(inner.publication.last_published_mux_generation > mux_generation);
         assert!(inner.engine.state.pane(pane).expect("focus pane").bell);
     }
     let peer_messages = take_reliable_messages(&first_mailbox);
@@ -1844,7 +1844,7 @@ fn read_only_client_focus_updates_activity_and_focus_in_owns_stored_geometry() {
         assert_eq!(terminal_geometry_owner(&inner, pane), Some(client));
         assert_eq!(inner.engine.pane_geometry(pane), Some((80, 20)));
         assert!(inner.engine.state.generation() > focus_in_before.3);
-        assert!(inner.last_published_mux_generation > focus_in_before.3);
+        assert!(inner.publication.last_published_mux_generation > focus_in_before.3);
         assert!(inner.engine.state.pane(pane).expect("focus pane").bell);
     }
     let peer_messages = take_reliable_messages(&writable_mailbox);

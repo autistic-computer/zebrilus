@@ -687,7 +687,7 @@ impl Shared {
                         .is_none_or(|subscription| subscription.keys == KeySubscription::Full)
                 })
         {
-            inner.key_table_generations = inner
+            inner.publication.key_table_generations = inner
                 .engine
                 .keys
                 .table_generations()
@@ -704,7 +704,7 @@ impl Shared {
                         .is_some_and(|subscription| subscription.keys == KeySubscription::Hash)
                 })
             {
-                inner.key_tables_generation = inner.engine.keys.generation();
+                inner.publication.key_tables_generation = inner.engine.keys.generation();
             }
         }
         inner
@@ -738,7 +738,12 @@ impl Shared {
         let mut messages = Vec::new();
         let raw = if let Some(scope) = scope(&inner, client) {
             let mut raw = shared_tree(&inner, &snapshot, scope, &facts);
-            let before = inner.ctrl_trees.get(&scope).cloned().unwrap_or_default();
+            let before = inner
+                .publication
+                .ctrl_trees
+                .get(&scope)
+                .cloned()
+                .unwrap_or_default();
             raw.generation = before.generation.saturating_add(1);
             let delta = TreeDelta::between(&before, &raw);
             if delta.ops.is_empty() {
@@ -760,7 +765,7 @@ impl Shared {
                     .ctrl_tree_version
                     .replace(raw.generation);
             }
-            inner.ctrl_trees.insert(scope, raw.clone());
+            inner.publication.ctrl_trees.insert(scope, raw.clone());
             raw
         } else {
             MuxSnapshot {
@@ -839,7 +844,12 @@ impl Shared {
             }
             let mut sends = BTreeMap::<ClientId, (Arc<OutboundMailbox>, Vec<OutboundFrame>)>::new();
             for (scope, clients) in groups {
-                let before = inner.ctrl_trees.get(&scope).cloned().unwrap_or_default();
+                let before = inner
+                    .publication
+                    .ctrl_trees
+                    .get(&scope)
+                    .cloned()
+                    .unwrap_or_default();
                 let mut raw = shared_tree(&inner, &snapshot, scope, &facts);
                 raw.generation = before.generation.saturating_add(1);
                 let delta = TreeDelta::between(&before, &raw);
@@ -896,7 +906,7 @@ impl Shared {
                         }
                     }
                 }
-                inner.ctrl_trees.insert(scope, raw);
+                inner.publication.ctrl_trees.insert(scope, raw);
             }
             for client in view_only {
                 let view = client_view(&mut inner, client, &MuxSnapshot::default(), &facts);

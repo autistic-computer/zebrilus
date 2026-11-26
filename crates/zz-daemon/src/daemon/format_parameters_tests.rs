@@ -104,7 +104,7 @@ fn status_parameters_retarget_sessions_and_reject_a_replaced_engine_with_equal_r
 fn status_parameters_bound_includes_environment_and_disables_retention_on_rollback() {
     let mut inner = ServerState::default();
     parameters(&inner, None);
-    assert!(inner.status_parameters_cache.lock().is_some());
+    assert!(inner.publication.status_parameters_cache.lock().is_some());
     let large = "v".repeat(600_000);
     execute(
         &mut inner,
@@ -112,7 +112,7 @@ fn status_parameters_bound_includes_environment_and_disables_retention_on_rollba
     );
     let oversized = parameters(&inner, None);
     assert!(oversized.retained_bytes() > 1024 * 1024);
-    assert!(inner.status_parameters_cache.lock().is_none());
+    assert!(inner.publication.status_parameters_cache.lock().is_none());
     assert!(oversized.environment.iter().any(|(name, value)| {
         name.as_bytes() == b"FORMAT_PARAMETER_TEST"
             && value
@@ -148,7 +148,7 @@ fn raw_text_bound_rejects_large_job_parameters_and_keeps_small_raw_values() {
         assert_eq!(stored.as_str(), value.as_str());
         if value.as_bytes().len() == 300_000 {
             assert!(first.retained_bytes() > STATUS_PREPARATION_MAX_BYTES);
-            assert!(inner.status_parameters_cache.lock().is_none());
+            assert!(inner.publication.status_parameters_cache.lock().is_none());
             assert!(!Arc::ptr_eq(&first, &same));
         } else {
             assert!(first.retained_bytes() < STATUS_PREPARATION_MAX_BYTES);

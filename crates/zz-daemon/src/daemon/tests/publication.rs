@@ -662,7 +662,10 @@ fn command_error_that_mutates_mux_state_publishes_snapshot() {
         let inner = shared.inner.lock();
         assert_eq!(inner.engine.state.windows[&window].zoomed_pane, None);
         assert_eq!(inner.engine.state.generation(), generation + 1);
-        assert_eq!(inner.last_published_mux_generation, generation + 1);
+        assert_eq!(
+            inner.publication.last_published_mux_generation,
+            generation + 1
+        );
     }
     let snapshots = take_reliable_messages(&mailbox)
         .into_iter()

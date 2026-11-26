@@ -123,13 +123,13 @@ fn status_preparation_omits_large_unused_config_capture_and_reuses_requests() {
     assert!(!first.references.contains("config_files"));
     let selective = reuse_enabled();
     if selective {
-        let cache = inner.status_preparation_cache.lock();
+        let cache = inner.publication.status_preparation_cache.lock();
         let cached = cache.as_ref().unwrap();
         assert!(!cached.config_files_requested);
         assert!(cached.config_files.is_empty());
         assert!(cached.retained_bytes <= STATUS_PREPARATION_MAX_BYTES);
     } else {
-        assert!(inner.status_preparation_cache.lock().is_none());
+        assert!(inner.publication.status_preparation_cache.lock().is_none());
     }
     let revision = inner.engine.format_cache_revision();
     inner.config_files = "b".repeat(STATUS_PREPARATION_MAX_BYTES + 2);
@@ -166,7 +166,7 @@ fn status_preparation_keeps_static_indirect_config_dependencies_fresh() {
         assert!(first.references.contains("config_files"), "{template}");
         assert_left(&first, "/first.conf");
         if reuse_enabled() {
-            let cache = inner.status_preparation_cache.lock();
+            let cache = inner.publication.status_preparation_cache.lock();
             assert!(cache.as_ref().unwrap().config_files_requested);
         }
         let revision = inner.engine.format_cache_revision();
@@ -245,7 +245,7 @@ fn status_preparation_keeps_border_only_config_capture_and_guard() {
         Some("/first.conf")
     );
     if reuse_enabled() {
-        let cache = inner.status_preparation_cache.lock();
+        let cache = inner.publication.status_preparation_cache.lock();
         assert!(cache.as_ref().unwrap().config_files_requested);
     }
     let revision = inner.engine.format_cache_revision();
@@ -378,7 +378,7 @@ fn status_preparation_shares_the_whole_immutable_request() {
         assert_eq!(Arc::ptr_eq(&first, &second), reuse_enabled());
         assert_left(&second, "prepared:80");
         if reuse_enabled() {
-            let cache = inner.status_preparation_cache.lock();
+            let cache = inner.publication.status_preparation_cache.lock();
             let cached = cache.as_ref().unwrap();
             assert!(Arc::ptr_eq(&cached.request, &first));
             assert!(Arc::ptr_eq(
@@ -485,7 +485,7 @@ fn status_preparation_clock_reuse_refreshes_nested_loop_times_and_preserves_fact
             reuse_enabled()
         );
         if reuse_enabled() {
-            let cache = inner.status_preparation_cache.lock();
+            let cache = inner.publication.status_preparation_cache.lock();
             let cached = cache.as_ref().unwrap();
             assert_eq!(cached.revision, inner.engine.format_cache_revision());
             assert!(cached.retained_bytes() <= STATUS_PREPARATION_MAX_BYTES);
@@ -543,7 +543,7 @@ fn status_preparation_reuses_retained_size_only_for_unchanged_clock_storage() {
         let tick = shared_request(&inner, client);
         assert_left(&tick, "prepared:1");
         if reuse_enabled() {
-            let mut cache = inner.status_preparation_cache.lock();
+            let mut cache = inner.publication.status_preparation_cache.lock();
             let cached = cache.as_mut().unwrap();
             assert_eq!(cached.retained_bytes, cached.retained_bytes());
             cached.retained_bytes += 128;
@@ -552,7 +552,7 @@ fn status_preparation_reuses_retained_size_only_for_unchanged_clock_storage() {
         let same_storage = shared_request(&inner, client);
         assert_left(&same_storage, "prepared:2");
         if reuse_enabled() {
-            let cache = inner.status_preparation_cache.lock();
+            let cache = inner.publication.status_preparation_cache.lock();
             let cached = cache.as_ref().unwrap();
             assert_eq!(cached.retained_bytes, cached.retained_bytes() + 128);
             assert!(Arc::ptr_eq(&tick.pane_borders, &same_storage.pane_borders));
@@ -564,7 +564,7 @@ fn status_preparation_reuses_retained_size_only_for_unchanged_clock_storage() {
         assert_eq!(borders.pane_borders[0].style, "fg=red");
         assert_eq!(same_storage.pane_borders[0].style, "fg=green");
         if reuse_enabled() {
-            let cache = inner.status_preparation_cache.lock();
+            let cache = inner.publication.status_preparation_cache.lock();
             let cached = cache.as_ref().unwrap();
             assert_eq!(cached.retained_bytes, cached.retained_bytes());
             assert!(!Arc::ptr_eq(
@@ -663,7 +663,7 @@ fn status_preparation_reuses_safe_engine_width_and_colour_dependencies() {
             reuse_enabled()
         );
         assert_eq!(Arc::ptr_eq(&first.facts, &second.facts), reuse_enabled());
-        let cache = inner.status_preparation_cache.lock();
+        let cache = inner.publication.status_preparation_cache.lock();
         if reuse_enabled() {
             assert!(cache.as_ref().unwrap().retained_bytes() <= STATUS_PREPARATION_MAX_BYTES);
         } else {
@@ -904,7 +904,7 @@ fn status_preparation_bypasses_live_callbacks_jobs_modes_control_and_rollback() 
             let second = request(&inner, client);
             assert_fresh(&first, &second);
             assert!(
-                inner.status_preparation_cache.lock().is_none(),
+                inner.publication.status_preparation_cache.lock().is_none(),
                 "{template}"
             );
         }
@@ -984,7 +984,7 @@ fn status_preparation_bypasses_border_prefix_and_cell_dependencies() {
         let prefix = request(&inner, client);
         assert_fresh(&first, &prefix);
         assert_eq!(prefix.pane_borders[0].style, "fg=red");
-        assert!(inner.status_preparation_cache.lock().is_none());
+        assert!(inner.publication.status_preparation_cache.lock().is_none());
         assert_eq!(inner.engine.format_cache_revision(), revision);
         set_option(
             &mut inner,
@@ -1011,7 +1011,7 @@ fn status_preparation_bypasses_border_prefix_and_cell_dependencies() {
         let geometry = request(&inner, client);
         assert_fresh(&before, &geometry);
         assert_eq!(geometry.pane_borders[0].style, "fg=red,bg=blue");
-        assert!(inner.status_preparation_cache.lock().is_none());
+        assert!(inner.publication.status_preparation_cache.lock().is_none());
         assert_eq!(inner.engine.format_cache_revision(), revision);
     });
 }
@@ -1022,7 +1022,7 @@ fn status_preparation_rejects_oversized_context_and_environment_capture() {
         let (mut inner, client, mut context) = fixture("#{session_name}:#{config_files}");
         let small = request(&inner, client);
         if reuse_enabled() {
-            assert!(inner.status_preparation_cache.lock().is_some());
+            assert!(inner.publication.status_preparation_cache.lock().is_some());
         }
         inner.config_files = "c".repeat(400_000);
         let large_environment = "e".repeat(400_000);
@@ -1056,7 +1056,7 @@ fn status_preparation_rejects_oversized_context_and_environment_capture() {
             Arc::new(large),
         );
         assert!(candidate.retained_bytes() > STATUS_PREPARATION_MAX_BYTES);
-        assert!(inner.status_preparation_cache.lock().is_none());
+        assert!(inner.publication.status_preparation_cache.lock().is_none());
     });
 }
 
@@ -1112,7 +1112,7 @@ fn raw_text_bound_rejects_large_prepared_job_environment_and_reuses_small_values
                 );
                 assert!(candidate.retained_bytes() >= empty.retained_bytes() + 2_400_000);
                 assert!(candidate.retained_bytes() > STATUS_PREPARATION_MAX_BYTES);
-                assert!(inner.status_preparation_cache.lock().is_none());
+                assert!(inner.publication.status_preparation_cache.lock().is_none());
             } else {
                 assert!(candidate.retained_bytes() < STATUS_PREPARATION_MAX_BYTES);
                 assert_eq!(Arc::ptr_eq(&first.context, &same.context), reuse_enabled());

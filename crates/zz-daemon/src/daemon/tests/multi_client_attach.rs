@@ -180,7 +180,10 @@ fn multi_client_attach_uses_latest_active_geometry_and_keeps_independent_views()
         let inner = shared.inner.lock();
         assert_eq!(inner.engine.pane_geometry(pane), Some((100, 60)));
         assert_eq!(inner.engine.state.generation(), input_generation + 1);
-        assert_eq!(inner.last_published_mux_generation, input_generation + 1);
+        assert_eq!(
+            inner.publication.last_published_mux_generation,
+            input_generation + 1
+        );
         assert_eq!(
             terminal_resize_for_pane(&inner, pane)
                 .expect("second client geometry")
@@ -343,7 +346,10 @@ fn multi_client_attach_uses_latest_active_geometry_and_keeps_independent_views()
         let inner = shared.inner.lock();
         assert_eq!(inner.engine.pane_geometry(pane), Some((100, 60)));
         assert_eq!(inner.engine.state.generation(), mouse_generation + 1);
-        assert_eq!(inner.last_published_mux_generation, mouse_generation + 1);
+        assert_eq!(
+            inner.publication.last_published_mux_generation,
+            mouse_generation + 1
+        );
         inner.engine.state.generation()
     };
     let peer_messages = take_reliable_messages(&first_mailbox);

@@ -1153,7 +1153,8 @@ fn a_spawn_in_a_known_directory_rides_its_own_publish() {
             .find(|pane| !before.contains(pane))
             .expect("new pane");
         let summary = summary(&inner, pane);
-        let published = inner.last_published_mux_generation == inner.engine.state.generation();
+        let published =
+            inner.publication.last_published_mux_generation == inner.engine.state.generation();
         (pane, (summary.cwd, summary.repo, summary.branch), published)
     };
     let generation = || shared.inner.lock().engine.state.generation();
@@ -1361,7 +1362,7 @@ fn a_move_into_a_known_directory_publishes_the_tree() {
         (
             summary.cwd,
             summary.branch,
-            inner.last_published_mux_generation == inner.engine.state.generation(),
+            inner.publication.last_published_mux_generation == inner.engine.state.generation(),
             inner.locations.jobs.is_empty(),
         )
     };
@@ -1400,7 +1401,7 @@ fn a_settled_foreground_program_fills_the_summary_and_a_shell_clears_it() {
         let inner = shared.inner.lock();
         (
             summary(&inner, pane).process,
-            inner.last_published_mux_generation == inner.engine.state.generation(),
+            inner.publication.last_published_mux_generation == inner.engine.state.generation(),
             inner.engine.state.generation(),
         )
     };

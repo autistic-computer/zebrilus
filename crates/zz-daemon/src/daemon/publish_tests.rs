@@ -796,7 +796,7 @@ fn a_label_flush_leaves_an_unpublished_mutation_to_its_command() {
     let command_publishes = {
         let inner = shared.inner.lock();
         let current = inner.engine.state.generation();
-        current != generation && inner.last_published_mux_generation != current
+        current != generation && inner.publication.last_published_mux_generation != current
     };
     assert!(
         command_publishes,

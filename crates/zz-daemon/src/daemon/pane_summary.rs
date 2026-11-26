@@ -259,7 +259,7 @@ impl Shared {
     pub(super) fn publish_unpublished_tree(self: &Arc<Self>) {
         let unpublished = {
             let inner = self.inner.lock();
-            inner.last_published_mux_generation != inner.engine.state.generation()
+            inner.publication.last_published_mux_generation != inner.engine.state.generation()
         };
         if unpublished {
             self.request_publish(timers::PublishReason::Tree);
