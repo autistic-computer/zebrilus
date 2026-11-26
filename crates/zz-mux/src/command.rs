@@ -1156,9 +1156,6 @@ struct ListKeyHooks<'a, H> {
     fallback: &'a StatusContext<'static>,
 }
 
-#[cfg(all(test, unix))]
-mod key_listing_tests;
-
 pub struct KeyListing {
     values: StatusContext<'static>,
     options: Arc<StatusRowVariables>,
@@ -1700,12 +1697,6 @@ fn template_reads_runtime_facts(template: &str) -> bool {
             .iter()
             .any(|marker| template.contains(marker))
 }
-
-#[cfg(test)]
-mod runtime_facts_tests;
-
-#[cfg(test)]
-mod format_cache_tests;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct AgentChatFacts {
@@ -2874,9 +2865,6 @@ impl Options {
     }
 }
 
-#[cfg(test)]
-mod display_message_options_tests;
-
 struct WindowDestination {
     session: SessionId,
     index: Option<u32>,
@@ -2925,7 +2913,13 @@ mod arguments_tests;
 mod callbacks_tests;
 
 #[cfg(test)]
+mod display_message_options_tests;
+
+#[cfg(test)]
 mod environment_tests;
+
+#[cfg(test)]
+mod format_cache_tests;
 
 #[cfg(test)]
 mod format_context_tests;
@@ -2935,6 +2929,9 @@ mod hooks_tests;
 
 #[cfg(test)]
 mod key_bindings_tests;
+
+#[cfg(all(test, unix))]
+mod key_listing_tests;
 
 #[cfg(test)]
 mod messages_and_prompts_tests;
@@ -2956,6 +2953,9 @@ mod pane_spawn_tests;
 
 #[cfg(test)]
 mod panes_tests;
+
+#[cfg(test)]
+mod runtime_facts_tests;
 
 #[cfg(test)]
 mod send_keys_tests;
