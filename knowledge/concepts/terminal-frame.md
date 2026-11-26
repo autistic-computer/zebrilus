@@ -4,7 +4,7 @@ title: Terminal frame (TerminalViewport)
 description: The renderer-neutral terminal viewport and how clients safely apply row patches.
 resource: crates/zz-terminal/src/model.rs
 tags: [terminal, viewport, packed-cell, patch]
-timestamp: 2026-11-24T00:00:00Z
+timestamp: 2026-11-26T00:00:00-03:00
 ---
 
 ## Schema
@@ -28,13 +28,13 @@ and publishes immutable frames for streaming views. A view can have a different
 scroll anchor, selection or copy mode from its neighbor. The snapshot can be
 clipped to the display area required by consumers while the PTY retains its
 assigned dimensions. A dictionary rollover forces a new full viewport.
-See `build_snapshot` and `TerminalSession::latest_viewport_for` in
-`crates/zz-terminal/src/session.rs`. [PTY worker](/concepts/pty-worker.md)
+See `build_snapshot` in `crates/zz-terminal/src/session/snapshot.rs` and
+`TerminalSession::latest_viewport_for` in `crates/zz-terminal/src/session/handle.rs`. [PTY worker](/concepts/pty-worker.md)
 
 With synchronized output enabled (DEC mode 2026), the worker keeps parsing PTY bytes
 while clients see the previous frame. Clearing the mode, resizing or the one-second
 deadline releases the pending frame. See `defer_synchronized_output` in
-`crates/zz-terminal/src/session.rs`.
+`crates/zz-terminal/src/session/frames.rs`.
 
 ## Patches and repair
 

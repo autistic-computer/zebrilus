@@ -2,9 +2,9 @@
 type: Concept
 title: Daemon-owned PTY workers
 description: How terminal actors share worker threads and route each viewer's input and frames.
-resource: crates/zz-terminal/src/session.rs
+resource: crates/zz-terminal/src/session/handle.rs
 tags: [pty, daemon, terminal, threading, send-keys]
-timestamp: 2026-11-24T00:00:00Z
+timestamp: 2026-11-26T00:00:00-03:00
 ---
 
 ## Ownership and spawn

@@ -4,7 +4,7 @@ title: Program status (OSC 7501)
 description: How zz reads the Program Status Protocol from pane output, keeps one record per id for each pane, and shows the most urgent record in formats, the tree (whose status record @agent_state terminals fill too), @agent_state, and the desktop sidebar.
 resource: crates/zz-terminal/src/program_status.rs
 tags: [osc, osc-7501, program-status, agent-state, sidebar, formats]
-timestamp: 2026-11-24T00:00:00Z
+timestamp: 2026-11-26T00:00:00-03:00
 ---
 
 # Overview
@@ -22,7 +22,7 @@ zz display -p -t %3 '#{pane_status} #{pane_status_app}: #{pane_status_message}'
 
 # Where zz reads it
 
-`EngineFilter` in `crates/zz-terminal/src/session.rs` sees every OSC before libghostty does,
+`EngineFilter` (its methods in `crates/zz-terminal/src/session/engine_filter.rs`) sees every OSC before libghostty does,
 the same place it reads OSC 9;4 and 133;D. The pinned Ghostty fork drops OSC 7501 in its parser.
 Upstream libghostty-vt added a parser and an embedder callback in ghostty-org/ghostty#14560
 (merge `a4aacd91`, 2026-10-06), 134 commits past the fork's base; zz does not need it.
