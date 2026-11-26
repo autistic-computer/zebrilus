@@ -129,13 +129,21 @@ The daemon admits up to two in-flight uploads per client. See `finish_paste_uplo
 File editing has a separate request/reply exchange. `FileReadRequest`, `FileWriteRequest`
 and their responses require `file-edit-v1`. Both sides must advertise it for the round trip.
 The bounds for editable file content and write chunks are `MAX_FILE_EDIT_BYTES` and
-`MAX_FILE_WRITE_CHUNK_BYTES` in `message.rs`. The implementation lives in
+`MAX_FILE_WRITE_CHUNK_BYTES` in `message/limits.rs`. The implementation lives in
 `crates/zz-daemon/src/daemon/file_edit.rs`.
 
 ## Source and checks
 
-- Message fields, payload bounds and errors are in `message.rs`, `control.rs`, `exec.rs`
-  and `terminal_codec.rs` under `crates/zz-protocol/src`.
+- Message fields, payload bounds and errors are in `message.rs` and the files under `message/`,
+  `control.rs`, `exec.rs` and `terminal_codec.rs` under `crates/zz-protocol/src`.
+- `compat/wire-version.py`, run by `compat/check.sh`, compares the wire surface with the last
+  release tag while `PROTOCOL_VERSION` is unchanged. It reads every top-level item (struct, enum,
+  const, static, type, fn, trait, macro, and each member of an impl block) from every file under
+  `crates/zz-protocol/src` except `lib.rs` and `catalog.rs`, keys it by kind and name, and flags
+  one that was removed, added or whose tokens changed. Text inside an item keeps its order, so a
+  reordered field or variant fails. Moving an item to another file, whitespace, comments, `use`
+  lines, ungated `mod` lines and `pub(crate)` or `pub(super)` do not count. Test code is compared
+  like the rest. The `REVISION` constants are ignored.
 - Run `cargo test -p zz-protocol` for codec, batch, delta and bounds checks. The scoped
   `cargo test -p zz-daemon a_server_hello_lists_the_daemon_capabilities_without_the_control_plane`
   checks the server's advertised capabilities.
