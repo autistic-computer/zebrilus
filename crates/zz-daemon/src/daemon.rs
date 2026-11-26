@@ -115,7 +115,9 @@ mod deferred_terminal_commands;
 use deferred_terminal_commands::*;
 mod source_paths;
 use source_paths::*;
+#[cfg(unix)]
 mod tmux_shim;
+#[cfg(unix)]
 use tmux_shim::*;
 mod daemon_socket;
 use daemon_socket::*;
