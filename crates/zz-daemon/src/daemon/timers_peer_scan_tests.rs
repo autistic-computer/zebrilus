@@ -49,7 +49,7 @@ fn an_unchanged_registry_skips_the_peer_scan_and_any_change_runs_it() {
         let mut child = std::process::Command::new(std::env::current_exe().unwrap())
             .args([
                 "--exact",
-                "daemon::timers::peerskip_tests::an_unchanged_registry_skips_the_peer_scan_and_any_change_runs_it",
+                "daemon::timers::peer_scan_tests::an_unchanged_registry_skips_the_peer_scan_and_any_change_runs_it",
                 "--nocapture",
                 "--test-threads=1",
             ])

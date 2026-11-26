@@ -1265,5 +1265,5 @@ mod tests;
 mod delay_tests;
 
 #[cfg(all(test, feature = "agent", unix))]
-#[path = "timers_peerskip_tests.rs"]
-mod peerskip_tests;
+#[path = "timers_peer_scan_tests.rs"]
+mod peer_scan_tests;

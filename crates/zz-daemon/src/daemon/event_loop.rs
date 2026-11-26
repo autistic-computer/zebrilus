@@ -252,8 +252,8 @@ struct Connection {
 }
 
 #[cfg(test)]
-#[path = "hookpanic_tests.rs"]
-mod hookpanic_tests;
+#[path = "event_loop_event_hook_tests.rs"]
+mod event_hook_tests;
 
 struct Completion {
     token: Token,
@@ -2088,10 +2088,6 @@ impl Connection {
         }
     }
 }
-
-#[cfg(test)]
-#[path = "event_loop_writestall_tests.rs"]
-mod writestall_tests;
 
 #[cfg(test)]
 pub(super) fn serve_single(

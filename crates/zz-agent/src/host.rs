@@ -29,7 +29,9 @@ use crate::{
     environment::{AgentWorkspaceEnvironment, warm_adapter_cache},
     git_summary,
     journal::AgentJournal,
-    runtime::{AgentSpawnConfig, RuntimeCommand, RuntimeControl, run_agent_runtime},
+    runtime::{
+        AgentSpawnConfig, RESTORE_NOTICE, RuntimeCommand, RuntimeControl, run_agent_runtime,
+    },
     stream::{
         AgentAuthMethod, AgentPrompt, AgentPromptOutcome, AgentQuestion, AgentSessionCapabilities,
         AgentSessionSummary, AgentStreamItem, AgentStreamPayload,
@@ -1873,6 +1875,9 @@ impl PanePump {
         else {
             return;
         };
+        if update["_meta"]["zz"]["notice"] == true && text.ends_with(RESTORE_NOTICE) {
+            return;
+        }
         self.turn_reply.truncated |=
             append_reply_tail(&mut self.turn_reply.text, text, MAX_AGENT_TURN_REPLY_BYTES);
         self.turn_reply.truncated |= append_reply_tail(
