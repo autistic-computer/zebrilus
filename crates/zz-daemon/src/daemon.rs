@@ -1422,13 +1422,19 @@ fn key_table_publication(
 fn published_appearance(inner: &ServerState) -> Arc<TerminalAppearance> {
     let styles = inner.engine.copy_mode_style_values();
     if styles == CopyModeStyleValues::default() {
-        return Arc::clone(&inner.appearance);
+        return Arc::clone(&inner.config.appearance);
     }
-    let base = Arc::clone(&inner.appearance);
+    let base = Arc::clone(&inner.config.appearance);
     let mut appearance = (*base).clone();
     let resolve = |value: &str| {
-        let expanded =
-            expanded_style_value(&inner.engine, &inner.config_files, value, None, None, None);
+        let expanded = expanded_style_value(
+            &inner.engine,
+            &inner.config.config_files,
+            value,
+            None,
+            None,
+            None,
+        );
         zz_protocol::parse_style(&expanded).map(|style| {
             (
                 style.fg.and_then(|fg| appearance_tmux_colour(&base, fg)),
@@ -1469,12 +1475,16 @@ fn terminal_appearance_updates(
                 .count(),
     );
     for (pane, terminal) in inner.terminals.iter() {
-        let appearance =
-            terminal_worker_options(&inner.engine, &inner.appearance, &inner.config_files, *pane)
-                .map_or_else(
-                    |_| Arc::clone(&inner.appearance),
-                    |options| options.appearance,
-                );
+        let appearance = terminal_worker_options(
+            &inner.engine,
+            &inner.config.appearance,
+            &inner.config.config_files,
+            *pane,
+        )
+        .map_or_else(
+            |_| Arc::clone(&inner.config.appearance),
+            |options| options.appearance,
+        );
         updates.push((Arc::clone(terminal), appearance));
     }
     for output in inner
@@ -1484,12 +1494,12 @@ fn terminal_appearance_updates(
     {
         let appearance = terminal_worker_options(
             &inner.engine,
-            &inner.appearance,
-            &inner.config_files,
+            &inner.config.appearance,
+            &inner.config.config_files,
             output.pane,
         )
         .map_or_else(
-            |_| Arc::clone(&inner.appearance),
+            |_| Arc::clone(&inner.config.appearance),
             |options| options.appearance,
         );
         updates.push((Arc::clone(&output.terminal), appearance));
@@ -5925,9 +5935,12 @@ impl Shared {
                 .find_map(|(name, value)| (name == "SHELL").then(|| OsStr::new(value))),
         );
         let mut state = ServerState {
-            active_color_scheme: appearance.color_scheme,
-            appearance,
-            appearance_provenance,
+            config: Config {
+                active_color_scheme: appearance.color_scheme,
+                appearance,
+                appearance_provenance,
+                ..Config::default()
+            },
             ..ServerState::default()
         };
         if let Some(keys) = editor_keys {
@@ -5957,9 +5970,11 @@ impl Shared {
         for option in MuxOptionKey::ALL {
             let value = state.engine.mux_option_value(option);
             state
+                .config
                 .mux_options
                 .set(option, value.clone(), MuxOptionSource::Default);
             state
+                .config
                 .mux_option_underlay
                 .set(option, value, MuxOptionSource::Default);
         }
@@ -6121,7 +6136,10 @@ impl Shared {
             (load_user_config, mux_config_files.map(<[PathBuf]>::to_vec));
         let config_files = self.selected_mux_config_files();
         let mut report = ConfigLoadReport::startup();
-        self.inner.lock().startup_source_client_working_directory =
+        self.inner
+            .lock()
+            .config
+            .startup_source_client_working_directory =
             initial_client_working_directory.map(Path::to_owned);
         let replay_result = self.replay_mux_config_files(
             &config_files,
@@ -6131,7 +6149,10 @@ impl Shared {
             initial_client_working_directory,
             SourceFileLoadOptions::default(),
         );
-        self.inner.lock().startup_source_client_working_directory = None;
+        self.inner
+            .lock()
+            .config
+            .startup_source_client_working_directory = None;
         replay_result?;
         *self.startup_config_causes.lock() = report.take_startup_causes();
         self.finish_initialization();
@@ -6724,7 +6745,7 @@ impl Shared {
                             target.window,
                             target.pane,
                         );
-                        context.set_format_value("config_files", inner.config_files.clone());
+                        context.set_format_value("config_files", inner.config.config_files.clone());
                         let mut hooks =
                             DaemonFormatHooks::command(&facts).with_option_engine(&inner.engine);
                         let value =
@@ -6792,7 +6813,7 @@ impl Shared {
                 for target in control_subscription_targets(&inner, session, scope) {
                     let mut context =
                         contexts.status_context(Some(target.session), target.window, target.pane);
-                    context.set_format_value("config_files", inner.config_files.clone());
+                    context.set_format_value("config_files", inner.config.config_files.clone());
                     let mut hooks =
                         DaemonFormatHooks::command(&base_facts).with_option_engine(&inner.engine);
                     let value = expand_format_values(&monitor.format, &context, &mut hooks);
@@ -6837,7 +6858,8 @@ impl Shared {
                             inner
                                 .engine
                                 .format_status_context(key.session, key.window, key.pane);
-                        format_context.set_format_value("config_files", inner.config_files.clone());
+                        format_context
+                            .set_format_value("config_files", inner.config.config_files.clone());
                         let expanded = {
                             let mut hooks = DaemonFormatHooks::command_with_optional_variables(
                                 &facts,
@@ -6990,7 +7012,7 @@ impl Shared {
             .then_some(color_scheme)
             .flatten();
         if let Some(color_scheme) = color_scheme {
-            inner.active_color_scheme = color_scheme;
+            inner.config.active_color_scheme = color_scheme;
         }
         inner.clients.insert(
             client,
@@ -7044,7 +7066,7 @@ impl Shared {
         if kind == ClientKind::Interactive && client_has_terminal {
             capabilities.extend(attach::terminal_option_capabilities(&inner.engine));
         }
-        let hello_mux_options = inner.mux_options.clone();
+        let hello_mux_options = inner.config.mux_options.clone();
         inner
             .client_entry(client)
             .published_mux_options
@@ -7056,7 +7078,7 @@ impl Shared {
             client_instance_id,
             capabilities,
             appearance: (*published_appearance(&inner)).clone(),
-            appearance_provenance: inner.appearance_provenance.clone(),
+            appearance_provenance: inner.config.appearance_provenance.clone(),
             mux_options: hello_mux_options,
             status: StatusLine::default(),
             key_tables: inner.engine.keys.snapshot(),
@@ -9808,7 +9830,7 @@ impl Shared {
         let (mut execution, mux_options_event, recheck_shutdown_requested) = {
             let mut inner = self.inner.lock();
             let stale_mode_events = take_pane_mode_hook_events(&mut inner);
-            format_variables.insert("config_files".to_owned(), inner.config_files.clone());
+            format_variables.insert("config_files".to_owned(), inner.config.config_files.clone());
             let captures = !read_only || cfg!(debug_assertions);
             let generation_before = inner.engine.state.generation();
             let monitors_before = inner.engine.has_format_monitors();
@@ -10212,8 +10234,8 @@ impl Shared {
                             .unwrap_or_default();
                         let terminal_options = terminal_worker_options(
                             &inner.engine,
-                            &inner.appearance,
-                            &inner.config_files,
+                            &inner.config.appearance,
+                            &inner.config.config_files,
                             *pane,
                         )?;
                         let appearance = Arc::clone(&terminal_options.appearance);
@@ -10403,8 +10425,8 @@ impl Shared {
                             .unwrap_or_default();
                         let terminal_options = terminal_worker_options(
                             &inner.engine,
-                            &inner.appearance,
-                            &inner.config_files,
+                            &inner.config.appearance,
+                            &inner.config.config_files,
                             *pane,
                         )?;
                         let appearance = Arc::clone(&terminal_options.appearance);
@@ -10733,8 +10755,8 @@ impl Shared {
                         if let Some(terminal) = inner.terminals.get(pane).cloned() {
                             let terminal_options = terminal_worker_options(
                                 &inner.engine,
-                                &inner.appearance,
-                                &inner.config_files,
+                                &inner.config.appearance,
+                                &inner.config.config_files,
                                 *pane,
                             )?;
                             deferred_terminal_commands.push(
@@ -10792,8 +10814,8 @@ impl Shared {
                         {
                             let terminal_options = terminal_worker_options(
                                 &inner.engine,
-                                &inner.appearance,
-                                &inner.config_files,
+                                &inner.config.appearance,
+                                &inner.config.config_files,
                                 *pane,
                             )?;
                             deferred_terminal_commands.push(
@@ -11731,8 +11753,8 @@ impl Shared {
                             }
                             let terminal_options = terminal_worker_options(
                                 &inner.engine,
-                                &inner.appearance,
-                                &inner.config_files,
+                                &inner.config.appearance,
+                                &inner.config.config_files,
                                 *candidate,
                             )?;
                             deferred_terminal_commands.push(
@@ -11774,8 +11796,8 @@ impl Shared {
                             }
                             let terminal_options = terminal_worker_options(
                                 &inner.engine,
-                                &inner.appearance,
-                                &inner.config_files,
+                                &inner.config.appearance,
+                                &inner.config.config_files,
                                 output.pane,
                             )?;
                             deferred_terminal_commands.push(
@@ -11804,8 +11826,8 @@ impl Shared {
                             };
                             let options = terminal_worker_options(
                                 &inner.engine,
-                                &inner.appearance,
-                                &inner.config_files,
+                                &inner.config.appearance,
+                                &inner.config.config_files,
                                 pane,
                             )?;
                             deferred_terminal_commands.push(
@@ -11851,9 +11873,15 @@ impl Shared {
                         } else {
                             let value = inner.engine.mux_option_value(*option);
                             mux_options_changed |=
-                                inner.mux_options.set(*option, value.clone(), mux_source);
+                                inner
+                                    .config
+                                    .mux_options
+                                    .set(*option, value.clone(), mux_source);
                             if mux_source != MuxOptionSource::Override {
-                                inner.mux_option_underlay.set(*option, value, mux_source);
+                                inner
+                                    .config
+                                    .mux_option_underlay
+                                    .set(*option, value, mux_source);
                             }
                         }
                         #[cfg(feature = "agent")]
@@ -12625,7 +12653,7 @@ impl Shared {
             };
             (
                 source_kind,
-                inner.startup_source_client_working_directory.clone(),
+                inner.config.startup_source_client_working_directory.clone(),
                 source_session_working_directory,
                 inner
                     .client(cwd_client)
@@ -14261,7 +14289,7 @@ impl Shared {
                 };
             let format_context = server_format_context_with_format_client(
                 &inner.engine,
-                &inner.config_files,
+                &inner.config.config_files,
                 format_session,
                 format_window,
                 format_pane,
@@ -14764,7 +14792,7 @@ impl Shared {
                 };
             let format_context = server_format_context_with_format_client(
                 &inner.engine,
-                &inner.config_files,
+                &inner.config.config_files,
                 format_session,
                 format_window,
                 format_pane,
@@ -18747,7 +18775,7 @@ impl Shared {
                 None,
                 session_id,
             );
-            format_context.set_format_value("config_files", inner.config_files.clone());
+            format_context.set_format_value("config_files", inner.config.config_files.clone());
             let mut client_facts = client_format_facts(&inner, client, session_id);
             client_facts.line = line;
             let mut facts = borrowed_format_hook_facts(&inner);
@@ -19029,7 +19057,8 @@ impl Shared {
         }
         let mut inner = self.inner.lock();
         inner.engine.set_format_now(unix_timestamp());
-        let context = server_format_context(&inner.engine, &inner.config_files, None, None, None);
+        let context =
+            server_format_context(&inner.engine, &inner.config.config_files, None, None, None);
         let output = inner
             .history
             .message_log
@@ -20659,8 +20688,13 @@ impl Shared {
                 let sort = TmuxSort::parse(parsed.value('O'), parsed.has('r'), None)?;
                 let mut inner = self.inner.lock();
                 inner.engine.set_format_now(unix_timestamp());
-                let format_context =
-                    server_format_context(&inner.engine, &inner.config_files, None, None, None);
+                let format_context = server_format_context(
+                    &inner.engine,
+                    &inner.config.config_files,
+                    None,
+                    None,
+                    None,
+                );
                 let mut buffers = inner.buffers.paste_buffers.clone();
                 sort.apply(&mut buffers, |left, right| {
                     let ordering = match sort.order() {
@@ -28074,8 +28108,8 @@ impl Shared {
                 WordSeparators::new(inner.engine.word_separators_for_pane(pane)?),
                 terminal_worker_options(
                     &inner.engine,
-                    &inner.appearance,
-                    &inner.config_files,
+                    &inner.config.appearance,
+                    &inner.config.config_files,
                     pane,
                 )?,
             )
@@ -28619,7 +28653,7 @@ impl Shared {
                         .map(|window| window.session);
                     let expanded = expanded_style_value(
                         &inner.engine,
-                        &inner.config_files,
+                        &inner.config.config_files,
                         &template,
                         session,
                         window,
@@ -30814,15 +30848,16 @@ impl Shared {
             let mut inner = self.inner.lock();
             let merged = published_appearance(&inner);
             let previous = inner
+                .config
                 .published_style_appearance
                 .clone()
-                .unwrap_or_else(|| Arc::clone(&inner.appearance));
+                .unwrap_or_else(|| Arc::clone(&inner.config.appearance));
             if *previous == *merged {
-                inner.published_style_appearance = Some(merged);
+                inner.config.published_style_appearance = Some(merged);
                 None
             } else {
-                inner.published_style_appearance = Some(Arc::clone(&merged));
-                Some((merged, inner.appearance_provenance.clone()))
+                inner.config.published_style_appearance = Some(Arc::clone(&merged));
+                Some((merged, inner.config.appearance_provenance.clone()))
             }
         };
         if let Some((appearance, provenance)) = update {
@@ -31953,6 +31988,7 @@ impl Shared {
                 return;
             }
             let previous_mux_keys = inner
+                .config
                 .mux_config_overrides
                 .iter()
                 .filter_map(|(key, _)| MuxOptionKey::from_config_key(key))
@@ -31961,6 +31997,7 @@ impl Shared {
                 .into_iter()
                 .filter_map(|key| {
                     inner
+                        .config
                         .mux_option_underlay
                         .get(key)
                         .cloned()
@@ -31968,14 +32005,15 @@ impl Shared {
                 })
                 .collect::<Vec<_>>();
             inner
+                .config
                 .appearance_config_overrides
                 .clone_from(&appearance_entries);
-            inner.mux_config_overrides.clone_from(&mux_entries);
+            inner.config.mux_config_overrides.clone_from(&mux_entries);
             (
                 inner
                     .client(client)
                     .and_then(|c| c.color_scheme)
-                    .unwrap_or(inner.active_color_scheme),
+                    .unwrap_or(inner.config.active_color_scheme),
                 restore,
             )
         };
@@ -31987,21 +32025,21 @@ impl Shared {
             let provenance = load.provenance;
             let (terminals, changed, published) = {
                 let mut inner = self.inner.lock();
-                if inner.appearance_config_overrides != appearance_entries {
+                if inner.config.appearance_config_overrides != appearance_entries {
                     return;
                 }
-                let changed =
-                    *inner.appearance != *appearance || inner.appearance_provenance != provenance;
-                inner.active_color_scheme = color_scheme;
-                inner.appearance = Arc::clone(&appearance);
-                inner.appearance_provenance.clone_from(&provenance);
+                let changed = *inner.config.appearance != *appearance
+                    || inner.config.appearance_provenance != provenance;
+                inner.config.active_color_scheme = color_scheme;
+                inner.config.appearance = Arc::clone(&appearance);
+                inner.config.appearance_provenance.clone_from(&provenance);
                 let terminals = if changed {
                     terminal_appearance_updates(&inner)
                 } else {
                     Vec::new()
                 };
                 let published = published_appearance(&inner);
-                inner.published_style_appearance = Some(Arc::clone(&published));
+                inner.config.published_style_appearance = Some(Arc::clone(&published));
                 (terminals, changed, published)
             };
             log::info!(
@@ -32101,7 +32139,7 @@ impl Shared {
     }
 
     fn apply_stored_mux_config_overrides(self: &Arc<Self>, reason: &str) {
-        let entries = self.inner.lock().mux_config_overrides.clone();
+        let entries = self.inner.lock().config.mux_config_overrides.clone();
         self.apply_mux_config_overrides(&entries, reason);
     }
 
@@ -32131,10 +32169,10 @@ impl Shared {
             if let Some(registered) = inner.client_mut(client) {
                 registered.color_scheme = Some(color_scheme);
             }
-            inner.active_color_scheme = color_scheme;
+            inner.config.active_color_scheme = color_scheme;
             (
-                inner.appearance.color_scheme != color_scheme,
-                inner.appearance_config_overrides.clone(),
+                inner.config.appearance.color_scheme != color_scheme,
+                inner.config.appearance_config_overrides.clone(),
                 client_hook_event(
                     &inner,
                     match color_scheme {
@@ -32163,16 +32201,16 @@ impl Shared {
         let provenance = load.provenance;
         let (terminals, published) = {
             let mut inner = self.inner.lock();
-            if inner.active_color_scheme != color_scheme
+            if inner.config.active_color_scheme != color_scheme
                 || inner.client(client).is_none_or(|c| c.subscriber.is_none())
-                || inner.appearance_config_overrides != appearance_config_overrides
+                || inner.config.appearance_config_overrides != appearance_config_overrides
             {
                 return;
             }
-            inner.appearance = Arc::clone(&appearance);
-            inner.appearance_provenance.clone_from(&provenance);
+            inner.config.appearance = Arc::clone(&appearance);
+            inner.config.appearance_provenance.clone_from(&provenance);
             let published = published_appearance(&inner);
-            inner.published_style_appearance = Some(Arc::clone(&published));
+            inner.config.published_style_appearance = Some(Arc::clone(&published));
             (terminal_appearance_updates(&inner), published)
         };
         for (terminal, pane_appearance) in terminals {
@@ -32245,7 +32283,7 @@ impl Shared {
         source_client_base: Option<&Path>,
         options: SourceFileLoadOptions,
     ) -> Result<(), DaemonError> {
-        self.inner.lock().config_files = format_config_files(files);
+        self.inner.lock().config.config_files = format_config_files(files);
         let explicit = self.mux_config_selection.lock().1.is_some();
         let mut parsed_roots = Vec::new();
         for config in files {
@@ -32335,8 +32373,8 @@ impl Shared {
                 inner
                     .client(client)
                     .and_then(|c| c.color_scheme)
-                    .unwrap_or(inner.active_color_scheme),
-                inner.appearance_config_overrides.clone(),
+                    .unwrap_or(inner.config.active_color_scheme),
+                inner.config.appearance_config_overrides.clone(),
                 client_terminal(&inner, client, kind),
             )
         };
@@ -32359,14 +32397,14 @@ impl Shared {
         let provenance = load.provenance;
         let (terminals, published) = {
             let mut inner = self.inner.lock();
-            if inner.appearance_config_overrides != appearance_config_overrides {
+            if inner.config.appearance_config_overrides != appearance_config_overrides {
                 return Ok(());
             }
-            inner.active_color_scheme = color_scheme;
-            inner.appearance = Arc::clone(&appearance);
-            inner.appearance_provenance.clone_from(&provenance);
+            inner.config.active_color_scheme = color_scheme;
+            inner.config.appearance = Arc::clone(&appearance);
+            inner.config.appearance_provenance.clone_from(&provenance);
             let published = published_appearance(&inner);
-            inner.published_style_appearance = Some(Arc::clone(&published));
+            inner.config.published_style_appearance = Some(Arc::clone(&published));
             (terminal_appearance_updates(&inner), published)
         };
         for (terminal, pane_appearance) in terminals {
@@ -36856,16 +36894,7 @@ struct ServerState {
     publication: Publication,
     artifact_state: ArtifactState,
     published_agent_parents: BTreeMap<PaneId, PaneId>,
-    appearance: Arc<TerminalAppearance>,
-    published_style_appearance: Option<Arc<TerminalAppearance>>,
-    appearance_provenance: AppearanceProvenance,
-    appearance_config_overrides: Vec<ConfigOverrideEntry>,
-    mux_config_overrides: Vec<ConfigOverrideEntry>,
-    config_files: String,
-    startup_source_client_working_directory: Option<PathBuf>,
-    mux_options: MuxOptions,
-    mux_option_underlay: MuxOptions,
-    active_color_scheme: TerminalColorScheme,
+    config: Config,
     client_flags: ClientFlags,
     pane_focus: BTreeSet<PaneId>,
     window_latest_clients: BTreeMap<WindowId, ClientId>,
@@ -36921,6 +36950,20 @@ struct ServerState {
     control_routes: BTreeMap<ClientId, ControlRoute>,
     scheduled_window_rename: Option<Instant>,
     preview_watched: BTreeSet<PaneId>,
+}
+
+#[derive(Default)]
+struct Config {
+    config_files: String,
+    appearance: Arc<TerminalAppearance>,
+    appearance_provenance: AppearanceProvenance,
+    startup_source_client_working_directory: Option<PathBuf>,
+    active_color_scheme: TerminalColorScheme,
+    published_style_appearance: Option<Arc<TerminalAppearance>>,
+    appearance_config_overrides: Vec<ConfigOverrideEntry>,
+    mux_options: MuxOptions,
+    mux_config_overrides: Vec<ConfigOverrideEntry>,
+    mux_option_underlay: MuxOptions,
 }
 
 #[derive(Default)]
@@ -37468,7 +37511,7 @@ fn sync_display_panes_overlays(
             let facts = borrowed_format_hook_facts(inner);
             let (_, _, state) = build_display_panes_state(
                 &inner.engine,
-                &inner.config_files,
+                &inner.config.config_files,
                 &facts,
                 source_pane,
                 mode.duration_ms,
@@ -41467,7 +41510,7 @@ fn client_environment_fact(entries: &[RawText]) -> Arc<ClientEnvironmentBlob> {
 }
 
 fn effective_mux_options(inner: &ServerState, client: ClientId) -> MuxOptions {
-    let mut options = inner.mux_options.clone();
+    let mut options = inner.config.mux_options.clone();
     let session = client_attached_session(inner, client);
     let mouse = inner.engine.effective_mouse(session);
     let source = options
@@ -43811,7 +43854,7 @@ impl CachedStatusPreparation {
                 .and_then(|c| c.environment.as_ref())
                 .map(Arc::downgrade),
             config_files: if config_files_requested {
-                inner.config_files.clone()
+                inner.config.config_files.clone()
             } else {
                 String::new()
             },
@@ -43847,7 +43890,7 @@ impl CachedStatusPreparation {
             && self.kind == inner.client(client).and_then(|c| c.kind)
             && self.terminal == inner.client(client).is_some_and(|c| c.has_terminal)
             && self.features == inner.client(client).and_then(|c| c.features)
-            && (!self.config_files_requested || self.config_files == inner.config_files)
+            && (!self.config_files_requested || self.config_files == inner.config.config_files)
             && (!self.viewport_requested
                 || (self.size.is_some()
                     && self
@@ -44124,7 +44167,7 @@ fn cached_live_status_context(
     let attached = attached.filter(|session| inner.engine.state.sessions.contains_key(session));
     let host = inner.engine.format_host().is_empty().then(host_names);
     let overrides = [
-        capture_config_files.then_some(("config_files", inner.config_files.as_str())),
+        capture_config_files.then_some(("config_files", inner.config.config_files.as_str())),
         host.map(|host| ("host", host.0.as_str())),
         host.map(|host| ("host_short", host.1.as_str())),
         attached.map(|_| ("pane_active", "1")),
@@ -44196,7 +44239,7 @@ fn status_request_with_facts(
             |snapshot| status_context(snapshot, &inner.engine, attached, focused_window),
         );
         if capture_config_files {
-            context.set_format_value("config_files", inner.config_files.clone());
+            context.set_format_value("config_files", inner.config.config_files.clone());
         }
         context
     });
@@ -45566,21 +45609,21 @@ fn stamp_snapshot_for_client_with(
     let contexts = inner.engine.format_context_snapshot(format_client);
     expand_window_status_labels(
         &inner.engine,
-        &inner.config_files,
+        &inner.config.config_files,
         facts,
         &contexts,
         snapshot,
     );
     stamp_pane_border_colours(
         &inner.engine,
-        &inner.config_files,
+        &inner.config.config_files,
         facts,
         &contexts,
         snapshot,
     );
     let border_cycle = stamp_pane_border_chrome(
         &inner.engine,
-        &inner.config_files,
+        &inner.config.config_files,
         facts,
         &contexts,
         snapshot,
@@ -45761,7 +45804,7 @@ fn panes_mode_snapshot(
             Some(shown),
             session,
         );
-        context.set_format_value("config_files", &inner.config_files);
+        context.set_format_value("config_files", &inner.config.config_files);
         let mut hooks = DaemonFormatHooks::command(facts).with_option_engine(engine);
         expand_format_values(format, &context, &mut hooks)
     };
@@ -50146,7 +50189,7 @@ fn expand_buffer_path(
                     .format_status_context_for_client(session, window, pane, client_session)
             },
         );
-    format_context.set_format_value("config_files", inner.config_files.clone());
+    format_context.set_format_value("config_files", inner.config.config_files.clone());
     let facts = borrowed_format_hook_facts(inner);
     let mut hooks =
         DaemonFormatHooks::command_with_optional_variables(&facts, context.format_variables())
@@ -51024,6 +51067,7 @@ fn shell_job_working_directory(
         .flatten();
     let attached_session = client.and_then(|client| client_attached_session(inner, client));
     inner
+        .config
         .startup_source_client_working_directory
         .clone()
         .or_else(|| {
@@ -51910,7 +51954,7 @@ fn rename_paste_buffer(
 }
 
 fn client_file_working_directory(inner: &ServerState, client: Option<ClientId>) -> PathBuf {
-    if let Some(startup) = inner.startup_source_client_working_directory.clone() {
+    if let Some(startup) = inner.config.startup_source_client_working_directory.clone() {
         return startup;
     }
     let attached = client.and_then(|client| client_attached_session(inner, client));
@@ -52643,7 +52687,7 @@ fn expand_command_format(
             .map(|session| client_format_facts(inner, client, session));
     }
     let mut variables = target.format_variables.clone();
-    variables.insert("config_files".to_owned(), inner.config_files.clone());
+    variables.insert("config_files".to_owned(), inner.config.config_files.clone());
     let mut hooks = DaemonFormatHooks::command_with_variables(&facts, &variables);
     if let Some(command_name) = command_name {
         hooks = hooks.with_command_item(command_name);

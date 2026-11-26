@@ -76,8 +76,8 @@ impl Startup {
         let configs = shared.selected_mux_config_files();
         {
             let mut inner = shared.inner.lock();
-            inner.config_files = format_config_files(&configs);
-            inner.startup_source_client_working_directory = base.map(Path::to_owned);
+            inner.config.config_files = format_config_files(&configs);
+            inner.config.startup_source_client_working_directory = base.map(Path::to_owned);
         }
         let execution = shared.config_child_execution(None);
         Self {
@@ -188,7 +188,11 @@ impl Startup {
                 continue;
             }
             shared.publish_deferred_control_config_warnings(std::mem::take(&mut self.warnings));
-            shared.inner.lock().startup_source_client_working_directory = None;
+            shared
+                .inner
+                .lock()
+                .config
+                .startup_source_client_working_directory = None;
             *shared.startup_config_causes.lock() = self.report.take_startup_causes();
             shared.finish_initialization();
             return Some(Ok(()));

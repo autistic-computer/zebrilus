@@ -116,7 +116,7 @@ fn assert_fresh(first: &StatusRequest, next: &StatusRequest) {
 #[test]
 fn status_preparation_omits_large_unused_config_capture_and_reuses_requests() {
     let (mut inner, client, context) = fixture("#{session_name}:#{client_width}");
-    inner.config_files = "a".repeat(STATUS_PREPARATION_MAX_BYTES + 1);
+    inner.config.config_files = "a".repeat(STATUS_PREPARATION_MAX_BYTES + 1);
     let first = shared_request(&inner, client);
     assert_left(&first, "prepared:80");
     assert!(!first.references.contains("*"));
@@ -132,7 +132,7 @@ fn status_preparation_omits_large_unused_config_capture_and_reuses_requests() {
         assert!(inner.publication.status_preparation_cache.lock().is_none());
     }
     let revision = inner.engine.format_cache_revision();
-    inner.config_files = "b".repeat(STATUS_PREPARATION_MAX_BYTES + 2);
+    inner.config.config_files = "b".repeat(STATUS_PREPARATION_MAX_BYTES + 2);
     let changed = shared_request(&inner, client);
     assert_eq!(inner.engine.format_cache_revision(), revision);
     assert_eq!(Arc::ptr_eq(&first, &changed), selective);
@@ -161,7 +161,7 @@ fn status_preparation_keeps_static_indirect_config_dependencies_fresh() {
     for template in ["#{config_files}", "#{E:status-right}", "#{T:status-right}"] {
         let (mut inner, client, mut context) = fixture(template);
         set_option(&mut inner, &mut context, "status-right", "#{config_files}");
-        inner.config_files = "/first.conf".to_owned();
+        inner.config.config_files = "/first.conf".to_owned();
         let first = shared_request(&inner, client);
         assert!(first.references.contains("config_files"), "{template}");
         assert_left(&first, "/first.conf");
@@ -170,7 +170,7 @@ fn status_preparation_keeps_static_indirect_config_dependencies_fresh() {
             assert!(cache.as_ref().unwrap().config_files_requested);
         }
         let revision = inner.engine.format_cache_revision();
-        inner.config_files = "/next.conf".to_owned();
+        inner.config.config_files = "/next.conf".to_owned();
         let next = shared_request(&inner, client);
         assert_eq!(inner.engine.format_cache_revision(), revision);
         assert_fresh(&first, &next);
@@ -191,7 +191,7 @@ fn status_preparation_keeps_nested_loop_config_dependencies_fresh() {
             zz_mux::PaneKind::Terminal,
         )
         .unwrap();
-    inner.config_files = "/first.conf".to_owned();
+    inner.config.config_files = "/first.conf".to_owned();
     let first = shared_request(&inner, client);
     assert!(first.references.contains("config_files"));
     assert_eq!(
@@ -200,7 +200,7 @@ fn status_preparation_keeps_nested_loop_config_dependencies_fresh() {
     );
     assert_left(&first, "[0:;;]");
     let revision = inner.engine.format_cache_revision();
-    inner.config_files = "/next.conf".to_owned();
+    inner.config.config_files = "/next.conf".to_owned();
     let next = shared_request(&inner, client);
     assert_eq!(inner.engine.format_cache_revision(), revision);
     assert_fresh(&first, &next);
@@ -235,7 +235,7 @@ fn status_preparation_keeps_border_only_config_capture_and_guard() {
         "pane-active-border-style",
         "fg=#{?config_files,red,green}",
     );
-    inner.config_files = "/first.conf".to_owned();
+    inner.config.config_files = "/first.conf".to_owned();
     let first = shared_request(&inner, client);
     assert!(!first.references.contains("config_files"));
     let parameters = status_parameters(&inner, context.session, &first.option_snapshot);
@@ -249,7 +249,7 @@ fn status_preparation_keeps_border_only_config_capture_and_guard() {
         assert!(cache.as_ref().unwrap().config_files_requested);
     }
     let revision = inner.engine.format_cache_revision();
-    inner.config_files = "/next.conf".to_owned();
+    inner.config.config_files = "/next.conf".to_owned();
     let next = shared_request(&inner, client);
     assert_eq!(inner.engine.format_cache_revision(), revision);
     assert_fresh(&first, &next);
@@ -275,7 +275,7 @@ fn status_preparation_keeps_border_only_config_capture_and_guard() {
 #[test]
 fn status_preparation_retains_config_for_unknown_jobs_full_providers_and_rollback() {
     let (mut inner, client, mut context) = fixture("#{session_name}");
-    inner.config_files = "/retained.conf".to_owned();
+    inner.config.config_files = "/retained.conf".to_owned();
     let job = status_request_with_selected_facts(
         &inner,
         client,
@@ -437,7 +437,7 @@ fn status_preparation_replaces_shared_requests_for_border_clock_and_source_chang
             Arc::ptr_eq(&tick, &shared_request(&inner, client)),
             reuse_enabled()
         );
-        inner.config_files = "/new.conf".to_owned();
+        inner.config.config_files = "/new.conf".to_owned();
         let source = shared_request(&inner, client);
         assert!(!Arc::ptr_eq(&tick, &source));
         assert_left(&source, "prepared:/new.conf");
@@ -716,9 +716,9 @@ fn status_preparation_invalidates_config_state_options_data_environment_and_cloc
         let pane = context.pane.unwrap();
         inner.engine.state.update_pane_title(pane, "first").unwrap();
         inner.engine.set_format_server_identity(11, "22", "user");
-        inner.config_files = "/first.conf".to_owned();
+        inner.config.config_files = "/first.conf".to_owned();
         let first = request(&inner, client);
-        inner.config_files = "/second.conf".to_owned();
+        inner.config.config_files = "/second.conf".to_owned();
         let config = request(&inner, client);
         assert_fresh(&first, &config);
         assert_eq!(
@@ -1024,7 +1024,7 @@ fn status_preparation_rejects_oversized_context_and_environment_capture() {
         if reuse_enabled() {
             assert!(inner.publication.status_preparation_cache.lock().is_some());
         }
-        inner.config_files = "c".repeat(400_000);
+        inner.config.config_files = "c".repeat(400_000);
         let large_environment = "e".repeat(400_000);
         inner
             .engine

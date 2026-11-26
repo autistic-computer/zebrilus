@@ -2378,6 +2378,7 @@ fn the_agent_options_reconfigure_what_the_next_pane_spawns() {
             .shared
             .inner
             .lock()
+            .config
             .mux_options
             .get(MuxOptionKey::AgentCommand)
             .expect("the option is published")

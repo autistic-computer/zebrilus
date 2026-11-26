@@ -215,7 +215,7 @@ fn status_preparation_reuses_engine_capture_and_keeps_client_and_config_values_f
         renderer.render_initial(&resized).left,
         format!("{prefix}120::1")
     );
-    inner.config_files = "new.conf".to_owned();
+    inner.config.config_files = "new.conf".to_owned();
     let configured = request(&inner);
     assert_eq!(
         renderer.render_initial(&configured).left,

@@ -247,7 +247,7 @@ pub(super) fn client_chooser_rows(
                     .format_context_snapshot(FormatClient::Attached(session_id))
             })
             .status_context(Some(session_id), Some(focused), None);
-        context.config_files.clone_from(&inner.config_files);
+        context.config_files.clone_from(&inner.config.config_files);
         let mut client_facts = client_format_facts(inner, client, session_id);
         client_facts.line = line;
         let name = client_facts.name.clone();
@@ -300,7 +300,7 @@ fn client_info_lines(inner: &ServerState, client: ClientId) -> Vec<String> {
         None,
         session_id,
     );
-    context.config_files.clone_from(&inner.config_files);
+    context.config_files.clone_from(&inner.config.config_files);
     context.format_now = i64::try_from(unix_timestamp()).ok().filter(|now| *now != 0);
     let mut facts = borrowed_format_hook_facts(inner);
     let client_facts = client_format_facts(inner, client, session_id);
@@ -514,8 +514,13 @@ impl Styles<'_> {
         pane: Option<PaneId>,
     ) -> String {
         let engine = &self.inner.engine;
-        let context =
-            server_format_context(engine, &self.inner.config_files, session, window, pane);
+        let context = server_format_context(
+            engine,
+            &self.inner.config.config_files,
+            session,
+            window,
+            pane,
+        );
         let mut hooks = ScopedHooks {
             engine,
             variables: scope_variables(
@@ -679,7 +684,7 @@ pub(super) fn switch_match_style(inner: &ServerState, pane: PaneId) -> String {
 
 pub(super) fn expand_without_context(inner: &ServerState, value: &str) -> String {
     let engine = &inner.engine;
-    let context = server_format_context(engine, &inner.config_files, None, None, None);
+    let context = server_format_context(engine, &inner.config.config_files, None, None, None);
     let mut hooks = ScopedHooks {
         engine,
         variables: BTreeMap::new(),
@@ -713,7 +718,7 @@ pub(super) fn mode_prompt_look(
     let (style, command_style) = inner.engine.message_styles_for_session(session);
     let style = if command_mode { command_style } else { style };
     let engine = &inner.engine;
-    let context = server_format_context(engine, &inner.config_files, None, None, None);
+    let context = server_format_context(engine, &inner.config.config_files, None, None, None);
     let mut names = flags.to_vec();
     if command_mode {
         names.push("COMMANDMODE");

@@ -222,12 +222,12 @@ fn shell_job_working_directory_follows_tmux_precedence() {
         PathBuf::from("/job-explicit-cwd")
     );
 
-    inner.startup_source_client_working_directory = Some(PathBuf::from("/job-startup-cwd"));
+    inner.config.startup_source_client_working_directory = Some(PathBuf::from("/job-startup-cwd"));
     assert_eq!(
         shell_job_working_directory(&inner, invoking_client, &target_context, None),
         PathBuf::from("/job-startup-cwd")
     );
-    inner.startup_source_client_working_directory = None;
+    inner.config.startup_source_client_working_directory = None;
 
     assert_eq!(
         shell_job_working_directory(&inner, invoking_client, &target_context, None),

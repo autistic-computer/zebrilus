@@ -186,21 +186,21 @@ fn shared_tree(
     let contexts = inner.engine.format_context_snapshot(FormatClient::NoClient);
     expand_window_status_labels(
         &inner.engine,
-        &inner.config_files,
+        &inner.config.config_files,
         facts,
         &contexts,
         &mut tree,
     );
     stamp_pane_border_colours(
         &inner.engine,
-        &inner.config_files,
+        &inner.config.config_files,
         facts,
         &contexts,
         &mut tree,
     );
     let _ = stamp_pane_border_chrome(
         &inner.engine,
-        &inner.config_files,
+        &inner.config.config_files,
         facts,
         &contexts,
         &mut tree,
@@ -258,7 +258,10 @@ fn client_view(
                 Some(window.id),
                 Some(window.active_pane),
             );
-            inner.config_files.clone_into(&mut context.config_files);
+            inner
+                .config
+                .config_files
+                .clone_into(&mut context.config_files);
             let mut hooks = DaemonFormatHooks::command(facts).with_option_engine(engine);
             let style = expand_window_status_style(&formats, &context, &mut hooks);
             let label = expand_status(format, &context, &mut hooks);
@@ -292,7 +295,10 @@ fn client_view(
             for (pane, entry) in &window.panes {
                 let mut context =
                     contexts.status_context(Some(session.id), Some(window.id), Some(*pane));
-                inner.config_files.clone_into(&mut context.config_files);
+                inner
+                    .config
+                    .config_files
+                    .clone_into(&mut context.config_files);
                 let mut hooks = DaemonFormatHooks::command(facts).with_option_engine(engine);
                 let mut border_colour = entry.border_colour;
                 let mut active_border_colour = entry.active_border_colour;
@@ -1134,7 +1140,7 @@ impl Shared {
             }
             (
                 (*published_appearance(&inner)).clone(),
-                inner.appearance_provenance.clone(),
+                inner.config.appearance_provenance.clone(),
                 (subscriptions.options != 0).then(|| {
                     let options = effective_mux_options(&inner, client);
                     MuxOptions::from_entries(
