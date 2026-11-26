@@ -1445,3 +1445,656 @@ fn forget_floating_pane_reports(inner: &mut ServerState) {
         inner.panes.reported_pane_places.remove(&pane);
     }
 }
+
+type SnapshotPresence = BTreeMap<SessionId, Vec<(ClientId, SessionViewer)>>;
+
+pub(super) fn snapshot_presence(inner: &ServerState) -> SnapshotPresence {
+    inner
+        .attachment
+        .attached
+        .iter()
+        .filter_map(|(session, clients)| {
+            let session_state = inner.engine.state.sessions.get(session)?;
+            let viewers = clients
+                .iter()
+                .map(|client| {
+                    let name = if inner.client(*client).and_then(|c| c.kind)
+                        == Some(ClientKind::Control)
+                    {
+                        client_format_name(inner, *client)
+                    } else {
+                        inner
+                            .client(*client)
+                            .and_then(|c| c.name.as_ref())
+                            .filter(|name| !name.is_empty())
+                            .cloned()
+                            .unwrap_or_else(|| format!("device-{}", client.0))
+                    };
+                    (
+                        *client,
+                        SessionViewer {
+                            name,
+                            window: client_focused_window(inner, *client, session_state),
+                            is_self: false,
+                        },
+                    )
+                })
+                .collect();
+            Some((*session, viewers))
+        })
+        .collect()
+}
+
+pub(super) fn simulator_panes(inner: &ServerState) -> BTreeMap<PaneId, SimulatorDescriptor> {
+    inner
+        .engine
+        .state
+        .windows
+        .values()
+        .flat_map(|window| window.panes.values())
+        .filter_map(|pane| match &pane.kind {
+            PaneKind::Simulator(descriptor) => Some((pane.id, descriptor.clone())),
+            _ => None,
+        })
+        .collect()
+}
+
+#[cfg(feature = "agent")]
+pub(super) fn record_agent_parents(
+    inner: &mut ServerState,
+    client: ClientId,
+    context: &ExecutionContext,
+    command_name: &str,
+    effects: &[MuxEffect],
+) -> Vec<PaneId> {
+    let caller = inner
+        .client(context.replay_client().unwrap_or(client))
+        .and_then(|client| client.origin)
+        .filter(|origin| is_agent_chat(inner, *origin));
+    let opens = matches!(command_name, "new-pane" | "split-window" | "new-window");
+    let mut first_chat = true;
+    let mut children = Vec::new();
+    for effect in effects {
+        let MuxEffect::PaneCreated { pane, kind, .. } = effect else {
+            continue;
+        };
+        let opened = matches!(kind, PaneKindSnapshot::Agent(_)) && std::mem::take(&mut first_chat);
+        let reopened = context.agent_parent().filter(|_| opened);
+        let parent = reopened.or_else(|| {
+            caller.filter(|caller| {
+                caller != pane
+                    && ((opened && opens) || inner.engine.agent_parent(*caller).is_some())
+            })
+        });
+        if let Some(parent) = parent {
+            inner.engine.set_agent_parent(*pane, parent);
+            children.push(*pane);
+        }
+    }
+    publish_agent_parents(inner);
+    children
+}
+
+fn publish_agent_parents(inner: &mut ServerState) {
+    if *inner.engine.agent_parents() == inner.agents.published_agent_parents {
+        return;
+    }
+    inner.agents.published_agent_parents = inner.engine.agent_parents().clone();
+    let message = Shared::event(EventPayload::AgentParents {
+        parents: inner.agents.published_agent_parents.clone(),
+    });
+    let Ok(encoded) = zz_protocol::encode_protocol_message(&message).map(Arc::<[u8]>::from) else {
+        return;
+    };
+    for subscriber in inner
+        .clients
+        .values()
+        .filter_map(|client| client.subscriber.as_ref())
+    {
+        let _ = subscriber.enqueue_reliable_frame(&message, Arc::clone(&encoded).into(), true);
+    }
+}
+
+pub(super) fn send_agent_parents(inner: &ServerState, outbound: &OutboundMailbox) {
+    let parents = inner.engine.agent_parents();
+    if !parents.is_empty() {
+        Shared::send_event(
+            outbound,
+            EventPayload::AgentParents {
+                parents: parents.clone(),
+            },
+        );
+    }
+}
+
+pub(super) fn stamp_snapshot_for_client(
+    inner: &ServerState,
+    client: ClientId,
+    snapshot: &mut MuxSnapshot,
+    presence: &SnapshotPresence,
+) {
+    let facts = format_hook_facts(inner);
+    stamp_snapshot_for_client_with(inner, client, snapshot, presence, &facts);
+}
+
+fn stamp_snapshot_for_client_with(
+    inner: &ServerState,
+    client: ClientId,
+    snapshot: &mut MuxSnapshot,
+    presence: &SnapshotPresence,
+    facts: &FormatHookFacts,
+) {
+    snapshot.focused_window = client_focused_window_for_attachment(inner, client);
+    for session in &mut snapshot.sessions {
+        session.viewers = presence
+            .get(&session.id)
+            .into_iter()
+            .flatten()
+            .map(|(viewer_client, viewer)| SessionViewer {
+                is_self: *viewer_client == client,
+                ..viewer.clone()
+            })
+            .collect();
+    }
+    let format_client = client_attached_session(inner, client)
+        .map_or(FormatClient::Unattached, FormatClient::Attached);
+    let contexts = inner.engine.format_context_snapshot(format_client);
+    expand_window_status_labels(
+        &inner.engine,
+        &inner.config.config_files,
+        facts,
+        &contexts,
+        snapshot,
+    );
+    stamp_pane_border_colours(
+        &inner.engine,
+        &inner.config.config_files,
+        facts,
+        &contexts,
+        snapshot,
+    );
+    let border_cycle = stamp_pane_border_chrome(
+        &inner.engine,
+        &inner.config.config_files,
+        facts,
+        &contexts,
+        snapshot,
+    );
+    let mut cycling = inner.attachment.border_cycle.lock();
+    if border_cycle {
+        cycling.insert(client);
+    } else {
+        cycling.remove(&client);
+    }
+    drop(cycling);
+    drop(contexts);
+    stamp_pane_modes(inner, facts, snapshot);
+}
+
+pub(super) fn stamp_pane_modes(
+    inner: &ServerState,
+    facts: &FormatHookFacts,
+    snapshot: &mut MuxSnapshot,
+) {
+    if inner.modes.pane_modes.is_empty() {
+        return;
+    }
+    let engine = &inner.engine;
+    for session in &mut snapshot.sessions {
+        for window in &mut session.windows {
+            for (pane, pane_snapshot) in &mut window.panes {
+                pane_snapshot.mode = inner
+                    .modes
+                    .pane_modes
+                    .get(pane)
+                    .and_then(|modes| modes.last())
+                    .map(|mode| match mode {
+                        PaneModeRequest::Clock => {
+                            let (colour, style) = engine.clock_mode_options(window.id);
+                            PaneMode::Clock {
+                                time: clock_mode_time(facts, style),
+                                colour,
+                            }
+                        }
+                        PaneModeRequest::Customize(mode) => {
+                            let mut expand = customize_expander(inner, *pane, facts);
+                            let (state, mut presentation, prompt) =
+                                engine.customize_presentation(*pane, mode, &mut expand);
+                            presentation.selection_style =
+                                chooser_presentation::tree_selection_style_for_pane(inner, *pane);
+                            presentation.border_style =
+                                chooser_presentation::border_style_for_pane(inner, *pane);
+                            let (prompt_type, prompt_flags) = mode.prompt_kind();
+                            (presentation.prompt_style, presentation.prompt_cursor) =
+                                chooser_presentation::mode_prompt_look(
+                                    inner,
+                                    chooser_presentation::pane_session(inner, *pane),
+                                    prompt_type,
+                                    prompt_flags,
+                                    &mode.prompt_input(),
+                                    mode.prompt_command_mode(),
+                                );
+                            let (prompt, prompt_cursor, prompt_top) = prompt.unwrap_or_default();
+                            PaneMode::Customize {
+                                state,
+                                presentation: Box::new(presentation),
+                                offset: MuxEngine::customize_offset(mode),
+                                prompt,
+                                prompt_cursor,
+                                prompt_top,
+                            }
+                        }
+                        PaneModeRequest::Panes(mode) => {
+                            panes_mode_snapshot(inner, facts, *pane, mode)
+                        }
+                        PaneModeRequest::Switch(mode) => {
+                            let entries = chooser_presentation::switch_matches(inner, *pane, mode);
+                            let (columns, rows) = engine.pane_geometry(*pane).unwrap_or((80, 24));
+                            let visible = usize::from(rows).saturating_sub(1);
+                            let mut current = mode.current;
+                            let mut offset = mode.offset;
+                            if entries.is_empty() {
+                                current = 0;
+                                offset = 0;
+                            } else {
+                                current = current.min(entries.len() - 1);
+                                if current < offset {
+                                    offset = current;
+                                } else if visible != 0 && current >= offset + visible {
+                                    offset = current + 1 - visible;
+                                }
+                            }
+                            let (prompt, prompt_cursor) = mode.prompt.draw(columns);
+                            let (prompt_style, prompt_shape) =
+                                chooser_presentation::mode_prompt_look(
+                                    inner,
+                                    chooser_presentation::pane_session(inner, *pane),
+                                    "search",
+                                    &["INCREMENTAL", "NOFORMAT"],
+                                    &mode.prompt.input(),
+                                    mode.prompt.command_mode(),
+                                );
+                            let matches = entries
+                                .iter()
+                                .map(|entry| {
+                                    entry
+                                        .columns
+                                        .iter()
+                                        .filter_map(|column| u16::try_from(*column).ok())
+                                        .collect()
+                                })
+                                .collect();
+                            PaneMode::Switch {
+                                rows: entries.into_iter().map(|entry| entry.text).collect(),
+                                selected: u32::try_from(current).unwrap_or(u32::MAX),
+                                offset: u32::try_from(offset).unwrap_or(u32::MAX),
+                                selection_style: chooser_presentation::mode_style_for_pane(
+                                    inner, *pane,
+                                ),
+                                prompt,
+                                prompt_style,
+                                prompt_cursor,
+                                matches,
+                                match_style: chooser_presentation::switch_match_style(inner, *pane),
+                                prompt_shape,
+                            }
+                        }
+                    });
+            }
+        }
+    }
+}
+
+pub(super) fn panes_mode_snapshot(
+    inner: &ServerState,
+    facts: &FormatHookFacts,
+    pane: PaneId,
+    mode: &PanesMode,
+) -> PaneMode {
+    let engine = &inner.engine;
+    let (columns, rows) = engine.pane_geometry(pane).unwrap_or((80, 24));
+    let options = engine.display_panes_options(
+        engine
+            .state
+            .window_for_pane(pane)
+            .unwrap_or(mode.source_window),
+    );
+    let geometry = engine
+        .panes_mode_geometry(mode.source_window, columns, rows)
+        .unwrap_or_default();
+    let active = engine
+        .state
+        .windows
+        .get(&mode.source_window)
+        .map(|window| window.active_pane);
+    let captured = inner.modes.panes_mode_frames.get(&pane);
+    let resized = captured.is_none_or(|captured| {
+        if captured.size != Some((columns, rows)) {
+            captured.resized.set(true);
+        }
+        captured.resized.get()
+    });
+    let live = if resized {
+        panes_mode_live_frames(inner, mode.source_window)
+    } else {
+        BTreeMap::new()
+    };
+    let preview = captured
+        .filter(|_| inner.modes.pane_mode_zooms.contains(&pane))
+        .and_then(|captured| captured.frames.get(&pane));
+    let frame = |area: &zz_mux::PanesModeAreaGeometry| {
+        if !resized {
+            return captured.and_then(|captured| captured.frames.get(&area.pane));
+        }
+        if area.pane == pane
+            && let Some(preview) = preview
+                .filter(|preview| area.width <= preview.columns && area.height <= preview.rows)
+        {
+            return Some(preview);
+        }
+        live.get(&area.pane)
+    };
+    let expand_in = |format: &str, session: SessionId, window: WindowId, shown: PaneId| {
+        let mut context = engine.format_status_context_for_client(
+            Some(session),
+            Some(window),
+            Some(shown),
+            session,
+        );
+        context.set_format_value("config_files", &inner.config.config_files);
+        let mut hooks = DaemonFormatHooks::command(facts).with_option_engine(engine);
+        expand_format_values(format, &context, &mut hooks)
+    };
+    let expand = |format: &str, shown: PaneId| {
+        expand_in(format, mode.source_session, mode.source_window, shown)
+    };
+    let border_style = engine
+        .state
+        .window_for_pane(pane)
+        .and_then(|window| engine.state.windows.get(&window))
+        .map_or_else(
+            || options.border_style.clone(),
+            |window| {
+                let current = engine
+                    .state
+                    .sessions
+                    .get(&window.session)
+                    .map_or(window.id, |session| session.active_window);
+                expand_in(&options.border_style, window.session, current, pane)
+            },
+        );
+    let areas = geometry
+        .areas
+        .into_iter()
+        .map(|area| {
+            let colour = if Some(area.pane) == active {
+                &options.active_colour
+            } else {
+                &options.colour
+            };
+            PanesModeArea {
+                pane: area.pane,
+                number: area.number,
+                x: area.x,
+                y: area.y,
+                width: area.width,
+                height: area.height,
+                colour: expand(colour, area.pane),
+                label: if options.format.is_empty() {
+                    String::new()
+                } else {
+                    truncate_pane_indicator_label(expand(&options.format, area.pane))
+                },
+                viewport: frame(&area).map(|viewport| (**viewport).clone()),
+            }
+        })
+        .collect();
+    PaneMode::Panes {
+        areas,
+        borders: geometry
+            .borders
+            .into_iter()
+            .map(|(x, y, cell)| PanesModeBorder { x, y, cell })
+            .collect(),
+        border_style,
+        copy: geometry.copy,
+        format: !options.format.is_empty(),
+        clears: geometry.clears,
+    }
+}
+
+pub(super) fn customize_expander<'a>(
+    inner: &'a ServerState,
+    pane: PaneId,
+    facts: &'a dyn crate::status::FormatFactSource,
+) -> impl FnMut(&str, &BTreeMap<String, String>) -> String + 'a {
+    let engine = &inner.engine;
+    let window = engine.state.window_for_pane(pane);
+    let session = window
+        .and_then(|window| engine.state.windows.get(&window))
+        .map(|window| window.session);
+    let context = ExecutionContext::new(session, window, Some(pane));
+    move |format, variables| {
+        let mut hooks =
+            DaemonFormatHooks::command_with_variables(facts, variables).with_option_engine(engine);
+        engine.expand_pane_format(format, &context, None, FormatClient::NoClient, &mut hooks)
+    }
+}
+
+fn clock_mode_time(facts: &dyn crate::status::FormatFactSource, style: u8) -> String {
+    let mut hooks = DaemonFormatHooks::command(facts);
+    let mut time = hooks.strftime(match style {
+        0 => "%l:%M ",
+        2 => "%l:%M:%S ",
+        3 => "%H:%M:%S",
+        _ => "%H:%M",
+    });
+    if style == 0 || style == 2 {
+        let hour = hooks.strftime("%H").parse::<u32>().unwrap_or_default();
+        time.push_str(if hour >= 12 { "PM" } else { "AM" });
+    }
+    time
+}
+
+pub(super) fn stamp_pane_border_chrome(
+    engine: &MuxEngine,
+    config_files: &str,
+    facts: &FormatHookFacts,
+    contexts: &zz_mux::FormatContextSnapshot<'_>,
+    snapshot: &mut MuxSnapshot,
+) -> bool {
+    let mut animated = false;
+    for session in &mut snapshot.sessions {
+        for window in &mut session.windows {
+            window.pane_border_status = engine.displayed_pane_border_status(window.id);
+            window.pane_border_lines = engine.pane_border_lines(window.id);
+            window.pane_border_indicators = engine.pane_border_indicators(window.id);
+            for float in &mut window.floating {
+                float.border_lines = engine.pane_lines(float.pane);
+                float.border_status = engine.floating_pane_border_status(float.pane);
+            }
+            let tiled_status = window.pane_border_status.is_on();
+            let float_status: Vec<PaneId> = window
+                .floating
+                .iter()
+                .filter(|float| float.border_status.is_on())
+                .map(|float| float.pane)
+                .collect();
+            if !tiled_status && float_status.is_empty() {
+                continue;
+            }
+            for (pane, pane_snapshot) in &mut window.panes {
+                if !tiled_status && !float_status.contains(pane) {
+                    continue;
+                }
+                let format = engine.pane_border_format(*pane);
+                if format.is_empty() {
+                    continue;
+                }
+                let mut context =
+                    contexts.status_context(Some(session.id), Some(window.id), Some(*pane));
+                context.set_format_value("config_files", config_files);
+                let mut hooks = DaemonFormatHooks::command(facts)
+                    .with_option_engine(engine)
+                    .with_cycle();
+                let (text, cycles) = crate::status::expand_cycle_frames(|| {
+                    expand_status(&format, &context, &mut hooks)
+                });
+                pane_snapshot.border_status_text = text;
+                animated |= cycles;
+            }
+        }
+    }
+    animated
+}
+
+pub(super) fn stamp_pane_border_colours(
+    engine: &MuxEngine,
+    config_files: &str,
+    facts: &FormatHookFacts,
+    contexts: &zz_mux::FormatContextSnapshot<'_>,
+    snapshot: &mut MuxSnapshot,
+) {
+    if !engine.has_pane_border_style_settings() {
+        return;
+    }
+    let resolve = |value: Option<String>, session, window, pane| {
+        let value = value?;
+        let mut context = contexts.status_context(Some(session), Some(window), Some(pane));
+        context.set_format_value("config_files", config_files);
+        let mut hooks = DaemonFormatHooks::command(facts).with_option_engine(engine);
+        let expanded = if value.contains("#{") {
+            expand_format_values(&value, &context, &mut hooks)
+        } else {
+            value
+        };
+        zz_protocol::parse_style(&expanded)?.fg
+    };
+    for session in &mut snapshot.sessions {
+        for window in &mut session.windows {
+            for (pane, pane_snapshot) in &mut window.panes {
+                let styles = engine.pane_border_style_values(*pane);
+                pane_snapshot.border_colour = resolve(styles.border, session.id, window.id, *pane);
+                pane_snapshot.active_border_colour =
+                    resolve(styles.active_border, session.id, window.id, *pane);
+            }
+        }
+    }
+}
+
+pub(super) fn expand_window_status_labels(
+    engine: &MuxEngine,
+    config_files: &str,
+    facts: &FormatHookFacts,
+    contexts: &zz_mux::FormatContextSnapshot<'_>,
+    snapshot: &mut MuxSnapshot,
+) {
+    for session in &mut snapshot.sessions {
+        for window in &mut session.windows {
+            let formats = engine.window_status_formats(window.id);
+            let format = if window.id == session.active_window {
+                &formats.current_format
+            } else {
+                &formats.format
+            };
+            let mut context = contexts.status_context(
+                Some(session.id),
+                Some(window.id),
+                Some(window.active_pane),
+            );
+            context.set_format_value("config_files", config_files);
+            let mut hooks = DaemonFormatHooks::command(facts).with_option_engine(engine);
+            let style = expand_window_status_style(&formats, &context, &mut hooks);
+            let label = expand_status(format, &context, &mut hooks);
+            window.status_label =
+                truncate_window_status_label(format!("#[{style}]#[push-default]{label}"));
+        }
+    }
+}
+
+pub(super) fn expand_window_status_style(
+    formats: &zz_mux::WindowStatusFormats,
+    context: &zz_mux::StatusContext,
+    hooks: &mut DaemonFormatHooks<'_>,
+) -> String {
+    let mut style = if context.variable("window_active").as_deref() == Some("1") {
+        let current = expand_status(&formats.current_style, context, hooks);
+        if current == "default" {
+            expand_status(&formats.style, context, hooks)
+        } else {
+            current
+        }
+    } else {
+        expand_status(&formats.style, context, hooks)
+    };
+    if context.variable("window_last_flag").as_deref() == Some("1") {
+        let last = expand_status(&formats.last_style, context, hooks);
+        append_window_status_style(&mut style, &last);
+    }
+    let mut bell_styled = false;
+    if context.variable("window_bell_flag").as_deref() == Some("1") {
+        let bell = expand_status(&formats.bell_style, context, hooks);
+        if bell != "default" && !bell.is_empty() {
+            append_window_status_style(&mut style, &bell);
+            bell_styled = true;
+        }
+    }
+    if !bell_styled
+        && (context.variable("window_activity_flag").as_deref() == Some("1")
+            || context.variable("window_silence_flag").as_deref() == Some("1"))
+    {
+        let activity = expand_status(&formats.activity_style, context, hooks);
+        append_window_status_style(&mut style, &activity);
+    }
+    style
+}
+
+fn append_window_status_style(style: &mut String, layer: &str) {
+    if layer == "default" || layer.is_empty() {
+        return;
+    }
+    if !style.is_empty() {
+        style.push(' ');
+    }
+    style.push_str(layer);
+}
+
+pub(super) fn truncate_window_status_label(mut label: String) -> String {
+    if label.len() <= MAX_WINDOW_STATUS_LABEL_BYTES {
+        return label;
+    }
+    let boundary = (0..=MAX_WINDOW_STATUS_LABEL_BYTES)
+        .rev()
+        .find(|index| label.is_char_boundary(*index))
+        .unwrap_or_default();
+    label.truncate(boundary);
+    label
+}
+
+pub(super) fn truncate_pane_indicator_label(mut label: String) -> String {
+    if label.len() <= MAX_PANE_INDICATOR_LABEL_BYTES {
+        return label;
+    }
+    let boundary = (0..=MAX_PANE_INDICATOR_LABEL_BYTES)
+        .rev()
+        .find(|index| label.is_char_boundary(*index))
+        .unwrap_or_default();
+    label.truncate(boundary);
+    label
+}
+
+pub(super) fn prompt_key_spelling(input: &zz_terminal::KeyInput) -> String {
+    if input.key == zz_terminal::KeyCode::Tab
+        && input.modifiers.shift()
+        && !input.modifiers.control()
+        && !input.modifiers.alt()
+    {
+        return MENU_BACK_TAB_KEY.to_owned();
+    }
+    let mut name = input_key_name(input).into_string();
+    if name.ends_with(' ') {
+        name.pop();
+        name.push_str("Space");
+    }
+    name
+}
