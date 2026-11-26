@@ -1654,8 +1654,7 @@ struct ListKeyHooks<'a, H> {
 }
 
 #[cfg(all(test, unix))]
-#[path = "command/listing_e22_tests.rs"]
-mod listing_e22_tests;
+mod key_listing_tests;
 
 pub struct KeyListing {
     values: StatusContext<'static>,
