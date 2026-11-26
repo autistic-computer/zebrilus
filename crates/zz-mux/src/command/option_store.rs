@@ -849,3 +849,67 @@ fn validate_array_value(kind: TmuxArrayValue, value: &str) -> Result<(), ServerE
     }
     Ok(())
 }
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub(super) enum ArrayIndex {
+    Numeric(u32),
+    Named(String),
+}
+
+impl ArrayIndex {
+    pub(super) fn parse(value: String) -> Self {
+        value
+            .parse()
+            .map_or_else(|_| Self::Named(value), Self::Numeric)
+    }
+
+    pub(super) fn display(&self) -> String {
+        match self {
+            Self::Numeric(index) => index.to_string(),
+            Self::Named(index) => index.clone(),
+        }
+    }
+}
+
+pub(super) type StringArray = BTreeMap<ArrayIndex, String>;
+
+type ArrayTable = BTreeMap<&'static str, StringArray>;
+
+pub(super) type HookArray = BTreeMap<ArrayIndex, Vec<CommandInvocation>>;
+
+pub(super) type HookTable = BTreeMap<String, HookArray>;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct StoredArrays {
+    pub(super) server: ArrayTable,
+    pub(super) global_session: ArrayTable,
+    pub(super) sessions: BTreeMap<SessionId, ArrayTable>,
+    global_window: ArrayTable,
+    windows: BTreeMap<WindowId, ArrayTable>,
+    panes: BTreeMap<PaneId, ArrayTable>,
+}
+
+pub(super) type ScalarTable = BTreeMap<&'static str, String>;
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(super) struct StoredScalars {
+    server: ScalarTable,
+    pub(super) global_session: ScalarTable,
+    pub(super) sessions: BTreeMap<SessionId, ScalarTable>,
+    pub(super) global_window: ScalarTable,
+    pub(super) windows: BTreeMap<WindowId, ScalarTable>,
+    pub(super) panes: BTreeMap<PaneId, ScalarTable>,
+}
+
+impl Default for StoredArrays {
+    fn default() -> Self {
+        Self {
+            server: default_array_table(TmuxOptionScope::Server),
+            global_session: default_array_table(TmuxOptionScope::Session),
+            sessions: BTreeMap::new(),
+            global_window: default_array_table(TmuxOptionScope::WindowPane),
+            windows: BTreeMap::new(),
+            panes: BTreeMap::new(),
+        }
+    }
+}

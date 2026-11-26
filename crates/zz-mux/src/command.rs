@@ -1826,27 +1826,6 @@ impl FormatFacts {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-enum ArrayIndex {
-    Numeric(u32),
-    Named(String),
-}
-
-impl ArrayIndex {
-    fn parse(value: String) -> Self {
-        value
-            .parse()
-            .map_or_else(|_| Self::Named(value), Self::Numeric)
-    }
-
-    fn display(&self) -> String {
-        match self {
-            Self::Numeric(index) => index.to_string(),
-            Self::Named(index) => index.clone(),
-        }
-    }
-}
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum FormatOptionIndex {
     Whole,
@@ -1864,46 +1843,6 @@ fn parse_window_id(value: &str) -> Option<WindowId> {
 
 fn parse_pane_id(value: &str) -> Option<PaneId> {
     value.strip_prefix('%')?.parse().ok().map(PaneId)
-}
-
-type StringArray = BTreeMap<ArrayIndex, String>;
-type ArrayTable = BTreeMap<&'static str, StringArray>;
-type HookArray = BTreeMap<ArrayIndex, Vec<CommandInvocation>>;
-type HookTable = BTreeMap<String, HookArray>;
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct StoredArrays {
-    server: ArrayTable,
-    global_session: ArrayTable,
-    sessions: BTreeMap<SessionId, ArrayTable>,
-    global_window: ArrayTable,
-    windows: BTreeMap<WindowId, ArrayTable>,
-    panes: BTreeMap<PaneId, ArrayTable>,
-}
-
-type ScalarTable = BTreeMap<&'static str, String>;
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-struct StoredScalars {
-    server: ScalarTable,
-    global_session: ScalarTable,
-    sessions: BTreeMap<SessionId, ScalarTable>,
-    global_window: ScalarTable,
-    windows: BTreeMap<WindowId, ScalarTable>,
-    panes: BTreeMap<PaneId, ScalarTable>,
-}
-
-impl Default for StoredArrays {
-    fn default() -> Self {
-        Self {
-            server: default_array_table(TmuxOptionScope::Server),
-            global_session: default_array_table(TmuxOptionScope::Session),
-            sessions: BTreeMap::new(),
-            global_window: default_array_table(TmuxOptionScope::WindowPane),
-            windows: BTreeMap::new(),
-            panes: BTreeMap::new(),
-        }
-    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
