@@ -277,7 +277,10 @@ fn status_fact_selection_plans_reuse_dependencies_and_keep_referenced_facts_fres
         .tty
         .replace("/dev/changed".to_owned());
     inner.client_entry(client).size.replace((120, 24));
-    inner.pane_modes.insert(pane, vec![PaneModeRequest::Clock]);
+    inner
+        .modes
+        .pane_modes
+        .insert(pane, vec![PaneModeRequest::Clock]);
     assert_eq!(inner.engine.format_cache_revision(), revision);
     for _ in 0..3 {
         let current = parameters(&inner, Some(session));

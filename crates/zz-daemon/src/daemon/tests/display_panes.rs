@@ -62,7 +62,7 @@ fn read_only_display_panes_bypasses_overlay_consumption_and_preserves_bell() {
         assert_eq!(inner.activity_sequence, initial.0 + 1);
         assert_eq!(inner.terminal_input_sequence, initial.1 + 1);
         assert!(inner.clients[&client].display_panes.is_none());
-        assert!(!inner.pane_modes.contains_key(&pane));
+        assert!(!inner.modes.pane_modes.contains_key(&pane));
         assert_eq!(
             inner.clients[&client].copy_session.as_ref().unwrap().pane,
             pane
@@ -387,6 +387,7 @@ fn display_panes_validates_its_delay_after_its_target_and_needs_no_client() {
         shared
             .inner
             .lock()
+            .modes
             .pane_modes
             .get(&pane)
             .and_then(|modes| modes.last()),
@@ -507,8 +508,11 @@ fn display_panes_hides_the_zoomed_pane_status_row_and_expands_its_border_style()
     let (extent, geometry, mode) = {
         let inner = shared.inner.lock();
         let facts = format_hook_facts(&inner);
-        let Some(PaneModeRequest::Panes(mode)) =
-            inner.pane_modes.get(&host).and_then(|modes| modes.last())
+        let Some(PaneModeRequest::Panes(mode)) = inner
+            .modes
+            .pane_modes
+            .get(&host)
+            .and_then(|modes| modes.last())
         else {
             panic!("panes mode");
         };
@@ -561,11 +565,16 @@ fn display_panes_resized_back_keeps_the_live_frames() {
     let host = context.pane.expect("host");
     let mut inner = shared.inner.lock();
     let size = inner.engine.pane_geometry(host);
-    let frames = inner.panes_mode_frames.get_mut(&host).expect("frames");
+    let frames = inner
+        .modes
+        .panes_mode_frames
+        .get_mut(&host)
+        .expect("frames");
     assert_eq!(frames.size, size);
     frames.size = Some((1, 1));
     let facts = format_hook_facts(&inner);
     let Some(PaneModeRequest::Panes(mode)) = inner
+        .modes
         .pane_modes
         .get(&host)
         .and_then(|modes| modes.last())
@@ -574,13 +583,17 @@ fn display_panes_resized_back_keeps_the_live_frames() {
         panic!("panes mode");
     };
     let _ = panes_mode_snapshot(&inner, &facts, host, &mode);
-    let frames = inner.panes_mode_frames.get_mut(&host).expect("frames");
+    let frames = inner
+        .modes
+        .panes_mode_frames
+        .get_mut(&host)
+        .expect("frames");
     assert!(frames.resized.get());
     frames.size = size;
     drop(facts);
     let facts = format_hook_facts(&inner);
     let _ = panes_mode_snapshot(&inner, &facts, host, &mode);
-    assert!(inner.panes_mode_frames[&host].resized.get());
+    assert!(inner.modes.panes_mode_frames[&host].resized.get());
 }
 
 #[test]
@@ -612,7 +625,11 @@ fn display_panes_routes_by_the_clients_viewing_the_pane() {
     {
         let inner = shared.inner.lock();
         assert!(matches!(
-            inner.pane_modes.get(&second).and_then(|modes| modes.last()),
+            inner
+                .modes
+                .pane_modes
+                .get(&second)
+                .and_then(|modes| modes.last()),
             Some(PaneModeRequest::Panes(_))
         ));
         assert_eq!(inner.engine.state.windows[&window].zoomed_pane, None);
@@ -645,7 +662,7 @@ fn display_panes_routes_by_the_clients_viewing_the_pane() {
         .expect("close");
     let inner = shared.inner.lock();
     assert!(inner.clients[&desktop].display_panes.is_none());
-    assert!(!inner.pane_modes.contains_key(&second));
+    assert!(!inner.modes.pane_modes.contains_key(&second));
     assert!(
         !inner.engine.state.windows[&window]
             .pane_order()
@@ -694,6 +711,7 @@ fn display_panes_is_a_mode_of_its_target_pane() {
         shared
             .inner
             .lock()
+            .modes
             .pane_modes
             .get(&pane)
             .and_then(|modes| modes.last())
@@ -742,7 +760,7 @@ fn display_panes_is_a_mode_of_its_target_pane() {
         )
         .expect("clock-mode");
     assert!(matches!(mode(first), Some(PaneModeRequest::Clock)));
-    assert_eq!(shared.inner.lock().pane_modes[&first].len(), 1);
+    assert_eq!(shared.inner.lock().modes.pane_modes[&first].len(), 1);
     assert_eq!(zoomed(), None);
     shared
         .execute(
@@ -793,6 +811,7 @@ fn display_panes_fires_the_pane_mode_hooks_on_every_exit() {
     let token = || match shared
         .inner
         .lock()
+        .modes
         .pane_modes
         .get(&pane)
         .and_then(|modes| modes.last())
@@ -850,7 +869,7 @@ fn display_panes_fires_the_pane_mode_hooks_on_every_exit() {
     ]
     .join(" ");
     assert_eq!(show("@dpc"), expected);
-    assert!(shared.inner.lock().pane_mode_transitions.is_empty());
+    assert!(shared.inner.lock().modes.pane_mode_transitions.is_empty());
 }
 
 #[test]
@@ -961,6 +980,7 @@ fn display_panes_over_a_zoomed_customize_mode_keeps_its_zoom() {
         shared
             .inner
             .lock()
+            .modes
             .pane_modes
             .get(&host)
             .and_then(|modes| modes.last()),

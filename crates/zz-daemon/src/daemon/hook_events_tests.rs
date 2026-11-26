@@ -949,7 +949,7 @@ fn a_stale_mode_transition_fires_with_the_next_command() {
     {
         let mut inner = shared.inner.lock();
         assert!(pop_pane_mode(&mut inner, pane));
-        assert!(!inner.pane_mode_transitions.is_empty());
+        assert!(!inner.modes.pane_mode_transitions.is_empty());
     }
     shared.inner.lock().history.message_log.clear();
     let mut quiet = context.clone();
@@ -960,7 +960,7 @@ fn a_stale_mode_transition_fires_with_the_next_command() {
         &["set-hook", "-gu", "pane-mode-entered"],
     )
     .expect("unrelated");
-    assert!(shared.inner.lock().pane_mode_transitions.is_empty());
+    assert!(shared.inner.lock().modes.pane_mode_transitions.is_empty());
     assert_eq!(messages(&shared), ["exited clock-mode"]);
 }
 

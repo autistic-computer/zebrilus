@@ -20,6 +20,7 @@ fn customize_quit_fires_the_mode_exit_hooks_without_further_input() {
     let Some(PaneModeRequest::Customize(mode)) = shared
         .inner
         .lock()
+        .modes
         .pane_modes
         .get(&pane)
         .and_then(|modes| modes.last())
@@ -43,8 +44,8 @@ fn customize_quit_fires_the_mode_exit_hooks_without_further_input() {
         },
     );
     let inner = shared.inner.lock();
-    assert!(!inner.pane_modes.contains_key(&pane));
-    assert!(inner.pane_mode_transitions.is_empty());
+    assert!(!inner.modes.pane_modes.contains_key(&pane));
+    assert!(inner.modes.pane_mode_transitions.is_empty());
 }
 
 #[test]
@@ -121,6 +122,7 @@ fn customize_errors_are_status_messages_that_fire_no_display_hooks_and_answers_a
     let Some(PaneModeRequest::Customize(mode)) = shared
         .inner
         .lock()
+        .modes
         .pane_modes
         .get(&pane)
         .and_then(|modes| modes.last())
@@ -208,6 +210,7 @@ fn customize_stop_on_error_results_skip_the_commands_after_a_failure() {
     let Some(PaneModeRequest::Customize(mode)) = shared
         .inner
         .lock()
+        .modes
         .pane_modes
         .get(&pane)
         .and_then(|modes| modes.last())

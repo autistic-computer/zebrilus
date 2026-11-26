@@ -31,7 +31,10 @@ fn copy_and_clock_deadlines_follow_consumers_with_fifty_ms_copy_cadence() {
             sourced: false,
             exiting: false,
         });
-        inner.pane_modes.insert(pane, vec![PaneModeRequest::Clock]);
+        inner
+            .modes
+            .pane_modes
+            .insert(pane, vec![PaneModeRequest::Clock]);
     }
     clients.sync(&shared, &mut deadlines, now);
     assert_eq!(
@@ -73,7 +76,7 @@ fn copy_and_clock_deadlines_follow_consumers_with_fifty_ms_copy_cadence() {
             .as_mut()
             .unwrap()
             .refresh = false;
-        inner.pane_modes.clear();
+        inner.modes.pane_modes.clear();
     }
     clients.sync(&shared, &mut deadlines, tick);
     assert!(deadlines.get(TimerKey::CopyRefresh).is_none());
@@ -291,7 +294,10 @@ fn mode_exits_cancel_copy_and_clock_deadlines_before_the_next_tick() {
             sourced: false,
             exiting: false,
         });
-        inner.pane_modes.insert(pane, vec![PaneModeRequest::Clock]);
+        inner
+            .modes
+            .pane_modes
+            .insert(pane, vec![PaneModeRequest::Clock]);
         Arc::clone(&inner.terminals[&pane])
     };
     let poll = mio::Poll::new().unwrap();

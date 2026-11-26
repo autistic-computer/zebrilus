@@ -1761,10 +1761,10 @@ pub(super) fn pane_prompt_hook_events(inner: &mut ServerState) -> Vec<PendingHoo
             Some((*client, (prompt.serial, prompt.pane?, prompt.prompt_type)))
         })
         .collect::<BTreeMap<_, _>>();
-    if current.is_empty() && inner.open_pane_prompts.is_empty() {
+    if current.is_empty() && inner.modes.open_pane_prompts.is_empty() {
         return Vec::new();
     }
-    let previous = std::mem::replace(&mut inner.open_pane_prompts, current);
+    let previous = std::mem::replace(&mut inner.modes.open_pane_prompts, current);
     let event = |name: &'static str, pane: PaneId, prompt_type: CommandPromptType| {
         PendingHookEvent::live_pane(name, pane, &inner.engine).map(|mut event| {
             event.variables.insert(
@@ -1778,6 +1778,7 @@ pub(super) fn pane_prompt_hook_events(inner: &mut ServerState) -> Vec<PendingHoo
         .iter()
         .filter(|(client, (serial, _, _))| {
             inner
+                .modes
                 .open_pane_prompts
                 .get(client)
                 .is_none_or(|(current, _, _)| current != serial)
@@ -1786,6 +1787,7 @@ pub(super) fn pane_prompt_hook_events(inner: &mut ServerState) -> Vec<PendingHoo
         .collect::<Vec<_>>();
     events.extend(
         inner
+            .modes
             .open_pane_prompts
             .iter()
             .filter(|(client, (serial, _, _))| {

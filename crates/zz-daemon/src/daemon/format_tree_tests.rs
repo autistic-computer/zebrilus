@@ -52,7 +52,7 @@ fn borrowed<'a>(
         attached: &inner.attached,
         clients: &inner.clients,
         session_last_attached: &inner.session_last_attached,
-        pane_modes: &inner.pane_modes,
+        pane_modes: &inner.modes.pane_modes,
         seed: command_format_seed(inner, client, context),
         derived: LazyDerivedFormatFacts::default(),
     }
@@ -536,6 +536,7 @@ fn selected_status_explicit_fact_groups_match_complete_capture() {
         automatic: true,
     });
     inner
+        .modes
         .pane_modes
         .insert(target.pane.unwrap(), vec![PaneModeRequest::Clock]);
     let template = "#{session_attached}:#{session_attached_list}:#{session_many_attached}:#{session_last_attached}:#{window_active_clients}:#{window_active_clients_list}:#{pane_in_mode}:#{pane_mode}:#{pane_unseen_changes}:#{buffer_created}:#{buffer_full}:#{buffer_name}:#{buffer_sample}:#{buffer_size}:#{pane_kind}:#{browser_url}:#{agent_state}:#{agent_pending_permission}:#{pane_pipe}:#{pane_pipe_pid}:#{history_size}:#{cursor_x}:#{cursor_y}:#{alternate_on}:#{mouse_any_flag}:#{pane_last_command_status}:#{pane_search_string}:#{pane_pb_progress}:#{pane_pb_state}:#{@kept}:#{client_name}:#{client_width}";

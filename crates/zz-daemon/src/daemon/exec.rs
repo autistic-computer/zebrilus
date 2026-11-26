@@ -1132,7 +1132,7 @@ impl LoopExec {
         }
         let inner = self.shared.inner.lock();
         if !inner.waits.deferred_event_hooks.is_empty()
-            || !inner.pane_modes.is_empty()
+            || !inner.modes.pane_modes.is_empty()
             || inner
                 .clients
                 .values()

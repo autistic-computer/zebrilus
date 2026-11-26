@@ -1345,6 +1345,7 @@ fn top_is_panes_mode(shared: &Shared, pane: PaneId) -> bool {
         shared
             .inner
             .lock()
+            .modes
             .pane_modes
             .get(&pane)
             .and_then(|modes| modes.last()),

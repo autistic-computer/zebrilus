@@ -10722,7 +10722,7 @@ impl Shared {
                             if let Some(pipe) = inner.jobs.pane_pipes.remove(pane) {
                                 pipes_to_close.push(pipe);
                             }
-                            if let Some(editor) = inner.editors.remove(pane) {
+                            if let Some(editor) = inner.modes.editors.remove(pane) {
                                 let _ = std::fs::remove_file(&editor.path);
                             }
                             Self::release_removed_pane_wait(&mut inner, *pane);
@@ -10740,9 +10740,9 @@ impl Shared {
                             inner.terminal_spawns.remove(pane);
                             inner.terminal_geometries.remove(pane);
                             inner.reported_pane_places.remove(pane);
-                            inner.pane_modes.remove(pane);
-                            inner.pane_mode_zooms.remove(pane);
-                            inner.panes_mode_frames.remove(pane);
+                            inner.modes.pane_modes.remove(pane);
+                            inner.modes.pane_mode_zooms.remove(pane);
+                            inner.modes.panes_mode_frames.remove(pane);
                             inner.engine.set_pane_status_hidden(*pane, false);
                             inner
                                 .transfers
@@ -10836,7 +10836,7 @@ impl Shared {
                         if is_agent_chat(&inner, *pane) {
                             return Err(agent_chat_refusal(command_name, *pane).into());
                         }
-                        if inner.pane_modes.contains_key(pane) {
+                        if inner.modes.pane_modes.contains_key(pane) {
                             let target = if command_name == "send-keys" {
                                 send_keys_target_client(&command.args)?
                             } else {
@@ -10920,7 +10920,7 @@ impl Shared {
                         if !inner.terminals.contains_key(source) {
                             return Err(ServerError::PaneExited(*source).into());
                         }
-                        inner.pending_copy_source = Some((*pane, *source));
+                        inner.modes.pending_copy_source = Some((*pane, *source));
                     }
                     MuxEffect::ArmCopyModeKill { pane } => {
                         if !inner
@@ -10929,7 +10929,7 @@ impl Shared {
                             .filter_map(|c| c.copy_session.as_ref())
                             .any(|session| session.pane == *pane && !session.exiting)
                         {
-                            inner.pending_copy_kill = Some(*pane);
+                            inner.modes.pending_copy_kill = Some(*pane);
                         }
                     }
                     MuxEffect::CopyModeRepeat {
@@ -11008,8 +11008,8 @@ impl Shared {
                         {
                             snapshot_changed = true;
                         }
-                        let armed_copy_kill = inner.pending_copy_kill.take();
-                        let armed_copy_source = inner.pending_copy_source.take();
+                        let armed_copy_kill = inner.modes.pending_copy_kill.take();
+                        let armed_copy_source = inner.modes.pending_copy_source.take();
                         if *require_mode && !pane_carries_a_mode_command(&inner, client, *pane) {
                             return Err(
                                 ServerError::InvalidCommand("not in a mode".to_owned()).into()
@@ -11062,7 +11062,7 @@ impl Shared {
                             }
                             return Err(ServerError::PaneNotAttached(*pane).into());
                         }
-                        inner.pending_copy_kill = armed_copy_kill;
+                        inner.modes.pending_copy_kill = armed_copy_kill;
                         let copy_source = armed_copy_source
                             .filter(|(armed, _)| armed == pane)
                             .and_then(|(_, source)| inner.terminals.get(&source).cloned());
@@ -11510,7 +11510,11 @@ impl Shared {
                         zoom,
                     } => {
                         if matches!(
-                            inner.pane_modes.get(pane).and_then(|modes| modes.last()),
+                            inner
+                                .modes
+                                .pane_modes
+                                .get(pane)
+                                .and_then(|modes| modes.last()),
                             Some(PaneModeRequest::Panes(_))
                         ) {
                             continue;
@@ -11526,9 +11530,9 @@ impl Shared {
                         let viewers = panes_mode_viewers(&inner, host_window);
                         let native_only =
                             !viewers.is_empty() && viewers.iter().all(|(_, native)| *native);
-                        inner.next_display_panes_token =
-                            inner.next_display_panes_token.wrapping_add(1).max(1);
-                        let token = inner.next_display_panes_token;
+                        inner.modes.next_display_panes_token =
+                            inner.modes.next_display_panes_token.wrapping_add(1).max(1);
+                        let token = inner.modes.next_display_panes_token;
                         let mode = PanesMode {
                             source_session: *source_session,
                             source_window: *source_window,
@@ -12146,7 +12150,7 @@ impl Shared {
                 let pane_focus_before = pane_focus_before.map(|scope| scope.close(&inner));
                 let anchor = pending_hook_events.len();
                 {
-                    let transitions = std::mem::take(&mut inner.pane_mode_transitions);
+                    let transitions = std::mem::take(&mut inner.modes.pane_mode_transitions);
                     let mut diff = scope.finish(&inner.engine, command_name);
                     hook_events::apply_operation_events(
                         &inner.engine,
@@ -12186,7 +12190,7 @@ impl Shared {
                     splice_pane_focus_events(&mut pending_hook_events, anchor, focus);
                 }
             }
-            inner.pane_mode_transitions.clear();
+            inner.modes.pane_mode_transitions.clear();
             debug_assert!(
                 !read_only || pending_hook_events.len() == hook_events_before,
                 "read-only {command_name} raised hook events"
@@ -19792,7 +19796,7 @@ impl Shared {
             let _ = std::fs::remove_file(&path);
             return;
         };
-        self.inner.lock().editors.insert(
+        self.inner.lock().modes.editors.insert(
             editor_pane,
             EditorSession {
                 client,
@@ -19804,7 +19808,7 @@ impl Shared {
     }
 
     fn finish_editor(self: &Arc<Self>, pane: PaneId, exit_code: u8) {
-        let Some(session) = self.inner.lock().editors.remove(&pane) else {
+        let Some(session) = self.inner.lock().modes.editors.remove(&pane) else {
             return;
         };
         let text = (exit_code == 0)
@@ -19851,6 +19855,7 @@ impl Shared {
                 let Some(PaneModeRequest::Customize(mut mode)) = self
                     .inner
                     .lock()
+                    .modes
                     .pane_modes
                     .get(&pane)
                     .and_then(|modes| modes.last())
@@ -22244,7 +22249,7 @@ impl Shared {
         {
             let events = {
                 let mut inner = self.inner.lock();
-                let transitions = std::mem::take(&mut inner.pane_mode_transitions);
+                let transitions = std::mem::take(&mut inner.modes.pane_mode_transitions);
                 let mut diff = hook_scope.finish(&inner.engine, "");
                 diff.events.extend(hook_events::server_mode_hook_events(
                     &inner.engine,
@@ -22267,7 +22272,7 @@ impl Shared {
             let mut inner = self.inner.lock();
             (
                 take_pane_mode_hook_events(&mut inner),
-                !inner.pane_mode_kill_panes.is_empty(),
+                !inner.modes.pane_mode_kill_panes.is_empty(),
             )
         };
         if !context.no_hooks && !events.is_empty() {
@@ -23755,6 +23760,7 @@ impl Shared {
         let Some(mode) = self
             .inner
             .lock()
+            .modes
             .pane_modes
             .get(&pane)
             .and_then(|modes| modes.last())
@@ -23833,7 +23839,7 @@ impl Shared {
                 }
                 if action == SwitchAction::Redraw {
                     let mut inner = self.inner.lock();
-                    if let Some(modes) = inner.pane_modes.get_mut(&pane)
+                    if let Some(modes) = inner.modes.pane_modes.get_mut(&pane)
                         && matches!(modes.last(), Some(PaneModeRequest::Switch(_)))
                     {
                         modes.pop();
@@ -23916,7 +23922,7 @@ impl Shared {
                 && let Some(window) = inner.engine.state.window_for_pane(host)
                 && let Some(zoomed) = inner.engine.state.windows[&window].zoomed_pane
             {
-                inner.pane_mode_zooms.remove(&host);
+                inner.modes.pane_mode_zooms.remove(&host);
                 let _ = inner.engine.state.toggle_zoom(zoomed);
             }
             pop_pane_mode(&mut inner, host);
@@ -23961,7 +23967,7 @@ impl Shared {
         let events = {
             let mut inner = self.inner.lock();
             let due = matches!(
-                inner.pane_modes.get(&pane).and_then(|modes| modes.last()),
+                inner.modes.pane_modes.get(&pane).and_then(|modes| modes.last()),
                 Some(PaneModeRequest::Panes(mode)) if mode.token == token
             );
             if !(due && pop_pane_mode(&mut inner, pane)) {
@@ -23985,7 +23991,7 @@ impl Shared {
     ) {
         {
             let mut inner = self.inner.lock();
-            if let Some(modes) = inner.pane_modes.get_mut(&pane) {
+            if let Some(modes) = inner.modes.pane_modes.get_mut(&pane) {
                 modes.pop();
                 modes.push(PaneModeRequest::Customize(mode));
             }
@@ -24008,7 +24014,12 @@ impl Shared {
         }
         {
             let mut inner = self.inner.lock();
-            let mut current = match inner.pane_modes.get(&pane).and_then(|modes| modes.last()) {
+            let mut current = match inner
+                .modes
+                .pane_modes
+                .get(&pane)
+                .and_then(|modes| modes.last())
+            {
                 Some(PaneModeRequest::Customize(mode)) => Some(mode.clone()),
                 _ => None,
             };
@@ -24017,7 +24028,7 @@ impl Shared {
                 let mut expand = customize_expander(&inner, pane, &facts);
                 inner.engine.customize_finish(pane, mode, &mut expand);
             }
-            if let (Some(mode), Some(modes)) = (current, inner.pane_modes.get_mut(&pane))
+            if let (Some(mode), Some(modes)) = (current, inner.modes.pane_modes.get_mut(&pane))
                 && matches!(modes.last(), Some(PaneModeRequest::Customize(_)))
             {
                 modes.pop();
@@ -24050,6 +24061,7 @@ impl Shared {
         let Some(PaneModeRequest::Customize(mut mode)) = self
             .inner
             .lock()
+            .modes
             .pane_modes
             .get(&owner.pane)
             .and_then(|modes| modes.last())
@@ -24906,7 +24918,7 @@ impl Shared {
             ) {
                 inner.client_entry(client).choose_tree.replace(chooser);
             } else if chooser.kill_source {
-                inner.chooser_kill_panes.push(chooser.source_pane);
+                inner.modes.chooser_kill_panes.push(chooser.source_pane);
             }
             (result, state, delta, command, runs)
         };
@@ -25327,7 +25339,7 @@ impl Shared {
                         .client(client)
                         .is_none_or(|c| c.choose_buffer.is_none())
                 {
-                    inner.chooser_kill_panes.push(pane);
+                    inner.modes.chooser_kill_panes.push(pane);
                 }
                 (outcome, deleted)
             }
@@ -25492,6 +25504,7 @@ impl Shared {
                     let mode = match self
                         .inner
                         .lock()
+                        .modes
                         .pane_modes
                         .get(&host)
                         .and_then(|modes| modes.last())
@@ -25765,7 +25778,7 @@ impl Shared {
         kind: ClientKind,
         context: &mut ExecutionContext,
     ) {
-        let panes = std::mem::take(&mut self.inner.lock().pane_mode_kill_panes);
+        let panes = std::mem::take(&mut self.inner.lock().modes.pane_mode_kill_panes);
         let terminal = client_terminal(&self.inner.lock(), client, kind);
         for pane in panes {
             let target = pane.to_string();
@@ -25793,7 +25806,7 @@ impl Shared {
         kind: ClientKind,
         context: &mut ExecutionContext,
     ) {
-        let panes = std::mem::take(&mut self.inner.lock().chooser_kill_panes);
+        let panes = std::mem::take(&mut self.inner.lock().modes.chooser_kill_panes);
         for pane in panes {
             let target = pane.to_string();
             if let Err(error) = self.execute(
@@ -25819,7 +25832,7 @@ impl Shared {
     }
 
     fn reap_copy_mode_kill_panes(self: &Arc<Self>) {
-        let panes = std::mem::take(&mut self.inner.lock().copy_kill_panes);
+        let panes = std::mem::take(&mut self.inner.lock().modes.copy_kill_panes);
         for pane in panes {
             let Some(mut context) = ({
                 let inner = self.inner.lock();
@@ -31098,7 +31111,7 @@ impl Shared {
             let mut inner = self.inner.lock();
             let (unclaimed, mode_changed) =
                 reconcile_copy_session(&mut inner, pane, client, current.mode);
-            let kill_pending = !inner.copy_kill_panes.is_empty();
+            let kill_pending = !inner.modes.copy_kill_panes.is_empty();
             let attached = inner
                 .engine
                 .state
@@ -36929,27 +36942,32 @@ struct ServerState {
     terminal_geometries: BTreeMap<PaneId, BTreeMap<ClientId, TerminalGeometry>>,
     reported_pane_places: BTreeMap<PaneId, BTreeMap<ClientId, ReportedPlace>>,
     terminal_input_sequence: u64,
-    chooser_kill_panes: Vec<PaneId>,
-    pending_copy_kill: Option<PaneId>,
-    pending_copy_source: Option<(PaneId, PaneId)>,
-    copy_kill_panes: Vec<PaneId>,
-    pane_modes: BTreeMap<PaneId, Vec<PaneModeRequest>>,
-    pane_mode_transitions: Vec<PaneModeTransition>,
-    open_pane_prompts: BTreeMap<ClientId, (u64, PaneId, CommandPromptType)>,
-    pane_mode_zooms: BTreeSet<PaneId>,
-    pane_mode_kill_panes: Vec<PaneId>,
-    panes_mode_frames: BTreeMap<PaneId, PanesModeFrames>,
+    modes: Modes,
     silence_deadlines: BTreeMap<WindowId, SilenceDeadline>,
     next_silence_token: u64,
     history: History,
     buffers: Buffers,
-    editors: BTreeMap<PaneId, EditorSession>,
     jobs: Jobs,
     next_client_id: u64,
-    next_display_panes_token: u64,
     control_routes: BTreeMap<ClientId, ControlRoute>,
     scheduled_window_rename: Option<Instant>,
     preview_watched: BTreeSet<PaneId>,
+}
+
+#[derive(Default)]
+struct Modes {
+    pane_modes: BTreeMap<PaneId, Vec<PaneModeRequest>>,
+    pane_mode_transitions: Vec<PaneModeTransition>,
+    pane_mode_zooms: BTreeSet<PaneId>,
+    panes_mode_frames: BTreeMap<PaneId, PanesModeFrames>,
+    chooser_kill_panes: Vec<PaneId>,
+    copy_kill_panes: Vec<PaneId>,
+    pane_mode_kill_panes: Vec<PaneId>,
+    editors: BTreeMap<PaneId, EditorSession>,
+    pending_copy_kill: Option<PaneId>,
+    pending_copy_source: Option<(PaneId, PaneId)>,
+    open_pane_prompts: BTreeMap<ClientId, (u64, PaneId, CommandPromptType)>,
+    next_display_panes_token: u64,
 }
 
 #[derive(Default)]
@@ -37454,7 +37472,7 @@ fn dismiss_display_panes(inner: &mut ServerState, client: ClientId) -> bool {
     };
     if let Some(host) = overlay.mode
         && matches!(
-            inner.pane_modes.get(&host).and_then(|modes| modes.last()),
+            inner.modes.pane_modes.get(&host).and_then(|modes| modes.last()),
             Some(PaneModeRequest::Panes(mode)) if mode.token == overlay.token
         )
     {
@@ -37478,12 +37496,17 @@ fn display_panes_overlay_mode(
     let state = inner.engine.state.windows.get(&window)?;
     std::iter::once(state.active_pane)
         .chain(state.pane_order().iter().copied())
-        .find_map(
-            |pane| match inner.pane_modes.get(&pane).and_then(|modes| modes.last()) {
+        .find_map(|pane| {
+            match inner
+                .modes
+                .pane_modes
+                .get(&pane)
+                .and_then(|modes| modes.last())
+            {
                 Some(PaneModeRequest::Panes(mode)) => Some((pane, mode.as_ref().clone())),
                 _ => None,
-            },
-        )
+            }
+        })
 }
 
 fn sync_display_panes_overlays(
@@ -40824,7 +40847,11 @@ fn enter_copy_session(
 ) -> Result<(), ServerError> {
     let table = inner.engine.copy_mode_table_for_pane(pane)?.to_owned();
     if matches!(
-        inner.pane_modes.get(&pane).and_then(|modes| modes.last()),
+        inner
+            .modes
+            .pane_modes
+            .get(&pane)
+            .and_then(|modes| modes.last()),
         Some(PaneModeRequest::Panes(_))
     ) {
         pop_pane_mode(inner, pane);
@@ -40834,7 +40861,7 @@ fn enter_copy_session(
         .key_engine
         .get_or_insert_default()
         .switch_table(Some(table));
-    let kill = inner.pending_copy_kill.take() == Some(pane)
+    let kill = inner.modes.pending_copy_kill.take() == Some(pane)
         || inner
             .client(client)
             .and_then(|c| c.copy_session.as_ref())
@@ -40874,7 +40901,7 @@ struct ChooserUnder {
 fn chooser_under(inner: &ServerState, client: ClientId, pane: PaneId) -> ChooserUnder {
     ChooserUnder {
         copy: client_in_copy_mode(inner, client),
-        modes: inner.pane_modes.get(&pane).map_or(0, Vec::len),
+        modes: inner.modes.pane_modes.get(&pane).map_or(0, Vec::len),
     }
 }
 
@@ -40910,7 +40937,7 @@ fn chooser_shown(inner: &ServerState, client: ClientId) -> bool {
             .command_output
             .as_ref()
             .is_none_or(|output| output.parked)
-        && inner.pane_modes.get(&pane).map_or(0, Vec::len) <= state.chooser_under.modes
+        && inner.modes.pane_modes.get(&pane).map_or(0, Vec::len) <= state.chooser_under.modes
 }
 
 fn chooser_holds_input(inner: &ServerState, client: ClientId) -> bool {
@@ -41385,7 +41412,7 @@ fn reconcile_copy_session(
             let announced = session.exiting;
             exit_copy_session(inner, client);
             if kill {
-                inner.copy_kill_panes.push(pane);
+                inner.modes.copy_kill_panes.push(pane);
             }
             (None, !announced)
         }
@@ -43088,6 +43115,7 @@ fn plain_key_generation_locked(
             .as_ref()
             .is_some_and(|engine| *engine != KeyEngine::default())
         || inner
+            .modes
             .pane_modes
             .get(&pane)
             .is_some_and(|modes| !modes.is_empty())
@@ -44631,7 +44659,7 @@ fn cached_live_border_presentations(
             pane.pane_in_mode.is_none_or(|count| {
                 pane_in_mode_count_from_parts(
                     pane.presentation.pane,
-                    &inner.pane_modes,
+                    &inner.modes.pane_modes,
                     &inner.clients,
                     &inner.terminals,
                 ) == count
@@ -45640,7 +45668,7 @@ fn stamp_snapshot_for_client_with(
 }
 
 fn stamp_pane_modes(inner: &ServerState, facts: &FormatHookFacts, snapshot: &mut MuxSnapshot) {
-    if inner.pane_modes.is_empty() {
+    if inner.modes.pane_modes.is_empty() {
         return;
     }
     let engine = &inner.engine;
@@ -45648,6 +45676,7 @@ fn stamp_pane_modes(inner: &ServerState, facts: &FormatHookFacts, snapshot: &mut
         for window in &mut session.windows {
             for (pane, pane_snapshot) in &mut window.panes {
                 pane_snapshot.mode = inner
+                    .modes
                     .pane_modes
                     .get(pane)
                     .and_then(|modes| modes.last())
@@ -45770,7 +45799,7 @@ fn panes_mode_snapshot(
         .windows
         .get(&mode.source_window)
         .map(|window| window.active_pane);
-    let captured = inner.panes_mode_frames.get(&pane);
+    let captured = inner.modes.panes_mode_frames.get(&pane);
     let resized = captured.is_none_or(|captured| {
         if captured.size != Some((columns, rows)) {
             captured.resized.set(true);
@@ -45783,7 +45812,7 @@ fn panes_mode_snapshot(
         BTreeMap::new()
     };
     let preview = captured
-        .filter(|_| inner.pane_mode_zooms.contains(&pane))
+        .filter(|_| inner.modes.pane_mode_zooms.contains(&pane))
         .and_then(|captured| captured.frames.get(&pane));
     let frame = |area: &zz_mux::PanesModeAreaGeometry| {
         if !resized {
@@ -49141,6 +49170,7 @@ fn pane_mode_name(mode: &PaneModeRequest) -> &'static str {
 
 fn top_pane_mode_name(inner: &ServerState, pane: PaneId) -> Option<&'static str> {
     inner
+        .modes
         .pane_modes
         .get(&pane)
         .and_then(|modes| modes.last())
@@ -49148,14 +49178,18 @@ fn top_pane_mode_name(inner: &ServerState, pane: PaneId) -> Option<&'static str>
 }
 
 fn take_pane_mode_hook_events(inner: &mut ServerState) -> Vec<PendingHookEvent> {
-    let transitions = std::mem::take(&mut inner.pane_mode_transitions);
+    let transitions = std::mem::take(&mut inner.modes.pane_mode_transitions);
     hook_events::server_mode_hook_events(&inner.engine, transitions)
 }
 
 fn push_pane_mode(inner: &mut ServerState, pane: PaneId, mode: PaneModeRequest) -> bool {
     let replaced = !matches!(mode, PaneModeRequest::Panes(_))
         && matches!(
-            inner.pane_modes.get(&pane).and_then(|modes| modes.last()),
+            inner
+                .modes
+                .pane_modes
+                .get(&pane)
+                .and_then(|modes| modes.last()),
             Some(PaneModeRequest::Panes(_))
         )
         && pop_pane_mode(inner, pane);
@@ -49163,7 +49197,7 @@ fn push_pane_mode(inner: &mut ServerState, pane: PaneId, mode: PaneModeRequest) 
     let current = pane_mode_name(&mode);
     let pushed = push_pane_mode_entry(inner, pane, mode) || replaced;
     if pushed {
-        inner.pane_mode_transitions.push(PaneModeTransition {
+        inner.modes.pane_mode_transitions.push(PaneModeTransition {
             pane,
             entered: true,
             previous,
@@ -49177,7 +49211,11 @@ fn push_pane_mode_entry(inner: &mut ServerState, pane: PaneId, mut mode: PaneMod
     let frames = match &mode {
         PaneModeRequest::Panes(panes)
             if !matches!(
-                inner.pane_modes.get(&pane).and_then(|modes| modes.last()),
+                inner
+                    .modes
+                    .pane_modes
+                    .get(&pane)
+                    .and_then(|modes| modes.last()),
                 Some(PaneModeRequest::Panes(_))
             ) =>
         {
@@ -49185,7 +49223,7 @@ fn push_pane_mode_entry(inner: &mut ServerState, pane: PaneId, mut mode: PaneMod
         }
         _ => None,
     };
-    let modes = inner.pane_modes.entry(pane).or_default();
+    let modes = inner.modes.pane_modes.entry(pane).or_default();
     let existing = modes
         .iter()
         .position(|entry| std::mem::discriminant(entry) == std::mem::discriminant(&mode));
@@ -49208,14 +49246,14 @@ fn push_pane_mode_entry(inner: &mut ServerState, pane: PaneId, mut mode: PaneMod
         && let Some(window) = inner.engine.state.window_for_pane(pane)
         && inner.engine.state.windows[&window].zoomed_pane.is_none()
     {
-        inner.pane_mode_zooms.insert(pane);
+        inner.modes.pane_mode_zooms.insert(pane);
         let _ = inner.engine.state.toggle_zoom(pane);
     }
-    inner.pane_modes.entry(pane).or_default().push(mode);
+    inner.modes.pane_modes.entry(pane).or_default().push(mode);
     if let Some(frames) = frames {
         inner.engine.set_pane_status_hidden(pane, true);
         let size = inner.engine.pane_geometry(pane);
-        inner.panes_mode_frames.insert(
+        inner.modes.panes_mode_frames.insert(
             pane,
             PanesModeFrames {
                 size,
@@ -49237,20 +49275,20 @@ fn pane_mode_lifetime(mode: &PaneModeRequest) -> (bool, bool) {
 }
 
 fn pop_pane_mode(inner: &mut ServerState, pane: PaneId) -> bool {
-    let Some(modes) = inner.pane_modes.get_mut(&pane) else {
+    let Some(modes) = inner.modes.pane_modes.get_mut(&pane) else {
         return false;
     };
     let mode = modes.pop();
     if modes.is_empty() {
-        inner.pane_modes.remove(&pane);
+        inner.modes.pane_modes.remove(&pane);
     }
     if matches!(mode, Some(PaneModeRequest::Panes(_))) {
-        inner.panes_mode_frames.remove(&pane);
+        inner.modes.panes_mode_frames.remove(&pane);
         inner.engine.set_pane_status_hidden(pane, false);
     }
     if let Some(popped) = mode.as_ref() {
         let current = top_pane_mode_name(inner, pane);
-        inner.pane_mode_transitions.push(PaneModeTransition {
+        inner.modes.pane_mode_transitions.push(PaneModeTransition {
             pane,
             entered: false,
             previous: Some(pane_mode_name(popped)),
@@ -49263,18 +49301,19 @@ fn pop_pane_mode(inner: &mut ServerState, pane: PaneId) -> bool {
         .map(pane_mode_lifetime)
     {
         let zoom_held = inner
+            .modes
             .pane_modes
             .get(&pane)
             .is_some_and(|modes| modes.iter().any(|mode| pane_mode_lifetime(mode).1));
         if !zoom_held
-            && inner.pane_mode_zooms.remove(&pane)
+            && inner.modes.pane_mode_zooms.remove(&pane)
             && let Some(window) = inner.engine.state.window_for_pane(pane)
             && let Some(zoomed) = inner.engine.state.windows[&window].zoomed_pane
         {
             let _ = inner.engine.state.toggle_zoom(zoomed);
         }
         if kill_source {
-            inner.pane_mode_kill_panes.push(pane);
+            inner.modes.pane_mode_kill_panes.push(pane);
         }
     }
     mode.is_some()
@@ -49293,7 +49332,7 @@ fn consume_pane_mode_mouse(
     pane: PaneId,
     action: Option<&zz_terminal::TerminalViewAction>,
 ) -> bool {
-    let Some(modes) = inner.pane_modes.get_mut(&pane) else {
+    let Some(modes) = inner.modes.pane_modes.get_mut(&pane) else {
         return false;
     };
     if matches!(action, Some(zz_terminal::TerminalViewAction::Mouse(input))
@@ -49304,10 +49343,10 @@ fn consume_pane_mode_mouse(
     if matches!(modes.last(), Some(PaneModeRequest::Clock)) {
         modes.pop();
         if modes.is_empty() {
-            inner.pane_modes.remove(&pane);
+            inner.modes.pane_modes.remove(&pane);
         }
         let current = top_pane_mode_name(inner, pane);
-        inner.pane_mode_transitions.push(PaneModeTransition {
+        inner.modes.pane_mode_transitions.push(PaneModeTransition {
             pane,
             entered: false,
             previous: Some("clock-mode"),
@@ -49318,7 +49357,7 @@ fn consume_pane_mode_mouse(
 }
 
 fn clock_mode_timer_needed(inner: &ServerState) -> bool {
-    inner.pane_modes.iter().any(|(pane, modes)| {
+    inner.modes.pane_modes.iter().any(|(pane, modes)| {
         matches!(modes.last(), Some(PaneModeRequest::Clock))
             && inner
                 .engine
@@ -49341,7 +49380,7 @@ fn clock_mode_timer_needed(inner: &ServerState) -> bool {
 }
 
 fn clock_modes_are_open(inner: &ServerState) -> bool {
-    inner.pane_modes.values().any(|modes| {
+    inner.modes.pane_modes.values().any(|modes| {
         modes
             .iter()
             .any(|mode| matches!(mode, PaneModeRequest::Clock))
@@ -49357,6 +49396,7 @@ fn duration_to_next_second() -> Duration {
 
 fn pane_mode_format_facts(inner: &ServerState) -> BTreeMap<PaneId, (usize, &'static str)> {
     inner
+        .modes
         .pane_modes
         .iter()
         .filter_map(|(pane, modes)| {
@@ -49697,7 +49737,7 @@ fn split_borrowed_format_hook_facts(
         clients,
         client_flags,
 
-        pane_modes,
+        modes: Modes { pane_modes, .. },
         jobs: Jobs { pane_pipes, .. },
         buffers: Buffers { paste_buffers, .. },
         session_last_attached,
@@ -49740,7 +49780,7 @@ fn readonly_borrowed_format_hook_facts(
         attached: &inner.attached,
         clients: &inner.clients,
         session_last_attached: &inner.session_last_attached,
-        pane_modes: &inner.pane_modes,
+        pane_modes: &inner.modes.pane_modes,
         seed,
         derived: LazyDerivedFormatFacts::default(),
     }

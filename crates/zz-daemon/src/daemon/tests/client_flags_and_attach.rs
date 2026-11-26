@@ -699,11 +699,11 @@ fn switch_mode_lifetime_kill_follows_the_entry_below_the_top() {
     ));
     assert!(push_pane_mode(&mut inner, pane, PaneModeRequest::Clock));
     assert!(pop_pane_mode(&mut inner, pane));
-    assert!(inner.pane_mode_kill_panes.is_empty());
+    assert!(inner.modes.pane_mode_kill_panes.is_empty());
     assert_eq!(pane_mode_format_facts(&inner)[&pane], (1, "switch-mode"));
     assert!(pop_pane_mode(&mut inner, pane));
-    assert_eq!(inner.pane_mode_kill_panes, [pane]);
-    assert!(!inner.pane_modes.contains_key(&pane));
+    assert_eq!(inner.modes.pane_mode_kill_panes, [pane]);
+    assert!(!inner.modes.pane_modes.contains_key(&pane));
 }
 
 #[test]
@@ -718,21 +718,21 @@ fn switch_mode_lifetime_promotion_updates_kill_but_reentry_does_not() {
         switch_lifetime_mode(true, true)
     ));
     assert!(matches!(
-        inner.pane_modes[&pane].last(),
+        inner.modes.pane_modes[&pane].last(),
         Some(PaneModeRequest::Switch(mode)) if !mode.kill_source && !mode.zoom
     ));
     push_pane_mode(&mut inner, pane, PaneModeRequest::Clock);
     push_pane_mode(&mut inner, pane, switch_lifetime_mode(true, true));
-    assert!(!inner.pane_mode_zooms.contains(&pane));
+    assert!(!inner.modes.pane_mode_zooms.contains(&pane));
     assert!(clear_pane_modes(&mut inner, pane));
-    assert_eq!(inner.pane_mode_kill_panes, [pane]);
+    assert_eq!(inner.modes.pane_mode_kill_panes, [pane]);
     assert!(!clear_pane_modes(&mut inner, pane));
-    inner.pane_mode_kill_panes.clear();
+    inner.modes.pane_mode_kill_panes.clear();
     push_pane_mode(&mut inner, pane, switch_lifetime_mode(true, false));
     push_pane_mode(&mut inner, pane, PaneModeRequest::Clock);
     push_pane_mode(&mut inner, pane, switch_lifetime_mode(false, false));
     clear_pane_modes(&mut inner, pane);
-    assert!(inner.pane_mode_kill_panes.is_empty());
+    assert!(inner.modes.pane_mode_kill_panes.is_empty());
 }
 
 #[test]
@@ -774,7 +774,7 @@ fn switch_mode_lifetime_single_pane_remembers_unzoomed_entry() {
     assert_eq!(inner.engine.state.windows[&window].zoomed_pane, Some(pane));
     clear_pane_modes(&mut inner, pane);
     assert_eq!(inner.engine.state.windows[&window].zoomed_pane, None);
-    assert!(inner.pane_mode_zooms.is_empty());
+    assert!(inner.modes.pane_mode_zooms.is_empty());
 }
 
 #[test]

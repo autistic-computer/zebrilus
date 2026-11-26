@@ -152,7 +152,7 @@ fn an_editor_write_back_names_its_buffer_and_skips_a_replaced_one() {
                     .data,
             )
         };
-        shared.inner.lock().editors.insert(
+        shared.inner.lock().modes.editors.insert(
             PaneId(pane),
             EditorSession {
                 client: control,

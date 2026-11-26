@@ -80,6 +80,7 @@ fn selected_preparation_keeps_scalar_and_string_border_callbacks_fresh() {
     let same = shared_request(&inner, client);
     assert_eq!(same.pane_borders[0].style, "fg=green");
     inner
+        .modes
         .pane_modes
         .insert(context.pane.unwrap(), vec![PaneModeRequest::Clock]);
     let changed = shared_request(&inner, client);
@@ -93,7 +94,7 @@ fn selected_preparation_keeps_scalar_and_string_border_callbacks_fresh() {
     );
     let with_mode = shared_request(&inner, client);
     assert_eq!(with_mode.pane_borders[0].style, "fg=red");
-    inner.pane_modes.remove(&context.pane.unwrap());
+    inner.modes.pane_modes.remove(&context.pane.unwrap());
     let without_mode = shared_request(&inner, client);
     assert_eq!(without_mode.pane_borders[0].style, "fg=green");
     assert_eq!(with_mode.pane_borders[0].style, "fg=red");
@@ -414,6 +415,7 @@ fn status_preparation_replaces_shared_requests_for_border_clock_and_source_chang
         );
         let first = shared_request(&inner, client);
         inner
+            .modes
             .pane_modes
             .insert(context.pane.unwrap(), vec![PaneModeRequest::Clock]);
         let changed = shared_request(&inner, client);
@@ -425,7 +427,7 @@ fn status_preparation_replaces_shared_requests_for_border_clock_and_source_chang
             reuse_enabled(),
         );
         inner.engine.set_format_now(1_700_000_001);
-        inner.pane_modes.remove(&context.pane.unwrap());
+        inner.modes.pane_modes.remove(&context.pane.unwrap());
         let tick = shared_request(&inner, client);
         assert!(!Arc::ptr_eq(&changed, &tick));
         assert_eq!(changed.context.format_now, Some(1_700_000_000));
@@ -558,6 +560,7 @@ fn status_preparation_reuses_retained_size_only_for_unchanged_clock_storage() {
             assert!(Arc::ptr_eq(&tick.pane_borders, &same_storage.pane_borders));
         }
         inner
+            .modes
             .pane_modes
             .insert(context.pane.unwrap(), vec![PaneModeRequest::Clock]);
         let borders = shared_request(&inner, client);
@@ -950,6 +953,7 @@ fn status_preparation_reuse_keeps_border_mode_callbacks_fresh() {
         assert_eq!(first.pane_borders[0].style, "fg=green");
         let revision = inner.engine.format_cache_revision();
         inner
+            .modes
             .pane_modes
             .insert(context.pane.unwrap(), vec![PaneModeRequest::Clock]);
         let second = request(&inner, client);

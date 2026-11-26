@@ -133,7 +133,10 @@ fn live_scalar_border_probe_preserves_headers_options_and_fresh_mode_counts() {
         assert!(Arc::ptr_eq(&first, &later));
     }
     inner.engine.set_format_now(second);
-    inner.pane_modes.insert(pane, vec![PaneModeRequest::Clock]);
+    inner
+        .modes
+        .pane_modes
+        .insert(pane, vec![PaneModeRequest::Clock]);
     assert!(
         cached_live_border_presentations(
             &inner,
@@ -629,8 +632,9 @@ fn border_format_cache_checks_borrowed_mode_counts_without_materializing_maps() 
     }
     let revision = inner.engine.format_cache_revision();
     for (active, inactive) in [(first_pane, second_pane), (second_pane, first_pane)] {
-        inner.pane_modes.insert(inactive, Vec::new());
+        inner.modes.pane_modes.insert(inactive, Vec::new());
         inner
+            .modes
             .pane_modes
             .insert(active, vec![PaneModeRequest::Clock, PaneModeRequest::Clock]);
         let facts = readonly_borrowed_format_hook_facts(&inner, CommandFormatSeed::default());
@@ -677,6 +681,7 @@ fn border_format_cache_checks_live_copy_sessions_without_materializing_maps() {
     inner.terminals_mut().insert(pane, terminal);
     enter_copy_session(&mut inner, copy_client, pane).unwrap();
     inner
+        .modes
         .pane_modes
         .insert(pane, vec![PaneModeRequest::Clock, PaneModeRequest::Clock]);
     set_style(

@@ -1453,7 +1453,7 @@ fn copy_mode_kill_does_not_survive_an_errored_entry() {
         "copy-mode -k with no attached client should error"
     );
     assert!(
-        shared.inner.lock().pending_copy_kill.is_none(),
+        shared.inner.lock().modes.pending_copy_kill.is_none(),
         "an errored copy-mode -k left the kill armed"
     );
 
@@ -1524,7 +1524,7 @@ fn copy_mode_source_does_not_survive_an_errored_entry() {
         "copy-mode -s with no attached client should error"
     );
     assert!(
-        shared.inner.lock().pending_copy_source.is_none(),
+        shared.inner.lock().modes.pending_copy_source.is_none(),
         "an errored copy-mode -s left the source armed"
     );
 }
