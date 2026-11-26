@@ -1552,8 +1552,8 @@ pub(super) enum ShellJobEnvironmentTiming {
 pub(super) struct ShellJobSpawnPolicy {
     #[cfg(not(unix))]
     wait_for_start: bool,
-    shutdown_blocking: bool,
-    detached: bool,
+    pub(super) shutdown_blocking: bool,
+    pub(super) detached: bool,
 }
 
 pub(super) fn run_shell_position_context_name(position: usize) -> String {
