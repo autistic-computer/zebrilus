@@ -1,3 +1,4 @@
+use super::test_support::command;
 use super::*;
 
 fn engine_with_panes() -> (MuxEngine, WindowId, PaneId, PaneId) {
@@ -263,4 +264,384 @@ fn the_rename_decision_and_the_rename_read_one_clock() {
     assert!(set_at(&mut engine, "top", boundary));
     assert_eq!(engine.state.windows[&window].name, "top");
     assert_eq!(engine.next_window_rename_deadline(), None);
+}
+
+#[test]
+fn daemon_format_facts_feed_runtime_values_and_session_time() {
+    let mut engine = MuxEngine::default();
+    engine.set_format_server_context("tower.local", "tower", "/tmp/zz.sock", 40);
+    engine.set_format_server_identity(41, "501", "fab");
+    engine.set_format_now(55);
+    let mut context = ExecutionContext::default();
+    engine
+        .execute(&mut context, &command("new-session", &["-s", "work"]))
+        .unwrap();
+    let pane = context.pane.unwrap();
+    let facts = PaneRuntimeFacts {
+        current_command: "fish".to_owned(),
+        current_path: "/work/live".to_owned(),
+        dead_signal: String::new(),
+        reported_path: "/work/reported".to_owned(),
+        start_path: "/work/start".to_owned(),
+        pid: Some(4242),
+        tty: "/dev/ttys007".to_owned(),
+    };
+    assert!(engine.set_pane_runtime_facts(pane, facts.clone()));
+    assert!(!engine.set_pane_runtime_facts(pane, facts));
+    assert_eq!(
+        engine
+            .execute(
+                &mut context,
+                &command(
+                    "display-message",
+                    &[
+                        "-p",
+                        "#{pane_current_command}|#{pane_current_path}|#{pane_path}|#{pane_start_path}|#{pane_pid}|#{pane_tty}|#{session_created}|#{cursor_flag}|#{wrap_flag}|#{pid}|#{uid}|#{user}",
+                    ],
+                ),
+            )
+            .unwrap()
+            .output,
+        "fish|/work/live|/work/reported|/work/start|4242|/dev/ttys007|55||1|41|501|fab"
+    );
+}
+
+#[test]
+fn parse_window_name_reads_a_start_command_the_way_the_pin_does() {
+    for (input, expected) in [
+        ("\"exec sleep 0.2\"", "sleep"),
+        ("\"sh -c \\\"sleep 0.1; exit 3\\\"\"", "sh"),
+        ("\"\\\"/bin/true\\\" a\"", "\\\\"),
+        ("\" true\"", "true"),
+        ("\"FOO=1 true\"", "FOO=1"),
+        ("/bin/true x \"y z\"", "true"),
+        ("-bash", "bash"),
+        ("/usr/local/bin/", "bin"),
+        ("/", "/"),
+        ("''", "''"),
+        ("/bin/sh", "sh"),
+    ] {
+        assert_eq!(parse_window_name(input), expected, "{input}");
+    }
+}
+
+#[test]
+fn explicit_window_names_pin_automatic_rename_off() {
+    let mut engine = MuxEngine::default();
+    let mut context = ExecutionContext::default();
+    engine
+        .execute(&mut context, &command("new-session", &["-s", "work"]))
+        .unwrap();
+    let first = context.window.unwrap();
+    assert!(engine.state.window_automatic_rename(first).unwrap());
+
+    engine
+        .execute(&mut context, &command("rename-window", &["manual"]))
+        .unwrap();
+    assert_eq!(
+        engine
+            .execute(
+                &mut context,
+                &command(
+                    "show-options",
+                    &["-wv", "-t", &first.to_string(), "automatic-rename"],
+                ),
+            )
+            .unwrap()
+            .output,
+        "off"
+    );
+    assert!(!engine.state.snapshot().sessions[0].windows[0].automatic_rename);
+
+    engine
+        .execute(&mut context, &command("new-window", &["-n", "explicit"]))
+        .unwrap();
+    let named = context.window.unwrap();
+    assert!(!engine.state.window_automatic_rename(named).unwrap());
+
+    engine
+        .execute(&mut context, &command("new-window", &[]))
+        .unwrap();
+    let automatic = context.window.unwrap();
+    assert!(engine.state.window_automatic_rename(automatic).unwrap());
+
+    engine
+        .execute(
+            &mut context,
+            &command("new-session", &["-d", "-s", "named", "-n", "first-window"]),
+        )
+        .unwrap();
+    let first_named = context.window.unwrap();
+    assert!(!engine.state.window_automatic_rename(first_named).unwrap());
+}
+
+#[test]
+fn dead_signal_spelling_matches_the_platform_pin() {
+    let term = if cfg!(target_os = "linux") {
+        "15"
+    } else {
+        "term"
+    };
+    for value in ["SIGTERM", "term", "Terminated", "Terminated: 15"] {
+        assert_eq!(tmux_signal_name(value), term);
+    }
+    assert_eq!(tmux_signal_name(""), "");
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    assert_eq!(tmux_signal_name("15"), term);
+    #[cfg(target_os = "linux")]
+    for (value, expected) in [
+        ("SIGBUS", "7"),
+        ("Bus error", "7"),
+        ("Trace/breakpoint trap", "5"),
+        ("SIGUSR1", "10"),
+        ("User defined signal 2", "12"),
+        ("SIGSTOP", "19"),
+        ("31", "31"),
+        ("SIGPWR", "30"),
+        ("Power failure", "30"),
+        ("SIGSTKFLT", "16"),
+        ("Stack fault", "16"),
+    ] {
+        assert_eq!(tmux_signal_name(value), expected);
+    }
+    #[cfg(target_os = "macos")]
+    for (value, expected) in [("7", "emt"), ("10", "bus"), ("30", "usr1"), ("32", "32")] {
+        assert_eq!(tmux_signal_name(value), expected);
+    }
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn dead_signal_realtime_descriptions_restore_the_signal_number() {
+    let first = nix::libc::SIGRTMIN();
+    let last = nix::libc::SIGRTMAX();
+    for offset in [0, 1, last - first] {
+        assert_eq!(
+            tmux_signal_name(&format!("Real-time signal {offset}")),
+            (first + offset).to_string()
+        );
+    }
+    assert_ne!(
+        tmux_signal_name(&format!("Real-time signal {}", last - first + 1)),
+        (last + 1).to_string()
+    );
+}
+
+#[test]
+fn runtime_facts_apply_automatic_window_names_and_dead_signals() {
+    let mut engine = MuxEngine::default();
+    let mut context = ExecutionContext::default();
+    engine
+        .execute(&mut context, &command("new-session", &["-s", "work"]))
+        .unwrap();
+    let pane = context.pane.unwrap();
+    let window = context.window.unwrap();
+
+    assert!(engine.set_pane_runtime_facts(
+        pane,
+        PaneRuntimeFacts {
+            current_command: "sleep".to_owned(),
+            ..PaneRuntimeFacts::default()
+        },
+    ));
+    assert_eq!(engine.state.windows[&window].name, "sleep");
+    assert_eq!(
+        engine
+            .execute(
+                &mut context,
+                &command("list-windows", &["-F", "#{window_name}"]),
+            )
+            .unwrap()
+            .output,
+        "sleep"
+    );
+
+    engine
+        .execute(
+            &mut context,
+            &command(
+                "set-window-option",
+                &["automatic-rename-format", "PFX-#{pane_current_command}-SFX"],
+            ),
+        )
+        .unwrap();
+    assert!(engine.set_pane_runtime_facts(
+        pane,
+        PaneRuntimeFacts {
+            current_command: "fish".to_owned(),
+            ..PaneRuntimeFacts::default()
+        },
+    ));
+    assert_eq!(engine.state.windows[&window].name, "PFX-fish-SFX");
+
+    engine
+        .execute(
+            &mut context,
+            &command("set-window-option", &["-u", "automatic-rename-format"]),
+        )
+        .unwrap();
+    engine
+        .set_pane_shell(pane, "/usr/local/bin/fish".to_owned())
+        .unwrap();
+    assert!(
+        engine
+            .mark_pane_dead(pane, None, Some("Terminated: 15"))
+            .unwrap()
+    );
+    assert_eq!(engine.state.windows[&window].name, "fish[dead]");
+    assert_eq!(
+        engine
+            .execute(
+                &mut context,
+                &command(
+                    "display-message",
+                    ["-p", "#{pane_dead}:#{pane_dead_status}:#{pane_dead_signal}"].as_slice(),
+                ),
+            )
+            .unwrap()
+            .output,
+        if cfg!(target_os = "linux") {
+            "1::15"
+        } else {
+            "1::term"
+        }
+    );
+
+    engine
+        .execute(&mut context, &command("rename-window", &["manual"]))
+        .unwrap();
+    assert!(engine.set_pane_runtime_facts(
+        pane,
+        PaneRuntimeFacts {
+            current_command: "vim".to_owned(),
+            ..PaneRuntimeFacts::default()
+        },
+    ));
+    assert_eq!(engine.state.windows[&window].name, "manual");
+}
+
+#[test]
+fn retained_dead_facts_and_respawn_keep_pane_identity_and_layout() {
+    let mut engine = MuxEngine::default();
+    engine.set_format_now(1_700_000_123);
+    let mut context = ExecutionContext::default();
+    engine
+        .execute(&mut context, &command("new-session", &["-s", "work"]))
+        .unwrap();
+    engine
+        .execute(&mut context, &command("split-window", &["-h"]))
+        .unwrap();
+    let pane = context.pane.unwrap();
+    let window = context.window.unwrap();
+    let layout = engine.state.windows[&window].layout.project();
+
+    engine
+        .execute(
+            &mut context,
+            &command("set-window-option", &["-g", "remain-on-exit", "on"]),
+        )
+        .unwrap();
+    engine.mark_pane_dead(pane, Some(7), None).unwrap();
+    assert!(engine.retain_exited_pane(pane, false).unwrap());
+    assert_eq!(
+        engine
+            .execute(
+                &mut context,
+                &command(
+                    "display-message",
+                    &[
+                        "-p",
+                        "-t",
+                        &pane.to_string(),
+                        "#{pane_id}:#{pane_dead}:#{pane_dead_status}:#{pane_dead_time}"
+                    ],
+                ),
+            )
+            .unwrap()
+            .output,
+        format!("{pane}:1:7:1700000123")
+    );
+    assert!(matches!(
+        engine
+            .execute(
+                &mut context,
+                &command("send-keys", &["-t", &pane.to_string(), "x"]),
+            )
+            .unwrap()
+            .effects
+            .as_slice(),
+        [MuxEffect::SendKeys { pane: target, .. }] if *target == pane
+    ));
+
+    let respawn = engine
+        .execute(
+            &mut context,
+            &command(
+                "respawn-pane",
+                &[
+                    "-t",
+                    &pane.to_string(),
+                    "-c",
+                    "/tmp",
+                    "-e",
+                    "ONE=1",
+                    "-e",
+                    "TWO=2",
+                    "printf ready",
+                ],
+            ),
+        )
+        .unwrap();
+    assert!(matches!(
+        respawn.effects.as_slice(),
+        [
+            MuxEffect::PaneRespawned {
+                pane: actual,
+                cwd: Some(cwd),
+                command: Some(command),
+                environment,
+                empty: false,
+            },
+            MuxEffect::SnapshotChanged,
+        ] if *actual == pane
+            && cwd == "/tmp"
+            && command.as_slice() == ["printf ready"]
+            && environment == &vec![("ONE".to_owned(), "1".to_owned()), ("TWO".to_owned(), "2".to_owned())]
+    ));
+    assert_eq!(engine.state.windows[&window].layout.project(), layout);
+    assert_eq!(
+        engine
+            .execute(
+                &mut context,
+                &command(
+                    "display-message",
+                    &[
+                        "-p",
+                        "-t",
+                        &pane.to_string(),
+                        "#{pane_id}:#{pane_dead}:#{pane_dead_status}:#{pane_dead_time}"
+                    ],
+                ),
+            )
+            .unwrap()
+            .output,
+        format!("{pane}:0::")
+    );
+
+    assert!(matches!(
+        engine.execute(
+            &mut context,
+            &command("respawn-pane", &["-t", &pane.to_string()]),
+        ),
+        Err(ServerError::InvalidCommand(message))
+            if message == "respawn pane failed: pane work:0.1 still active"
+    ));
+    assert!(
+        engine
+            .execute(
+                &mut context,
+                &command("respawn-pane", &["-k", "-t", &pane.to_string()]),
+            )
+            .is_ok()
+    );
 }
