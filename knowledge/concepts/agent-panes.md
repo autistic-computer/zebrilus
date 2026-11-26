@@ -2,7 +2,7 @@
 type: Concept
 title: Agent panes and the flip
 description: Native agent chats, switching to a provider's terminal UI, accounts, inter-pane messages and replay.
-resource: crates/zz-daemon/src/agent/host.rs
+resource: crates/zz-agent/src/host.rs
 tags: [agent, chat, terminal, replay]
 timestamp: 2026-11-24T00:00:00Z
 ---
@@ -50,18 +50,18 @@ documented in [agent CLI contracts](/references/agent-cli-contracts.md).
 ### Antigravity
 
 The driver selects an installed executable that supports `agy acp`, and maps
-`thought_level` to effort. See `crates/zz-daemon/src/agent/agy.rs`.
+`thought_level` to effort. See `crates/zz-agent/src/agy.rs`.
 
 ### Grok
 
 The driver adapts Grok's ACP session options, sign-in and weekly usage for the
-shared chat. See `crates/zz-daemon/src/agent/grok.rs`.
+shared chat. See `crates/zz-agent/src/grok.rs`.
 
 ### Cursor
 
 The driver starts the ACP executable, handles its sign-in flow and exposes its
 parameterized model choices. Its ACP session is separate from Cursor's TUI session.
-See `crates/zz-daemon/src/agent/cursor.rs`.
+See `crates/zz-agent/src/cursor.rs`.
 
 ### Codex on the shared app server
 
@@ -71,7 +71,7 @@ app server.
 The shared server owns the thread and its active work, so a supported flip can
 rejoin a running turn. The driver passes the pane's workspace variables on thread
 start, resume and fork. A thread another client already holds can retain its existing
-environment. See `managed_daemon` and `thread_config` in `crates/zz-daemon/src/agent/codex/mod.rs`.
+environment. See `managed_daemon` and `thread_config` in `crates/zz-agent/src/codex/mod.rs`.
 
 ## The flip
 
@@ -80,7 +80,7 @@ a supported TUI and a native chat. The daemon resolves the CLI's session, folder
 and available launch settings. It stops the old runtime and starts the other
 representation with that session. A CLI without an established session can start
 a fresh chat. Process and session selection is provider-specific. See
-`daemon/agent_flip.rs` (`flip_plan`) and `agent/cli_session.rs` in `crates/zz-daemon/src`.
+`daemon/agent_flip.rs` (`flip_plan`) and `crates/zz-agent/src/cli_session.rs` in `crates/zz-daemon/src`.
 
 By default, a flip that would interrupt active work reports what is busy.
 `--when-idle` arms the flip, `--cancel` disarms it, and `--now` can interrupt
@@ -142,7 +142,7 @@ that cannot be steered, gets it as its next prompt. A pane's `queued_prompts` co
 the user queued from the composer, and taking the queue back returns those and leaves the rest
 waiting. Closing a Codex chat for good interrupts the turn it would leave on the shared
 server; a flip or an account switch leaves the turn running. See `deliver_into_turn`, `unqueue`
-and `end` in `crates/zz-daemon/src/agent/host.rs`.
+and `end` in `crates/zz-agent/src/host.rs`.
 
 A plain `zz --host NAME agent-send -t %N TEXT` from a chat can relay the result
 through its own daemon. The remote pane is identified by host and pane ID. A
@@ -251,5 +251,5 @@ Older requests can rebuild from a complete session journal or from retained
 memory. Replay goes to the requester. Overlap with live delivery is resolved by
 sequence number. Native CLI transcripts can also be read when resuming a vendor
 session. Closing the UI leaves the driver running. See `AgentFanout::replay` in
-`crates/zz-daemon/src/agent/fanout.rs`, [data flow](/architecture/data-flow.md)
+`crates/zz-agent/src/fanout.rs`, [data flow](/architecture/data-flow.md)
 and the [turn machine](/designs/agent-turn-machine.md).

@@ -9,6 +9,7 @@ publish = false
 
 [dependencies]
 base64.workspace = true
+crossbeam-channel.workspace = true
 ed25519-dalek.workspace = true
 getrandom.workspace = true
 interprocess.workspace = true
@@ -49,6 +50,7 @@ windows = { workspace = true, features = [
     "Win32_System_Pipes",
     "Win32_System_Threading",
 ] }
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_Threading"] }
 
 [dev-dependencies]
 sysinfo.workspace = true

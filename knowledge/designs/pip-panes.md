@@ -266,7 +266,7 @@ The float closed 5 s after the last subagent finished, and its task tray could s
 was a watch-only agent pane, so it went with the Agent pane kind in e0608066e: `agent/feed.rs`,
 `agent/claude/subagents.rs`, `agent/codex/children.rs` and `daemon/subagent_feeds.rs` are
 deleted, and the `watch` flag on `AgentSessionCapabilities` (wire v109) is no longer set by
-anything. The Codex rollout reader the lens uses now lives in `agent/codex/rollout.rs`. Showing
+anything. The Codex rollout reader the lens uses now lives in `crates/zz-agent/src/codex/rollout.rs`. Showing
 subagent activity inside the lens is a follow-up in the [agent lens](/designs/agent-lens.md)
 design.
 

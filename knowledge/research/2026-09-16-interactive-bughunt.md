@@ -36,7 +36,7 @@ text on UTF-8 boundaries, and suppressed active echoes while keeping loaded hist
 undispatched prompts produced no row. Tests covered both providers, queued prompts, images, repeated
 text, session changes and duplicate replay. Existing incomplete journals could still lack the prompt.
 Same-session disappearance had no live confirmation. Current daemon source retains the user-chunk path
-in `crates/zz-daemon/src/agent/runtime.rs`.
+in `crates/zz-agent/src/runtime.rs`.
 
 ## BH-002. Inline-code wrapping
 

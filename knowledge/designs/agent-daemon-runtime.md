@@ -9,7 +9,7 @@ tags:
 - daemon
 - protocol
 - persistence
-resource: crates/zz-daemon/src/agent/fanout.rs
+resource: crates/zz-agent/src/fanout.rs
 timestamp: 2026-11-24T00:00:00-03:00
 ---
 
@@ -18,8 +18,8 @@ A driver runs on the machine that owns the pane. Detaching a desktop or thin cli
 | Owner | Source |
 | --- | --- |
 | Pane creation and lifetime | `Shared::open_agent_pane` in `crates/zz-daemon/src/daemon.rs` |
-| Commands, pending asks and queued prompts | `AgentHost` in `crates/zz-daemon/src/agent/host.rs` |
-| Subscription, ordered updates and replay | `AgentRuntime::replay` in `crates/zz-daemon/src/agent/fanout.rs` |
-| Durable records and compaction | `AgentJournal` in `crates/zz-daemon/src/agent/journal.rs` |
+| Commands, pending asks and queued prompts | `AgentHost` in `crates/zz-agent/src/host.rs` |
+| Subscription, ordered updates and replay | `AgentRuntime::replay` in `crates/zz-agent/src/fanout.rs` |
+| Durable records and compaction | `AgentJournal` in `crates/zz-agent/src/journal.rs` |
 
 The host moved into the daemon in August 2026. The short-lived [terminal lens](/designs/agent-lens.md) also used this infrastructure. Current [agent panes](/concepts/agent-panes.md) use provider drivers and the [chat machine](/designs/agent-chat-machine.md).

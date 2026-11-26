@@ -52,8 +52,8 @@ in `daemon.rs` when a capability has different backend support by platform.
   derives the metadata that the sidebar and status views consume. Terminal state belongs to
   [zz-terminal](/crates/zz-terminal.md). `status.rs` handles daemon-side status rendering
   and format jobs. See [PTY workers](/concepts/pty-worker.md) and [status line](/tmux/status-line.md).
-- `agent/host.rs`, `agent/runtime.rs` and the provider modules under `agent/` run agents.
-  `agent/fanout.rs` and `daemon/agent_publisher.rs` publish state and timeline updates.
+- The [zz-agent crate](/crates/zz-agent.md) runs agents; the `agent` feature pulls it in and
+  `crate::agent` names it. `daemon/agent_publisher.rs` publishes its state and timeline updates.
   `daemon/agent_flip.rs` handles switching between a supported terminal CLI and chat.
   See [agent driver contracts](/references/agent-cli-contracts.md).
 

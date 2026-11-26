@@ -11804,6 +11804,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "zz-agent"
+version = "0.31.0"
+dependencies = [
+ "agent-client-protocol",
+ "async-channel",
+ "base64 0.23.1",
+ "chrono",
+ "crossbeam-channel",
+ "futures-lite",
+ "getrandom 0.4.3",
+ "libc",
+ "log",
+ "parking_lot 0.13.0",
+ "rustix",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "smol",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tungstenite 0.29.0",
+ "windows-registry",
+ "zz-daemon-client",
+ "zz-machine",
+ "zz-protocol",
+]
+
+[[package]]
 name = "zz-android"
 version = "0.31.0"
 dependencies = [
@@ -11923,7 +11951,6 @@ version = "0.31.0"
 dependencies = [
  "agent-client-protocol",
  "async-channel",
- "base64 0.23.1",
  "chrono",
  "crossbeam-channel",
  "futures-lite",
@@ -11939,14 +11966,12 @@ dependencies = [
  "semver",
  "serde",
  "serde_json",
- "sha2 0.11.1",
  "signal-hook",
- "smol",
  "tempfile",
  "thiserror 2.0.21",
- "tungstenite 0.29.0",
  "windows-registry",
  "windows-sys 0.61.2",
+ "zz-agent",
  "zz-config",
  "zz-daemon-client",
  "zz-machine",
@@ -11962,6 +11987,7 @@ version = "0.31.0"
 dependencies = [
  "base64 0.23.1",
  "core-foundation",
+ "crossbeam-channel",
  "ed25519-dalek",
  "getrandom 0.4.3",
  "interprocess",
@@ -11978,6 +12004,7 @@ dependencies = [
  "thiserror 2.0.21",
  "tokio",
  "windows",
+ "windows-sys 0.61.2",
  "zeroize",
  "zz-protocol",
  "zz-terminal",

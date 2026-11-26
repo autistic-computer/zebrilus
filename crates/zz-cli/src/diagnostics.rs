@@ -25,6 +25,7 @@ pub const VERBOSE_FILTER: &str = concat!(
     "zz=trace,",
     "ala_cef=trace,",
     "zz_daemon=trace,",
+    "zz_agent=trace,",
     "zz_terminal=trace,",
     "zz_mux=trace,",
     "cef=debug,",
@@ -32,7 +33,7 @@ pub const VERBOSE_FILTER: &str = concat!(
     "wgpu=info"
 );
 pub const NORMAL_FILTER: &str =
-    "zz=info,ala_cef=info,zz_daemon=info,zz_mux=info,zz_terminal=info,cef=warn";
+    "zz=info,ala_cef=info,zz_daemon=info,zz_agent=info,zz_mux=info,zz_terminal=info,cef=warn";
 pub const RING_LOG_GENERATION_BYTES: u64 = 8 * 1024 * 1024;
 
 pub static VERBOSE_LOG: OnceLock<Option<PathBuf>> = OnceLock::new();

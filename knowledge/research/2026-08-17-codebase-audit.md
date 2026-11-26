@@ -40,7 +40,7 @@ established.
 | 15 | A BSD wake drained at most 64 bytes, allowing extra idle actor cycles. Channel checks on either side of the drain still serviced queued commands. | Both pipe ends became nonblocking, interrupted writes retried and draining continued to EAGAIN. |
 
 At `1ce632dce`, `crates/zz/src/workspace/view.rs` retains the dialog acknowledgement/reset test, and
-`crates/zz-daemon/src/agent/host.rs` gates `start_git_refresh` through a request before spawning.
+`crates/zz-agent/src/host.rs` gates `start_git_refresh` through a request before spawning.
 `libs/ala-cef/src/chrome_import/cookie.rs` wipes DPAPI output in `dpapi_unprotect`. Its
 `src/mac_app_protocol.rs` uses `SendEventRestore`. The checkout has no `crates/zz-client-ffi`. Findings
 7–10 describe that retired boundary. For original file paths, symbols and per-claim reasoning, use

@@ -2,6 +2,7 @@
 # Concepts
 
 * [ala-cef crate](ala-cef.md) - CEF off-screen browser hosting, cross-platform input and frame types, profiles, and optional Chrome data import.
+* [zz-agent crate](zz-agent.md) - The agent runtime the daemon drives agent panes with, its Claude Code, Codex and ACP drivers, host, fanout, journal and logins.
 * [zz-cli crate](zz-cli.md) - Headless executable, CLI dispatch and daemon startup shared with the desktop app, remote host targeting and owned updates.
 * [zz-client crate](zz-client.md) - Renderer-independent client state, input routing, scrollback, layout and presentation rules shared by zz clients.
 * [zz-daemon-client crate](zz-daemon-client.md) - Command and interactive connections, local and remote routes, host discovery, identity and process facts shared with the server.
