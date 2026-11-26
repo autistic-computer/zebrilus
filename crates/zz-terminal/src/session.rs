@@ -1714,8 +1714,8 @@ struct PtyWriter {
 }
 
 #[cfg(all(test, unix))]
-#[path = "session/direct_input_echoin_tests.rs"]
-mod direct_input_echoin_tests;
+#[path = "session/direct_input_tests.rs"]
+mod direct_input_tests;
 
 #[cfg(unix)]
 struct UnixChildKiller(Option<u32>);

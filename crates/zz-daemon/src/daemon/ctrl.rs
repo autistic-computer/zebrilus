@@ -602,8 +602,8 @@ impl OutboundMailbox {
 }
 
 #[cfg(all(unix, test))]
-#[path = "attachframes_tests.rs"]
-mod attachframes_tests;
+#[path = "ctrl_attach_frames_tests.rs"]
+mod attach_frames_tests;
 
 #[cfg(unix)]
 const ATTACH_SETTLE_BOUND: Duration = Duration::from_millis(100);

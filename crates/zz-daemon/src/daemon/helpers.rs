@@ -618,10 +618,6 @@ impl JobClient {
 #[path = "helpers_tests.rs"]
 mod tests;
 
-#[cfg(test)]
-#[path = "helpers_helperwait_tests.rs"]
-mod helperwait_tests;
-
 impl Shared {
     pub(super) fn apply_helper_result(self: &Arc<Self>, result: helpers::Result) {
         match result {
