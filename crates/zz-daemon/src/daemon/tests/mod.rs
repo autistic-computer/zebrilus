@@ -782,7 +782,14 @@ fn claude_peer_status_drives_agent_state_for_terminal_panes() {
                     .trim(),
                 "idle"
             );
-            assert!(!shared.inner.lock().claude_peer_states.contains_key(&pane));
+            assert!(
+                !shared
+                    .inner
+                    .lock()
+                    .agents
+                    .claude_peer_states
+                    .contains_key(&pane)
+            );
         },
     );
 }
@@ -810,7 +817,14 @@ fn claude_peer_status_respects_the_opt_out() {
                     )
                     .expect("disable peer state");
                 shared.sync_claude_peer_states();
-                assert!(!shared.inner.lock().claude_peer_states.contains_key(&pane));
+                assert!(
+                    !shared
+                        .inner
+                        .lock()
+                        .agents
+                        .claude_peer_states
+                        .contains_key(&pane)
+                );
                 shared
                     .execute(
                         ClientId(1),
@@ -835,7 +849,14 @@ fn claude_peer_status_respects_the_opt_out() {
                 )
                 .expect("read agent state");
             assert!(state.output.is_empty());
-            assert!(!shared.inner.lock().claude_peer_states.contains_key(&pane));
+            assert!(
+                !shared
+                    .inner
+                    .lock()
+                    .agents
+                    .claude_peer_states
+                    .contains_key(&pane)
+            );
         },
     );
 }

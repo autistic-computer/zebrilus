@@ -93,7 +93,7 @@ impl Shared {
                 ))
                 .into());
             }
-            self.inner.lock().armed_accounts.remove(&provider);
+            self.inner.lock().agents.armed_accounts.remove(&provider);
             let record = logins::load(provider).unwrap_or_default();
             if record.active() == Some(target.as_str()) {
                 if !self
@@ -219,7 +219,7 @@ impl Shared {
             let inner = self.inner.lock();
             chats
                 .into_iter()
-                .filter(|pane| inner.agent_panes.contains(pane))
+                .filter(|pane| inner.agents.agent_panes.contains(pane))
                 .collect::<Vec<_>>()
         };
         if let Some(runtime) = self.open_agent_runtime() {
@@ -249,6 +249,7 @@ impl Shared {
     fn arm_account(self: &Arc<Self>, provider: AgentProvider, target: String) {
         self.inner
             .lock()
+            .agents
             .armed_accounts
             .insert(provider, target.clone());
         let shared = Arc::downgrade(&self.server_owner());
@@ -260,11 +261,11 @@ impl Shared {
                     let Some(shared) = shared.upgrade() else {
                         return;
                     };
-                    if shared.inner.lock().armed_accounts.get(&provider) != Some(&target) {
+                    if shared.inner.lock().agents.armed_accounts.get(&provider) != Some(&target) {
                         return;
                     }
                     if shared.provider_busy(provider).is_none() {
-                        shared.inner.lock().armed_accounts.remove(&provider);
+                        shared.inner.lock().agents.armed_accounts.remove(&provider);
                         shared.switch_agent_login(provider, &target);
                         return;
                     }
@@ -272,7 +273,7 @@ impl Shared {
             });
         if let Err(error) = spawned {
             log::warn!(target: "zz::agent", "could not wait to switch the {} account: {error}", provider.label());
-            self.inner.lock().armed_accounts.remove(&provider);
+            self.inner.lock().agents.armed_accounts.remove(&provider);
         }
     }
 

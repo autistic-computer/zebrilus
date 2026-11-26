@@ -10401,7 +10401,7 @@ impl Shared {
                         empty,
                     } => {
                         #[cfg(feature = "agent")]
-                        if inner.agent_panes.remove(pane) {
+                        if inner.agents.agent_panes.remove(pane) {
                             agent_panes_closed.push(*pane);
                         }
                         clear_pane_modes(&mut inner, *pane);
@@ -10659,7 +10659,7 @@ impl Shared {
                     }
                     MuxEffect::AgentForked { pane, at } => {
                         #[cfg(feature = "agent")]
-                        inner.agent_forks.insert(*pane, at.clone());
+                        inner.agents.agent_forks.insert(*pane, at.clone());
                         #[cfg(not(feature = "agent"))]
                         let _ = (pane, at);
                     }
@@ -10756,7 +10756,7 @@ impl Shared {
                             inner.panes.program_status_panes.remove(pane);
                             inner.panes.popup_panes.remove(pane);
                             #[cfg(all(feature = "agent", unix))]
-                            inner.claude_peer_states.remove(pane);
+                            inner.agents.claude_peer_states.remove(pane);
                             inner.panes.terminal_spawns.remove(pane);
                             inner.panes.terminal_geometries.remove(pane);
                             inner.panes.reported_pane_places.remove(pane);
@@ -28884,7 +28884,7 @@ impl Shared {
             };
             #[cfg(all(feature = "agent", unix))]
             if owned != reported {
-                inner.claude_peer_states.remove(&pane);
+                inner.agents.claude_peer_states.remove(&pane);
             }
             let agent_state = (reported || owned).then(|| {
                 match headline.as_ref().map(|headline| headline.state) {
@@ -34074,7 +34074,7 @@ impl Shared {
         for (pane, pid, value) in updates {
             let value = {
                 let mut inner = self.inner.lock();
-                if value.is_none() && !inner.claude_peer_states.contains_key(&pane) {
+                if value.is_none() && !inner.agents.claude_peer_states.contains_key(&pane) {
                     continue;
                 }
                 let Some(window) = inner.engine.state.window_for_pane(pane) else {
@@ -34105,12 +34105,12 @@ impl Shared {
                     continue;
                 }
                 if let Some(value) = value {
-                    if inner.claude_peer_states.get(&pane) == Some(&value) {
+                    if inner.agents.claude_peer_states.get(&pane) == Some(&value) {
                         continue;
                     }
-                    inner.claude_peer_states.insert(pane, value.clone());
+                    inner.agents.claude_peer_states.insert(pane, value.clone());
                     value
-                } else if inner.claude_peer_states.remove(&pane).is_none() {
+                } else if inner.agents.claude_peer_states.remove(&pane).is_none() {
                     continue;
                 } else {
                     "idle".to_owned()
@@ -34236,8 +34236,8 @@ impl Shared {
         let (cli, fork) = {
             let mut inner = self.inner.lock();
             (
-                inner.cli_exits.remove(&pane),
-                inner.agent_forks.remove(&pane),
+                inner.agents.cli_exits.remove(&pane),
+                inner.agents.agent_forks.remove(&pane),
             )
         };
         let running = move |terminal: &Option<Arc<TerminalSession>>| {
@@ -34289,7 +34289,7 @@ impl Shared {
             return;
         };
         runtime.reconfigure(self.agent_spawn_config());
-        self.inner.lock().agent_panes.insert(pane);
+        self.inner.lock().agents.agent_panes.insert(pane);
         self.refresh_agent_visibility();
         if !runtime.open(pane, spec) {
             log::warn!(target: "zz::agent", "{pane} already has an agent runtime");
@@ -34664,7 +34664,12 @@ impl Shared {
             .find(|pane| holds(*pane));
         recorded.or_else(|| {
             record.session.as_ref()?;
-            inner.agent_panes.iter().copied().find(|pane| holds(*pane))
+            inner
+                .agents
+                .agent_panes
+                .iter()
+                .copied()
+                .find(|pane| holds(*pane))
         })
     }
 
@@ -35022,7 +35027,7 @@ impl Shared {
         }
         let mut inner = self.inner.lock();
         for pane in panes {
-            inner.agent_panes.remove(pane);
+            inner.agents.agent_panes.remove(pane);
             inner.engine.set_agent_chat(*pane, None);
         }
         for client in inner.clients.values_mut() {
@@ -35815,6 +35820,7 @@ fn agent_message_pane(message: &ProtocolMessage) -> Result<PaneId, ServerError> 
 #[cfg(feature = "agent")]
 fn session_agent_panes(inner: &ServerState, session: SessionId) -> Vec<PaneId> {
     inner
+        .agents
         .agent_panes
         .iter()
         .copied()
@@ -36979,11 +36985,21 @@ struct ServerState {
     engine: MuxEngine,
     publication: Publication,
     artifact_state: ArtifactState,
-    published_agent_parents: BTreeMap<PaneId, PaneId>,
     config: Config,
     waits: Waits,
     terminals: Arc<BTreeMap<PaneId, Arc<TerminalSession>>>,
     panes: PaneTables,
+    agents: Agents,
+    transfers: Transfers,
+    modes: Modes,
+    history: History,
+    buffers: Buffers,
+    jobs: Jobs,
+}
+
+#[derive(Default)]
+struct Agents {
+    published_agent_parents: BTreeMap<PaneId, PaneId>,
     #[cfg(all(feature = "agent", unix))]
     claude_peer_states: BTreeMap<PaneId, String>,
     #[cfg(feature = "agent")]
@@ -36996,11 +37012,6 @@ struct ServerState {
     cli_exits: BTreeMap<PaneId, u32>,
     #[cfg(feature = "agent")]
     agent_forks: BTreeMap<PaneId, Option<String>>,
-    transfers: Transfers,
-    modes: Modes,
-    history: History,
-    buffers: Buffers,
-    jobs: Jobs,
 }
 
 #[derive(Default)]
@@ -45601,12 +45612,12 @@ fn record_agent_parents(
 }
 
 fn publish_agent_parents(inner: &mut ServerState) {
-    if *inner.engine.agent_parents() == inner.published_agent_parents {
+    if *inner.engine.agent_parents() == inner.agents.published_agent_parents {
         return;
     }
-    inner.published_agent_parents = inner.engine.agent_parents().clone();
+    inner.agents.published_agent_parents = inner.engine.agent_parents().clone();
     let message = Shared::event(EventPayload::AgentParents {
-        parents: inner.published_agent_parents.clone(),
+        parents: inner.agents.published_agent_parents.clone(),
     });
     let Ok(encoded) = zz_protocol::encode_protocol_message(&message).map(Arc::<[u8]>::from) else {
         return;
@@ -48113,7 +48124,7 @@ fn visible_agent_panes(
         .keys()
         .filter(|pane| {
             window.zoomed_pane.is_none_or(|zoomed| **pane == zoomed)
-                && inner.agent_panes.contains(*pane)
+                && inner.agents.agent_panes.contains(*pane)
         })
         .copied()
         .collect()
