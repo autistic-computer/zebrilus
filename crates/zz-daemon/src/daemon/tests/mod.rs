@@ -1399,8 +1399,9 @@ pub(super) fn spawn_foreground_shell_job(
     loop {
         let registered = {
             let inner = shared.inner.lock();
-            inner.shell_jobs.len() == 1
+            inner.jobs.shell_jobs.len() == 1
                 && inner
+                    .jobs
                     .shell_jobs
                     .values()
                     .all(|process| process.lock().is_some())

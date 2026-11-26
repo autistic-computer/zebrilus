@@ -6460,12 +6460,12 @@ impl Shared {
                 None,
             ));
             pane_exit::cancel_all(&mut inner);
-            let pipes = std::mem::take(&mut inner.pane_pipes)
+            let pipes = std::mem::take(&mut inner.jobs.pane_pipes)
                 .into_values()
                 .collect::<Vec<_>>();
             inner.control_routes.clear();
             let shell_jobs = if terminate_shell_jobs {
-                std::mem::take(&mut inner.shell_jobs)
+                std::mem::take(&mut inner.jobs.shell_jobs)
                     .into_values()
                     .collect::<Vec<_>>()
             } else {
@@ -10554,7 +10554,7 @@ impl Shared {
                                 geometry,
                             });
                         }
-                        if let Some(pipe) = inner.pane_pipes.get_mut(pane) {
+                        if let Some(pipe) = inner.jobs.pane_pipes.get_mut(pane) {
                             *pipe.terminal.lock() = Arc::clone(&session);
                             #[cfg(unix)]
                             pipe.jobs.wake.wake();
@@ -10697,7 +10697,7 @@ impl Shared {
                             }
                         }
                         for pane in panes {
-                            if let Some(pipe) = inner.pane_pipes.remove(pane) {
+                            if let Some(pipe) = inner.jobs.pane_pipes.remove(pane) {
                                 pipes_to_close.push(pipe);
                             }
                             if let Some(editor) = inner.editors.remove(pane) {
@@ -13796,7 +13796,7 @@ impl Shared {
                 .get(&pane)
                 .cloned()
                 .ok_or(ServerError::PaneExited(pane))?;
-            let old_pipe = inner.pane_pipes.remove(&pane);
+            let old_pipe = inner.jobs.pane_pipes.remove(&pane);
             (pane, terminal, old_pipe)
         };
         let _round_trips = zz_terminal::allow_actor_round_trips();
@@ -13820,7 +13820,7 @@ impl Shared {
         let pipe_output = parsed.has('O') || !pipe_input;
         let (token, command) = {
             let mut inner = self.inner.lock();
-            inner.next_pipe_token = inner.next_pipe_token.wrapping_add(1).max(1);
+            inner.jobs.next_pipe_token = inner.jobs.next_pipe_token.wrapping_add(1).max(1);
             inner.engine.set_format_now(unix_timestamp());
             let target = ExecutionContext::for_pane(&inner.engine.state, pane)
                 .ok_or_else(|| ServerError::MissingTarget(pane.to_string()))?;
@@ -13837,7 +13837,7 @@ impl Shared {
                 context.target_format_client(),
                 &mut hooks,
             );
-            (inner.next_pipe_token, command)
+            (inner.jobs.next_pipe_token, command)
         };
         let mut process = shell_process(&command);
         let failed = |error: std::io::Error| {
@@ -13907,7 +13907,7 @@ impl Shared {
                         .is_some_and(|current| Arc::ptr_eq(current, &terminal))
                     && inner.engine.state.pane(pane).is_some_and(|pane| !pane.dead);
                 if valid {
-                    inner.pane_pipes.insert(
+                    inner.jobs.pane_pipes.insert(
                         pane,
                         PanePipe {
                             token,
@@ -14012,7 +14012,7 @@ impl Shared {
                         .is_some_and(|current| Arc::ptr_eq(current, &terminal))
                     && inner.engine.state.pane(pane).is_some_and(|pane| !pane.dead);
                 if valid {
-                    inner.pane_pipes.insert(
+                    inner.jobs.pane_pipes.insert(
                         pane,
                         PanePipe {
                             token,
@@ -14047,11 +14047,12 @@ impl Shared {
         let removed = {
             let mut inner = self.inner.lock();
             if inner
+                .jobs
                 .pane_pipes
                 .get(&pane)
                 .is_some_and(|pipe| pipe.token == token)
             {
-                inner.pane_pipes.remove(&pane);
+                inner.jobs.pane_pipes.remove(&pane);
                 true
             } else {
                 false
@@ -28467,6 +28468,7 @@ impl Shared {
                     }
                 }
                 if let Some(output) = inner
+                    .jobs
                     .pane_pipes
                     .get(&pane)
                     .and_then(|pipe| pipe.tap_output.as_ref())
@@ -28519,7 +28521,7 @@ impl Shared {
                 .terminals
                 .get(&pane)
                 .is_some_and(|current| Arc::ptr_eq(current, terminal))
-                .then(|| inner.pane_pipes.remove(&pane))
+                .then(|| inner.jobs.pane_pipes.remove(&pane))
                 .flatten()
         };
         if let Some(pipe) = pipe {
@@ -31786,12 +31788,12 @@ impl Shared {
             ))
         } else {
             let mut inner = self.inner.lock();
-            if inner.active_copy_pipes >= MAX_COPY_PIPE_PROCESSES {
+            if inner.jobs.active_copy_pipes >= MAX_COPY_PIPE_PROCESSES {
                 Some(format!(
                     "copy-pipe process limit reached ({MAX_COPY_PIPE_PROCESSES})"
                 ))
             } else {
-                inner.active_copy_pipes += 1;
+                inner.jobs.active_copy_pipes += 1;
                 None
             }
         };
@@ -36908,18 +36910,10 @@ struct ServerState {
     history: History,
     buffers: Buffers,
     editors: BTreeMap<PaneId, EditorSession>,
-    active_copy_pipes: usize,
-    active_shell_jobs: usize,
-    #[cfg(unix)]
-    shell_jobs: BTreeMap<u64, Arc<Mutex<Option<ShellJobProcess>>>>,
-    #[cfg(not(unix))]
-    shell_jobs: BTreeMap<u64, Arc<Mutex<Option<Child>>>>,
-    next_shell_job_token: u64,
+    jobs: Jobs,
     next_client_id: u64,
     next_display_panes_token: u64,
-    pane_pipes: BTreeMap<PaneId, PanePipe>,
     control_routes: BTreeMap<ClientId, ControlRoute>,
-    next_pipe_token: u64,
     key_tables_generation: u64,
     scheduled_window_rename: Option<Instant>,
     preview_watched: BTreeSet<PaneId>,
@@ -36927,6 +36921,19 @@ struct ServerState {
     border_presentations_cache: Mutex<Option<CachedBorderPresentations>>,
     status_parameters_cache: Mutex<Option<CachedStatusParameters>>,
     status_preparation_cache: Mutex<Option<CachedStatusPreparation>>,
+}
+
+#[derive(Default)]
+struct Jobs {
+    pane_pipes: BTreeMap<PaneId, PanePipe>,
+    #[cfg(unix)]
+    shell_jobs: BTreeMap<u64, Arc<Mutex<Option<ShellJobProcess>>>>,
+    #[cfg(not(unix))]
+    shell_jobs: BTreeMap<u64, Arc<Mutex<Option<Child>>>>,
+    active_copy_pipes: usize,
+    active_shell_jobs: usize,
+    next_shell_job_token: u64,
+    next_pipe_token: u64,
 }
 
 #[derive(Default)]
@@ -37282,7 +37289,7 @@ impl DiagnosticSample {
                 .collect(),
             command_history: inner.history.command_history.clone(),
             paste_buffers: inner.buffers.paste_buffers.clone(),
-            active_copy_pipes: inner.active_copy_pipes,
+            active_copy_pipes: inner.jobs.active_copy_pipes,
         }
     }
 }
@@ -46672,19 +46679,19 @@ impl ShellJobPermit {
         };
         let mut inner = shared.inner.lock();
         if shared.stopping.load(Ordering::Acquire) && !detached
-            || inner.active_shell_jobs >= MAX_SHELL_JOBS
+            || inner.jobs.active_shell_jobs >= MAX_SHELL_JOBS
         {
             drop(inner);
             drop(shutdown_blocker.take());
             return None;
         }
-        inner.next_shell_job_token = inner.next_shell_job_token.wrapping_add(1).max(1);
-        let token = inner.next_shell_job_token;
+        inner.jobs.next_shell_job_token = inner.jobs.next_shell_job_token.wrapping_add(1).max(1);
+        let token = inner.jobs.next_shell_job_token;
         let process = Arc::new(Mutex::new(None));
         let managed = !detached || shutdown_blocking;
-        inner.active_shell_jobs += 1;
+        inner.jobs.active_shell_jobs += 1;
         if managed {
-            inner.shell_jobs.insert(token, Arc::clone(&process));
+            inner.jobs.shell_jobs.insert(token, Arc::clone(&process));
         }
         drop(inner);
         Some(Self {
@@ -46703,9 +46710,9 @@ impl Drop for ShellJobPermit {
     fn drop(&mut self) {
         let mut inner = self.shared.inner.lock();
         if self.managed {
-            inner.shell_jobs.remove(&self.token);
+            inner.jobs.shell_jobs.remove(&self.token);
         }
-        inner.active_shell_jobs = inner.active_shell_jobs.saturating_sub(1);
+        inner.jobs.active_shell_jobs = inner.jobs.active_shell_jobs.saturating_sub(1);
         drop(inner);
         drop(self.shutdown_blocker.take());
     }
@@ -46898,7 +46905,7 @@ impl Drop for CopyPipePermit {
     fn drop(&mut self) {
         if let Some(shared) = self.shared.upgrade() {
             let mut inner = shared.inner.lock();
-            inner.active_copy_pipes = inner.active_copy_pipes.saturating_sub(1);
+            inner.jobs.active_copy_pipes = inner.jobs.active_copy_pipes.saturating_sub(1);
         }
     }
 }
@@ -49637,7 +49644,7 @@ fn split_borrowed_format_hook_facts(
         client_flags,
 
         pane_modes,
-        pane_pipes,
+        jobs: Jobs { pane_pipes, .. },
         buffers: Buffers { paste_buffers, .. },
         session_last_attached,
         terminal_geometries,
@@ -49675,7 +49682,7 @@ fn readonly_borrowed_format_hook_facts(
         client_fields: ClientFormatFields::from_inner(inner),
         paste_buffers: &inner.buffers.paste_buffers,
         terminals: &inner.terminals,
-        pane_pipes: &inner.pane_pipes,
+        pane_pipes: &inner.jobs.pane_pipes,
         attached: &inner.attached,
         clients: &inner.clients,
         session_last_attached: &inner.session_last_attached,
@@ -49883,6 +49890,7 @@ fn format_hook_facts(inner: &ServerState) -> FormatHookFacts {
         terminals: Arc::clone(&inner.terminals),
         pane_pipes: Arc::new(
             inner
+                .jobs
                 .pane_pipes
                 .iter()
                 .map(|(pane, pipe)| (*pane, pipe.pid))

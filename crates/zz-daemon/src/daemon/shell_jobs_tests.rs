@@ -83,7 +83,7 @@ fn twenty_shell_jobs_add_no_workers_and_admission_is_capped_at_256() {
         assert!(matches!(task.run(true), wait_queue::Progress::Waiting));
         tasks.push(task);
     }
-    assert_eq!(shared.inner.lock().active_shell_jobs, 20);
+    assert_eq!(shared.inner.lock().jobs.active_shell_jobs, 20);
     assert_eq!(shared.connection_threads.worker_count(), 0);
     assert!(
         zz_daemon_client::process_info::sample(std::process::id())
@@ -102,13 +102,13 @@ fn twenty_shell_jobs_add_no_workers_and_admission_is_capped_at_256() {
         let (response, _, _, _) = task.finish();
         assert!(matches!(response, CommandResponse::Success { output, .. } if output == "done"));
     }
-    assert_eq!(shared.inner.lock().active_shell_jobs, 0);
+    assert_eq!(shared.inner.lock().jobs.active_shell_jobs, 0);
     assert_eq!(shared.connection_threads.worker_count(), 0);
     let permits = (0..MAX_SHELL_JOBS)
         .map(|_| ShellJobPermit::acquire(&shared, false, false, None).unwrap())
         .collect::<Vec<_>>();
     assert_eq!(MAX_SHELL_JOBS, 256);
-    assert_eq!(shared.inner.lock().active_shell_jobs, 256);
+    assert_eq!(shared.inner.lock().jobs.active_shell_jobs, 256);
     assert!(ShellJobPermit::acquire(&shared, false, false, None).is_none());
     let error = shared
         .execute(
@@ -122,9 +122,9 @@ fn twenty_shell_jobs_add_no_workers_and_admission_is_capped_at_256() {
         matches!(error, DaemonError::Server(ServerError::InvalidCommand(message))
         if message == "failed to run command: printf never")
     );
-    assert_eq!(shared.inner.lock().active_shell_jobs, 256);
+    assert_eq!(shared.inner.lock().jobs.active_shell_jobs, 256);
     drop(permits);
-    assert_eq!(shared.inner.lock().active_shell_jobs, 0);
+    assert_eq!(shared.inner.lock().jobs.active_shell_jobs, 0);
 }
 
 #[test]

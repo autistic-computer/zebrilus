@@ -202,8 +202,8 @@ fn parked_shell_hooks_resume_owned_frames_in_enqueue_order_without_workers() {
         inner.engine.format_user_option("", "", "", "@second"),
         Some("yes")
     );
-    assert_eq!(inner.active_shell_jobs, 0);
-    assert!(inner.shell_jobs.is_empty());
+    assert_eq!(inner.jobs.active_shell_jobs, 0);
+    assert!(inner.jobs.shell_jobs.is_empty());
     assert_eq!(shared.connection_threads.worker_count(), 0);
 }
 

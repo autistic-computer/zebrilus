@@ -59,7 +59,7 @@ fn twenty_active_pipes_deliver_on_the_loop_without_reader_threads() {
     }
     {
         let inner = shared.inner.lock();
-        assert_eq!(inner.pane_pipes.len(), 20);
+        assert_eq!(inner.jobs.pane_pipes.len(), 20);
         assert_eq!(
             inner
                 .terminals
@@ -109,17 +109,17 @@ fn copy_pipe_registry_caps_eight_live_children() {
             "selection".into(),
         );
     }
-    assert_eq!(shared.inner.lock().active_copy_pipes, 8);
+    assert_eq!(shared.inner.lock().jobs.active_copy_pipes, 8);
     shared.spawn_copy_pipe(
         PaneId(1),
         ClientId(1),
         "sleep 60".into(),
         "selection".into(),
     );
-    assert_eq!(shared.inner.lock().active_copy_pipes, 8);
+    assert_eq!(shared.inner.lock().jobs.active_copy_pipes, 8);
     assert_eq!(COPY_PIPE_TIMEOUT, Duration::from_secs(30));
     drop(_loop);
-    assert_eq!(shared.inner.lock().active_copy_pipes, 0);
+    assert_eq!(shared.inner.lock().jobs.active_copy_pipes, 0);
 }
 
 #[test]

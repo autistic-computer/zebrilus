@@ -48,7 +48,7 @@ fn borrowed<'a>(
         client_fields: ClientFormatFields::from_inner(inner),
         paste_buffers: &inner.buffers.paste_buffers,
         terminals: &inner.terminals,
-        pane_pipes: &inner.pane_pipes,
+        pane_pipes: &inner.jobs.pane_pipes,
         attached: &inner.attached,
         clients: &inner.clients,
         session_last_attached: &inner.session_last_attached,

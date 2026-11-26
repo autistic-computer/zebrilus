@@ -609,7 +609,7 @@ fn positive_delay_shell_job_samples_launch_environment_and_freezes_command_conte
     });
 
     let deadline = Instant::now() + Duration::from_secs(2);
-    while shared.inner.lock().active_shell_jobs != 1 {
+    while shared.inner.lock().jobs.active_shell_jobs != 1 {
         assert!(Instant::now() < deadline, "delayed job was not scheduled");
         thread::sleep(Duration::from_millis(5));
     }
@@ -682,7 +682,7 @@ fn positive_delay_shell_job_samples_launch_environment_and_freezes_command_conte
         )
     });
     let deadline = Instant::now() + Duration::from_secs(2);
-    while shared.inner.lock().active_shell_jobs != 1 {
+    while shared.inner.lock().jobs.active_shell_jobs != 1 {
         assert!(Instant::now() < deadline, "fallback job was not scheduled");
         thread::sleep(Duration::from_millis(5));
     }
@@ -842,7 +842,7 @@ fn positive_delay_shell_job_retains_destroyed_target_and_keeps_missing_target_se
         thread::sleep(Duration::from_millis(5));
     }
     let deadline = Instant::now() + Duration::from_secs(2);
-    while shared.inner.lock().active_shell_jobs != 0 {
+    while shared.inner.lock().jobs.active_shell_jobs != 0 {
         assert!(Instant::now() < deadline, "retained job did not retire");
         thread::sleep(Duration::from_millis(5));
     }

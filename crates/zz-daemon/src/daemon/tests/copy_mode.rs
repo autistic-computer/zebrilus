@@ -764,7 +764,7 @@ fn copy_pipe_failure_is_a_reliable_client_message_and_releases_its_permit() {
         "{message:?}"
     );
     assert!(control_subscriber.state.lock().reliable.is_empty());
-    assert_eq!(shared.inner.lock().active_copy_pipes, 0);
+    assert_eq!(shared.inner.lock().jobs.active_copy_pipes, 0);
 
     shared.spawn_copy_pipe(pane, control, command.to_owned(), "selection".to_owned());
 
@@ -784,13 +784,13 @@ fn copy_pipe_failure_is_a_reliable_client_message_and_releases_its_permit() {
         "{message:?}"
     );
     assert!(control_subscriber.state.lock().reliable.is_empty());
-    assert_eq!(shared.inner.lock().active_copy_pipes, 0);
+    assert_eq!(shared.inner.lock().jobs.active_copy_pipes, 0);
 }
 
 #[test]
 fn copy_pipe_rejects_work_past_the_process_limit() {
     let shared = Arc::new(Shared::new(1));
-    shared.inner.lock().active_copy_pipes = MAX_COPY_PIPE_PROCESSES;
+    shared.inner.lock().jobs.active_copy_pipes = MAX_COPY_PIPE_PROCESSES;
 
     shared.spawn_copy_pipe(
         PaneId(9),
@@ -800,7 +800,7 @@ fn copy_pipe_rejects_work_past_the_process_limit() {
     );
 
     assert_eq!(
-        shared.inner.lock().active_copy_pipes,
+        shared.inner.lock().jobs.active_copy_pipes,
         MAX_COPY_PIPE_PROCESSES
     );
 }
