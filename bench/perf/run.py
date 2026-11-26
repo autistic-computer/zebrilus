@@ -401,8 +401,6 @@ def main():
         "zz_profile": build_profile(zz_bin),
         "tmux_bin": tmux_bin,
         "tmux_version": version([tmux_bin, "-V"]),
-        "rex_bin": rex_bin,
-        "rex_version": version([rex_bin, "version"]).splitlines()[0] if rex_bin else None,
         "tmux_libs": [l.strip().split(" ")[0] for l in isolate.linked_libraries(tmux_bin).splitlines()[1:] if l.strip()],
         "baseline": os.path.abspath(args.baseline) if args.baseline else None,
         "w0": w0_path,
