@@ -1,6 +1,7 @@
 # Update Log
 
 ## 2026-11-26
+* **Creation**: Proposed the [English to command translator](/designs/english-command-translator.md): a small local model that turns an English sentence and the current session's state into zz commands and runs them with no preview. Nothing is built.
 
 * The mux crate's `command.rs` now holds the engine's core types, the dispatch `match`, alias resolution and shared helpers; each command family moved into a subject file under `crates/zz-mux/src/command/`, and its tests into subject test files beside them. The [zz-mux](/crates/zz-mux.md) page lists the files, and the [command set](/tmux/commands.md) maps every command name, engine or daemon, to the file that runs it.
 * The daemon's `daemon.rs` now holds only the core state, the `Daemon` entry point and shared helpers; the `Shared` methods moved into subject files under `daemon/`, and effect application split into per-subject helpers and named post-lock drain steps. The [zz-daemon](/crates/zz-daemon.md) page is now a map of the request flow, the `ServerState` layout and the file that owns each concern, and [daemon lock order](/architecture/daemon-locks.md) records which mutexes come before and after `inner`. Pages that named `daemon.rs` for moved code point at the new files.
