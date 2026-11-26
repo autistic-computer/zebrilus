@@ -41,8 +41,8 @@ cargo test -p zz-mux --lib
 
 daemon_test_list="$(cargo test -p zz-daemon --lib -- --list)"
 for daemon_test in \
-  daemon::tests::daemon_context_format_registration_matches_the_oracle \
-  daemon::tests::pinned_hook_producer_partition_matches_the_oracle \
+  daemon::tests::formats::daemon_context_format_registration_matches_the_oracle \
+  daemon::tests::formats::pinned_hook_producer_partition_matches_the_oracle \
   status::tests::daemon_delegated_format_consumers_match_mux_inventory; do
   grep -Fqx -- "$daemon_test: test" <<<"$daemon_test_list" || {
     printf 'error: required compatibility manifest test is missing: %s\n' "$daemon_test" >&2
