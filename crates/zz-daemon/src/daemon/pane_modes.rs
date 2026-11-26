@@ -590,3 +590,344 @@ fn panes_mode_hit(
         inside.then_some(area.pane)
     })
 }
+
+pub(super) fn hold_chooser_zoom(
+    inner: &mut ServerState,
+    client: ClientId,
+    pane: PaneId,
+    zoom: bool,
+) -> bool {
+    if !zoom || inner.client(client).is_some_and(|c| c.native_chooser) {
+        return false;
+    }
+    let Some(window) = inner.engine.state.window_for_pane(pane) else {
+        return false;
+    };
+    if inner.engine.state.windows[&window].zoomed_pane.is_some() {
+        return false;
+    }
+    if inner.engine.state.toggle_zoom(pane).is_err() {
+        return false;
+    }
+    inner
+        .client_entry(client)
+        .chooser_zoom
+        .get_or_insert(window);
+    inner.engine.state.windows[&window].zoomed_pane.is_some()
+}
+
+pub(super) const CLIENT_MODE_DEFAULT_COMMAND: &str = "detach-client -t '%%'";
+
+pub(super) fn native_copy_search_direction(
+    steps: &[CommandPromptStep],
+    template: Option<&CommandPromptTemplate>,
+    prompt_type: CommandPromptType,
+    mode: CommandPromptMode,
+) -> Option<zz_terminal::SearchDirection> {
+    if prompt_type != CommandPromptType::Search || steps.len() != 1 || !steps[0].input.is_empty() {
+        return None;
+    }
+    let CommandPromptTemplate::Commands(commands) = template? else {
+        return None;
+    };
+    let [command] = commands.as_slice() else {
+        return None;
+    };
+    let [flag, action, separator, value] = command.args.as_slice() else {
+        return None;
+    };
+    if command.name != "send-keys" || flag != "-X" || separator != "--" || value != "%%" {
+        return None;
+    }
+    match (mode, action.as_str()) {
+        (CommandPromptMode::Text, "search-forward")
+        | (CommandPromptMode::Incremental, "search-forward-incremental") => {
+            Some(zz_terminal::SearchDirection::Forward)
+        }
+        (CommandPromptMode::Text, "search-backward")
+        | (CommandPromptMode::Incremental, "search-backward-incremental") => {
+            Some(zz_terminal::SearchDirection::Backward)
+        }
+        _ => None,
+    }
+}
+
+pub(super) fn pane_carries_a_mode_command(
+    inner: &ServerState,
+    client: ClientId,
+    pane: PaneId,
+) -> bool {
+    inner
+        .client(client)
+        .is_some_and(|c| c.command_output.is_some())
+        || inner
+            .clients
+            .values()
+            .filter_map(|c| c.copy_session.as_ref())
+            .any(|session| session.pane == pane && !session.exiting)
+}
+
+pub(super) fn counted_copy_mode_action(
+    inner: &mut ServerState,
+    client: ClientId,
+    action: &zz_terminal::TerminalViewAction,
+) -> zz_terminal::TerminalViewAction {
+    let pending = match action {
+        zz_terminal::TerminalViewAction::CopyMode(_)
+        | zz_terminal::TerminalViewAction::CopyModeCounted { .. } => inner
+            .client_mut(client)
+            .and_then(|c| c.key_engine.as_mut())
+            .and_then(KeyEngine::take_repeat_count),
+        _ => return action.clone(),
+    };
+    match (pending, action) {
+        (Some(count), zz_terminal::TerminalViewAction::CopyMode(inner_action))
+            if count > 1
+                && inner_action.count_policy() != zz_terminal::CopyModeCountPolicy::Once =>
+        {
+            zz_terminal::TerminalViewAction::CopyModeCounted {
+                action: inner_action.clone(),
+                count,
+            }
+        }
+        _ => action.clone(),
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum CopyModeRefreshRequest {
+    On,
+    Off,
+    Toggle,
+}
+
+impl CopyModeRefreshRequest {
+    pub(super) const fn applied(self, current: bool) -> bool {
+        match self {
+            Self::On => true,
+            Self::Off => false,
+            Self::Toggle => !current,
+        }
+    }
+}
+
+pub(super) fn terminal_view_action_refresh_request(
+    action: &zz_terminal::TerminalViewAction,
+) -> Option<CopyModeRefreshRequest> {
+    let (zz_terminal::TerminalViewAction::CopyMode(action)
+    | zz_terminal::TerminalViewAction::CopyModeCounted { action, .. }) = action
+    else {
+        return None;
+    };
+    match action {
+        zz_terminal::CopyModeAction::RefreshOn => Some(CopyModeRefreshRequest::On),
+        zz_terminal::CopyModeAction::RefreshOff => Some(CopyModeRefreshRequest::Off),
+        zz_terminal::CopyModeAction::RefreshToggle => Some(CopyModeRefreshRequest::Toggle),
+        _ => None,
+    }
+}
+
+pub(super) fn terminal_view_action_refreshes_now(action: &zz_terminal::TerminalViewAction) -> bool {
+    matches!(
+        action,
+        zz_terminal::TerminalViewAction::CopyMode(zz_terminal::CopyModeAction::RefreshNow)
+            | zz_terminal::TerminalViewAction::CopyModeCounted {
+                action: zz_terminal::CopyModeAction::RefreshNow,
+                ..
+            }
+    )
+}
+
+pub(super) fn retarget_copy_mode_tables(inner: &mut ServerState, changed_window: Option<WindowId>) {
+    let retargeted = inner
+        .clients
+        .iter()
+        .filter_map(|(id, client)| client.copy_session.as_ref().map(|value| (id, value)))
+        .filter(|(client, session)| {
+            !session.exiting
+                && inner
+                    .client(**client)
+                    .and_then(|c| c.command_output.as_ref())
+                    .is_none_or(|output| output.parked)
+        })
+        .filter_map(|(client, session)| {
+            let window = inner.engine.state.window_for_pane(session.pane)?;
+            changed_window
+                .is_none_or(|changed| changed == window)
+                .then_some((*client, session.pane))
+        })
+        .chain(
+            inner
+                .clients
+                .iter()
+                .filter_map(|(id, client)| client.command_output.as_ref().map(|value| (id, value)))
+                .filter_map(|(client, output)| {
+                    if output.parked {
+                        return None;
+                    }
+                    let window = inner.engine.state.window_for_pane(output.pane)?;
+                    changed_window
+                        .is_none_or(|changed| changed == window)
+                        .then_some((*client, output.pane))
+                }),
+        )
+        .collect::<Vec<_>>();
+    let restored = inner
+        .clients
+        .iter()
+        .filter_map(|(id, client)| client.command_output.as_ref().map(|_| id))
+        .filter_map(|client| {
+            let session = inner
+                .client(*client)
+                .and_then(|c| c.copy_session.as_ref())
+                .filter(|session| !session.exiting)?;
+            let window = inner.engine.state.window_for_pane(session.pane)?;
+            changed_window
+                .is_none_or(|changed| changed == window)
+                .then_some((*client, session.pane))
+        })
+        .collect::<Vec<_>>();
+    for (client, pane) in retargeted {
+        let Ok(table) = inner.engine.copy_mode_table_for_pane(pane) else {
+            continue;
+        };
+        let table = table.to_owned();
+        inner
+            .client_entry(client)
+            .key_engine
+            .get_or_insert_default()
+            .switch_table(Some(table));
+    }
+    for (client, pane) in restored {
+        let Ok(table) = inner.engine.copy_mode_table_for_pane(pane) else {
+            continue;
+        };
+        let table = table.to_owned();
+        if let Some(output) = inner
+            .client_mut(client)
+            .and_then(|c| c.command_output.as_mut())
+        {
+            output.previous_key_table = Some(table);
+        }
+    }
+}
+
+pub(super) fn panes_for_windows(
+    inner: &ServerState,
+    windows: &BTreeSet<WindowId>,
+) -> BTreeSet<PaneId> {
+    windows
+        .iter()
+        .filter_map(|window| inner.engine.state.windows.get(window))
+        .flat_map(|window| window.panes.keys().copied())
+        .collect()
+}
+
+pub(super) fn panes_mode_viewers(inner: &ServerState, window: WindowId) -> Vec<(ClientId, bool)> {
+    inner
+        .clients
+        .iter()
+        .filter(|(_, c)| c.subscriber.is_some() && c.kind == Some(ClientKind::Interactive))
+        .filter(|(id, _)| client_focused_window_for_attachment(inner, **id) == Some(window))
+        .map(|(id, c)| (*id, !c.exits_on_detach))
+        .collect()
+}
+
+pub(super) fn push_pane_mode(inner: &mut ServerState, pane: PaneId, mode: PaneModeRequest) -> bool {
+    let replaced = !matches!(mode, PaneModeRequest::Panes(_))
+        && matches!(
+            inner
+                .modes
+                .pane_modes
+                .get(&pane)
+                .and_then(|modes| modes.last()),
+            Some(PaneModeRequest::Panes(_))
+        )
+        && pop_pane_mode(inner, pane);
+    let previous = top_pane_mode_name(inner, pane);
+    let current = pane_mode_name(&mode);
+    let pushed = push_pane_mode_entry(inner, pane, mode) || replaced;
+    if pushed {
+        inner.modes.pane_mode_transitions.push(PaneModeTransition {
+            pane,
+            entered: true,
+            previous,
+            current: Some(current),
+        });
+    }
+    pushed
+}
+
+fn push_pane_mode_entry(inner: &mut ServerState, pane: PaneId, mut mode: PaneModeRequest) -> bool {
+    let frames = match &mode {
+        PaneModeRequest::Panes(panes)
+            if !matches!(
+                inner
+                    .modes
+                    .pane_modes
+                    .get(&pane)
+                    .and_then(|modes| modes.last()),
+                Some(PaneModeRequest::Panes(_))
+            ) =>
+        {
+            Some(panes_mode_live_frames(inner, panes.source_window))
+        }
+        _ => None,
+    };
+    let modes = inner.modes.pane_modes.entry(pane).or_default();
+    let existing = modes
+        .iter()
+        .position(|entry| std::mem::discriminant(entry) == std::mem::discriminant(&mode));
+    if existing.is_some() && existing == modes.len().checked_sub(1) {
+        return false;
+    }
+    if let Some(index) = existing {
+        let mut previous = modes.remove(index);
+        match (&mut previous, &mode) {
+            (PaneModeRequest::Switch(previous), PaneModeRequest::Switch(next)) => {
+                previous.kill_source = next.kill_source;
+            }
+            (PaneModeRequest::Customize(previous), PaneModeRequest::Customize(next)) => {
+                previous.kill_source = next.kill_source;
+            }
+            _ => {}
+        }
+        mode = previous;
+    } else if pane_mode_lifetime(&mode).1
+        && let Some(window) = inner.engine.state.window_for_pane(pane)
+        && inner.engine.state.windows[&window].zoomed_pane.is_none()
+    {
+        inner.modes.pane_mode_zooms.insert(pane);
+        let _ = inner.engine.state.toggle_zoom(pane);
+    }
+    inner.modes.pane_modes.entry(pane).or_default().push(mode);
+    if let Some(frames) = frames {
+        inner.engine.set_pane_status_hidden(pane, true);
+        let size = inner.engine.pane_geometry(pane);
+        inner.modes.panes_mode_frames.insert(
+            pane,
+            PanesModeFrames {
+                size,
+                resized: std::cell::Cell::new(false),
+                frames,
+            },
+        );
+    }
+    true
+}
+
+pub(super) fn clear_pane_modes(inner: &mut ServerState, pane: PaneId) -> bool {
+    let mut changed = false;
+    while pop_pane_mode(inner, pane) {
+        changed = true;
+    }
+    changed
+}
+
+pub(super) fn clock_modes_are_open(inner: &ServerState) -> bool {
+    inner.modes.pane_modes.values().any(|modes| {
+        modes
+            .iter()
+            .any(|mode| matches!(mode, PaneModeRequest::Clock))
+    })
+}
