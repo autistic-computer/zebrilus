@@ -23,34 +23,26 @@ use crate::{
     },
 };
 
-mod limits;
-pub use limits::*;
-
-mod options;
-pub use options::*;
-
-mod presentation;
-pub use presentation::*;
-
-mod raw_text;
-pub use raw_text::*;
-
-mod hello;
-pub use hello::*;
-
-mod commands;
-pub use commands::*;
-
-mod input;
-pub use input::*;
-
 mod agent;
-pub use agent::*;
-
+mod commands;
+mod hello;
+mod input;
+mod limits;
+mod options;
 mod overlays;
-pub use overlays::*;
-
+mod presentation;
+mod raw_text;
 mod transfers;
+
+pub use agent::*;
+pub use commands::*;
+pub use hello::*;
+pub use input::*;
+pub use limits::*;
+pub use options::*;
+pub use overlays::*;
+pub use presentation::*;
+pub use raw_text::*;
 pub use transfers::*;
 
 pub const PROTOCOL_VERSION: u16 = 125;
