@@ -132,10 +132,10 @@ fn shards_start_on_assignment_and_survive_the_last_pane() {
             .env("ZZ_PTY_SHARDS", "4")
             .output()
             .expect("isolated shard test");
+        let stdout = String::from_utf8_lossy(&output.stdout);
         assert!(
-            output.status.success(),
-            "{}{}",
-            String::from_utf8_lossy(&output.stdout),
+            output.status.success() && stdout.contains("1 passed"),
+            "{stdout}{}",
             String::from_utf8_lossy(&output.stderr)
         );
         return;
@@ -203,10 +203,10 @@ fn twenty_empty_and_output_surfaces_only_start_the_configured_shards() {
             .env("ZZ_PTY_SHARDS", "4")
             .output()
             .expect("isolated surface shard test");
+        let stdout = String::from_utf8_lossy(&output.stdout);
         assert!(
-            output.status.success(),
-            "{}{}",
-            String::from_utf8_lossy(&output.stdout),
+            output.status.success() && stdout.contains("1 passed"),
+            "{stdout}{}",
             String::from_utf8_lossy(&output.stderr)
         );
         return;
@@ -290,10 +290,10 @@ fn twenty_panes_select_direct_or_gather_readers() {
                 .env("ZZ_PTY_GATHER", gather)
                 .output()
                 .expect("isolated Linux reader test");
+            let stdout = String::from_utf8_lossy(&output.stdout);
             assert!(
-                output.status.success(),
-                "gather={gather}: {}{}",
-                String::from_utf8_lossy(&output.stdout),
+                output.status.success() && stdout.contains("1 passed"),
+                "gather={gather}: {stdout}{}",
                 String::from_utf8_lossy(&output.stderr)
             );
         }
