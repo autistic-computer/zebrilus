@@ -15,7 +15,7 @@ The window's `mode-keys` selects the emacs `copy-mode` table or `copy-mode-vi`. 
 
 # Actions and selection text
 
-`send-keys -X` acts on the mode. Common actions include `begin-selection`, `cursor-right`, `next-word`, `rectangle-toggle`, `search-forward` and `copy-selection-and-cancel`. The inventory in `crates/zz-mux/src/copy_actions.rs` records the pinned names and their read-only classification. The `copy_mode_action` handler in `command.rs` validates arguments and produces terminal view effects. The client's pending jump key and vi numeric prefix are resolved before the terminal actor receives the action.
+`send-keys -X` acts on the mode. Common actions include `begin-selection`, `cursor-right`, `next-word`, `rectangle-toggle`, `search-forward` and `copy-selection-and-cancel`. The inventory in `crates/zz-mux/src/copy_actions.rs` records the pinned names and their read-only classification. The `copy_mode_action` handler in `crates/zz-mux/src/command/send_keys.rs` validates arguments and produces terminal view effects. The client's pending jump key and vi numeric prefix are resolved before the terminal actor receives the action.
 
 `ModeRevision::format_selection` in `crates/zz-terminal/src/session/mode_revision.rs` reads the frozen cells. It preserves spaces inside the selected text, joins a continuing soft wrap, and skips the spacer cells of a wide glyph. Rectangular selections keep their columns. The emacs and vi tables differ on including the focus cell. The destination and whether to exit depend on the selected action. Copy-and-cancel can finish selection and return input to the live pane in one step.
 

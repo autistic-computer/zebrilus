@@ -4,7 +4,7 @@
 # Concepts
 
 * [Sidebar navigation and native choosers](choose-tree.md) - How tree, client and buffer choosers build rows, handle selection templates and appear on desktop or in the TUI.
-* [tmux command set](commands.md) - Find a command, follow alias and target resolution, and identify which component executes it.
+* [tmux command set](commands.md) - Find a command, follow alias and target resolution, and find the file that executes it.
 * [tmux config parsing and replay](conf-parser.md) - How zz chooses mux config files, parses commands and assignments, reports failures and reapplies stored overrides.
 * [Copy mode and view mode](copy-mode.md) - How a client navigates frozen pane history, copies text and handles output views and application clipboard writes.
 * [tmux divergence matrix](divergences.md) - How to find a compatibility decision and its evidence, with examples of differences observable in zz.

@@ -30,7 +30,7 @@ A brief is limited to 1 MiB and goes to the new driver's prompt queue.
 `new-pane` makes a float, `split-window` a tile and `new-window` a separate window. `select-pane-kind`
 can convert a picker or replace a terminal in place. A chat takes its folder
 from `-c` or the donor pane. See `agent_spawn` and the conversion commands in
-`crates/zz-mux/src/command.rs`.
+`crates/zz-mux/src/command/pane_spawn.rs`.
 
 ## Providers
 
@@ -241,7 +241,7 @@ floating view. A second preview from the same chat in the window reuses that vie
 The descriptor carries up to 64 KiB of text for code, Markdown and diagrams, or an origin
 item for images and subagents. It belongs to the mux, so another viewer can see
 the same selection. Escape closes it. See `ViewContent` in `crates/zz-protocol/src/view.rs`
-and `view_pane` in `crates/zz-mux/src/command.rs`.
+and `view_pane` in `crates/zz-mux/src/command/pane_spawn.rs`.
 
 ## How the stream reaches a client
 

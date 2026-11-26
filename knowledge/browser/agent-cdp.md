@@ -8,7 +8,7 @@ tags:
 - cef
 - cdp
 - agents
-timestamp: 2026-11-24T00:00:00Z
+timestamp: 2026-11-26T00:00:00-03:00
 ---
 
 # Enable the endpoint
@@ -78,7 +78,7 @@ If several tabs share a URL, the URL alone cannot identify one target. CDP may a
 tabs while the pane format reports only the active tab.
 
 You can use the same variable in status formats and `refresh-client -B` subscriptions.
-`MuxEngine::format_facts` in `crates/zz-mux/src/command.rs` reads `BrowserDescriptor::url()`;
+`MuxEngine::format_facts` in `crates/zz-mux/src/command/runtime_facts.rs` reads `BrowserDescriptor::url()`;
 `DaemonFormatHooks::variable` in `crates/zz-daemon/src/status.rs` exposes the value.
 
 # Off-screen screenshots
