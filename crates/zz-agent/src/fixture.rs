@@ -1,6 +1,9 @@
-use std::sync::{
-    Arc,
-    atomic::{AtomicUsize, Ordering},
+use std::{
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
+    time::Duration,
 };
 
 use agent_client_protocol::{
@@ -24,6 +27,8 @@ use crate::{
     host::{PaneRunner, RuntimeChannels},
     runtime::run_agent_connection,
 };
+
+const LOAD_REFUSAL_DELAY: Duration = Duration::from_millis(200);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Behavior {
@@ -109,6 +114,7 @@ pub fn fixture_agent(behavior: Behavior, load: bool) -> impl ConnectTo<AcpClient
                     ))?;
                     return responder.respond(LoadSessionResponse::new());
                 }
+                smol::Timer::after(LOAD_REFUSAL_DELAY).await;
                 responder.respond_with_error(
                     agent_client_protocol::Error::invalid_params()
                         .data("fixture session cannot be loaded"),

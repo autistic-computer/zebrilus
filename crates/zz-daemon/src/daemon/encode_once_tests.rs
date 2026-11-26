@@ -224,15 +224,12 @@ fn a_preview_refresh_that_does_not_fit_waits_for_the_next_write() {
     let stream = Stream::new(3904, &[TerminalStreamKind::Preview]);
     let (client, mailbox) = &stream.clients[0];
     let view = TerminalViewId(client.0);
+    mailbox.state.lock().queued_bytes = MAX_PREVIEW_OUTBOUND_BYTES;
     stream.terminal.attach_view(view);
     stream.terminal.set_view_stream(view, ViewStream::Preview);
     stream.terminal.fresh_viewport();
     assert!(stream.terminal.latest_viewport_for(view).is_some());
-    {
-        let mut state = mailbox.state.lock();
-        state.queued_bytes = MAX_PREVIEW_OUTBOUND_BYTES;
-        mark_preview_refresh(&mut state, stream.pane);
-    }
+    mark_preview_refresh(&mut mailbox.state.lock(), stream.pane);
 
     stream.shared.send_preview_refreshes(*client, mailbox);
 

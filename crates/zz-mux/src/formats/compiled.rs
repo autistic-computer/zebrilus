@@ -986,7 +986,7 @@ mod tests {
     }
 
     #[test]
-    fn compiled_matches_w1_for_marked_zoomed_dead_and_null_fixture_contexts() {
+    fn compiled_matches_the_interpreter_for_marked_zoomed_dead_and_null_fixture_contexts() {
         for (_, engine) in crate::format_universe_tests::fixtures() {
             for client in crate::format_universe_tests::clients(&engine) {
                 for (session, window, pane) in crate::format_universe_tests::targets(&engine) {
