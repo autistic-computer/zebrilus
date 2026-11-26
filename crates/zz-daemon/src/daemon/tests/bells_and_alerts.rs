@@ -256,10 +256,10 @@ fn alert_messages_fan_out_with_owned_lifecycle_and_bounded_log() {
                 .client(second_client)
                 .is_some_and(|c| c.message_ignore_keys)
         );
-        inner.message_log.clear();
+        inner.history.message_log.clear();
         push_server_message(&mut inner, "evicted".to_owned());
     }
-    let message_number = shared.inner.lock().next_message_number;
+    let message_number = shared.inner.lock().history.next_message_number;
     take_reliable_messages(&first_mailbox);
     take_reliable_messages(&second_mailbox);
     take_reliable_messages(&control_mailbox);
@@ -305,9 +305,10 @@ fn alert_messages_fan_out_with_owned_lifecycle_and_bounded_log() {
                 .client(second_client)
                 .is_some_and(|c| c.message_ignore_keys)
         );
-        assert_eq!(inner.next_message_number, message_number + 2);
+        assert_eq!(inner.history.next_message_number, message_number + 2);
         assert_eq!(
             inner
+                .history
                 .message_log
                 .iter()
                 .map(|message| message.text.as_str())
@@ -526,7 +527,7 @@ fn bell_activity_and_silence_messages_share_the_client_lifecycle() {
             )
             .expect("configure alert producer");
     }
-    shared.inner.lock().message_log.clear();
+    shared.inner.lock().history.message_log.clear();
     take_reliable_messages(&mailbox);
 
     shared.raise_pane_bell(second);
@@ -563,7 +564,7 @@ fn bell_activity_and_silence_messages_share_the_client_lifecycle() {
             .expect("configure silence producer");
     }
     take_reliable_messages(&mailbox);
-    let silence_deadline = shared.inner.lock().silence_deadlines[&second_window];
+    let silence_deadline = shared.inner.lock().panes.silence_deadlines[&second_window];
     shared.expire_window_silence(silence_deadline, silence_deadline.deadline);
     let silence_messages = take_reliable_messages(&mailbox);
     let silence = timed_message_events(&silence_messages);
@@ -579,6 +580,7 @@ fn bell_activity_and_silence_messages_share_the_client_lifecycle() {
         shared
             .inner
             .lock()
+            .history
             .message_log
             .iter()
             .map(|message| message.text.clone())
@@ -723,7 +725,7 @@ fn monitor_silence_arms_resets_expires_and_cancels_deterministically() {
         .state
         .window_for_pane(second)
         .expect("second window");
-    assert!(shared.inner.lock().silence_deadlines.is_empty());
+    assert!(shared.inner.lock().panes.silence_deadlines.is_empty());
 
     for (command, arguments) in [
         ("set-window-option", ["-g", "monitor-silence", "1"]),
@@ -741,8 +743,8 @@ fn monitor_silence_arms_resets_expires_and_cancels_deterministically() {
     }
     let original_deadlines = {
         let inner = shared.inner.lock();
-        assert_eq!(inner.silence_deadlines.len(), 2);
-        inner.silence_deadlines.clone()
+        assert_eq!(inner.panes.silence_deadlines.len(), 2);
+        inner.panes.silence_deadlines.clone()
     };
     take_reliable_messages(&mailbox);
 
@@ -754,7 +756,7 @@ fn monitor_silence_arms_resets_expires_and_cancels_deterministically() {
             &CommandInvocation::new("set-window-option", ["-g", "monitor-silence", "1"]),
         )
         .expect("repeat monitor-silence");
-    let replacement_deadlines = shared.inner.lock().silence_deadlines.clone();
+    let replacement_deadlines = shared.inner.lock().panes.silence_deadlines.clone();
     assert_eq!(
         replacement_deadlines.keys().collect::<BTreeSet<_>>(),
         original_deadlines.keys().collect::<BTreeSet<_>>()
@@ -775,7 +777,7 @@ fn monitor_silence_arms_resets_expires_and_cancels_deterministically() {
             &CommandInvocation::new("set-window-option", ["-u", "-t", ":1", "monitor-silence"]),
         )
         .expect("unset missing local monitor-silence");
-    assert!(shared.inner.lock().silence_deadlines == replacement_deadlines);
+    assert!(shared.inner.lock().panes.silence_deadlines == replacement_deadlines);
     assert!(
         shared
             .execute(
@@ -786,7 +788,7 @@ fn monitor_silence_arms_resets_expires_and_cancels_deterministically() {
             )
             .is_err()
     );
-    assert!(shared.inner.lock().silence_deadlines == replacement_deadlines);
+    assert!(shared.inner.lock().panes.silence_deadlines == replacement_deadlines);
 
     let stale = SilenceDeadline {
         token: deadline.token.wrapping_add(1),
@@ -807,7 +809,7 @@ fn monitor_silence_arms_resets_expires_and_cancels_deterministically() {
             750,
         )]
     );
-    let rearmed = shared.inner.lock().silence_deadlines[&second_window];
+    let rearmed = shared.inner.lock().panes.silence_deadlines[&second_window];
     assert_ne!(rearmed.token, deadline.token);
 
     shared.expire_window_silence(rearmed, rearmed.deadline);
@@ -822,7 +824,7 @@ fn monitor_silence_arms_resets_expires_and_cancels_deterministically() {
             &CommandInvocation::new("set-window-option", ["-g", "monitor-silence", "0"]),
         )
         .expect("disable monitor-silence");
-    assert!(shared.inner.lock().silence_deadlines.is_empty());
+    assert!(shared.inner.lock().panes.silence_deadlines.is_empty());
 }
 
 #[test]

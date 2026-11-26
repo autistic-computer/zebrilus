@@ -70,7 +70,7 @@ fn pipe_pane_rejects_dead_targets_before_closing_the_existing_pipe() {
         DaemonError::Server(ServerError::InvalidCommand(message))
             if message == "target pane has exited"
     ));
-    assert!(shared.inner.lock().pane_pipes.contains_key(&pane));
+    assert!(shared.inner.lock().jobs.pane_pipes.contains_key(&pane));
     shared.request_shutdown();
 }
 
@@ -193,7 +193,7 @@ fn pipe_pane_streams_single_shell_burst_without_loss() {
         fs::read_to_string(&command_item).expect("pipe command item marker"),
         "pipe-pane"
     );
-    assert!(shared.inner.lock().pane_pipes.contains_key(&pane));
+    assert!(shared.inner.lock().jobs.pane_pipes.contains_key(&pane));
 
     shared.request_shutdown();
 }
@@ -379,7 +379,7 @@ fn pipe_pane_survives_respawn_with_the_same_child() {
         .expect("open respawn pipe");
     let (pid, process) = {
         let inner = shared.inner.lock();
-        let pipe = &inner.pane_pipes[&pane];
+        let pipe = &inner.jobs.pane_pipes[&pane];
         (pipe.pid, Arc::clone(&pipe.cancel))
     };
 
@@ -395,7 +395,7 @@ fn pipe_pane_survives_respawn_with_the_same_child() {
         .expect("attach control to piped session");
     {
         let inner = shared.inner.lock();
-        let pipe = &inner.pane_pipes[&pane];
+        let pipe = &inner.jobs.pane_pipes[&pane];
         assert_eq!(pipe.pid, pid);
         assert!(Arc::ptr_eq(&pipe.cancel, &process));
         assert!(output_routed(&inner, pane));
@@ -416,7 +416,7 @@ fn pipe_pane_survives_respawn_with_the_same_child() {
     shared.detach(control);
     {
         let inner = shared.inner.lock();
-        let pipe = &inner.pane_pipes[&pane];
+        let pipe = &inner.jobs.pane_pipes[&pane];
         assert_eq!(pipe.pid, pid);
         assert!(Arc::ptr_eq(&pipe.cancel, &process));
         assert!(output_routed(&inner, pane));
@@ -456,7 +456,7 @@ fn pipe_pane_survives_respawn_with_the_same_child() {
     );
     {
         let inner = shared.inner.lock();
-        let pipe = &inner.pane_pipes[&pane];
+        let pipe = &inner.jobs.pane_pipes[&pane];
         assert_eq!(pipe.pid, pid);
         assert!(Arc::ptr_eq(&pipe.cancel, &process));
     }
@@ -614,7 +614,10 @@ fn pipe_pane_streams_raw_output_toggles_formats_injects_and_expands_time() {
                 ),
             )
             .expect("toggle pipe");
-        assert_eq!(shared.inner.lock().pane_pipes.contains_key(&pane), expected);
+        assert_eq!(
+            shared.inner.lock().jobs.pane_pipes.contains_key(&pane),
+            expected
+        );
     }
     shared
         .execute(
@@ -635,7 +638,7 @@ fn pipe_pane_streams_raw_output_toggles_formats_injects_and_expands_time() {
             &CommandInvocation::new("pipe-pane", ["-t", target.as_str(), ""]),
         )
         .expect("empty command closes pipe");
-    assert!(!shared.inner.lock().pane_pipes.contains_key(&pane));
+    assert!(!shared.inner.lock().jobs.pane_pipes.contains_key(&pane));
 
     shared
         .execute(
@@ -655,7 +658,7 @@ fn pipe_pane_streams_raw_output_toggles_formats_injects_and_expands_time() {
         |viewport| viewport_text(viewport).contains("ZZ_PIPE_INPUT"),
     );
     let deadline = Instant::now() + Duration::from_secs(20);
-    while shared.inner.lock().pane_pipes.contains_key(&pane) {
+    while shared.inner.lock().jobs.pane_pipes.contains_key(&pane) {
         assert!(Instant::now() < deadline, "input pipe did not reap");
         thread::sleep(Duration::from_millis(10));
     }
@@ -684,7 +687,7 @@ fn pipe_pane_streams_raw_output_toggles_formats_injects_and_expands_time() {
         |viewport| viewport_text(viewport).contains("ZZ_PIPE_BOTH"),
     );
     let deadline = Instant::now() + Duration::from_secs(20);
-    while shared.inner.lock().pane_pipes.contains_key(&pane) {
+    while shared.inner.lock().jobs.pane_pipes.contains_key(&pane) {
         assert!(Instant::now() < deadline, "bidirectional pipe did not reap");
         thread::sleep(Duration::from_millis(10));
     }
@@ -730,13 +733,13 @@ fn pipe_pane_streams_raw_output_toggles_formats_injects_and_expands_time() {
         )
         .expect("shutdown pipe");
     #[cfg(unix)]
-    let pid = shared.inner.lock().pane_pipes[&pane].pid;
+    let pid = shared.inner.lock().jobs.pane_pipes[&pane].pid;
     #[cfg(windows)]
-    let process = Arc::clone(&shared.inner.lock().pane_pipes[&pane].process);
+    let process = Arc::clone(&shared.inner.lock().jobs.pane_pipes[&pane].process);
     shared.request_shutdown();
     #[cfg(unix)]
     lifecycle::wait_for_cleanup(&shared);
-    assert!(shared.inner.lock().pane_pipes.is_empty());
+    assert!(shared.inner.lock().jobs.pane_pipes.is_empty());
     #[cfg(windows)]
     assert!(process.lock().is_none());
     #[cfg(unix)]

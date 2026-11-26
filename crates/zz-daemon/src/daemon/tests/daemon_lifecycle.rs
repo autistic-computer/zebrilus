@@ -459,7 +459,7 @@ fn concurrent_default_interactive_attaches_atomically_share_session_zero() {
     let inner = shared.inner.lock();
     assert_eq!(inner.engine.state.sessions.len(), 1);
     assert_eq!(
-        inner.attached.get(&SessionId(0)),
+        inner.attachment.attached.get(&SessionId(0)),
         Some(&BTreeSet::from([first, second]))
     );
 }
@@ -1176,7 +1176,7 @@ fn interactive_connection_fires_attach_and_detach_event_hooks() {
             )
             .expect("client event hook");
     }
-    shared.inner.lock().message_log.clear();
+    shared.inner.lock().history.message_log.clear();
 
     let (mut client_stream, server_stream) =
         std::os::unix::net::UnixStream::pair().expect("create paired stream");
@@ -1222,7 +1222,7 @@ fn interactive_connection_fires_attach_and_detach_event_hooks() {
         }
     }
     let deadline = Instant::now() + Duration::from_secs(5);
-    while shared.inner.lock().message_log.len() < 2 {
+    while shared.inner.lock().history.message_log.len() < 2 {
         assert!(Instant::now() < deadline, "attach hooks did not fire");
         thread::sleep(Duration::from_millis(5));
     }
@@ -1230,6 +1230,7 @@ fn interactive_connection_fires_attach_and_detach_event_hooks() {
         shared
             .inner
             .lock()
+            .history
             .message_log
             .iter()
             .map(|message| message.text.as_str())
@@ -1244,6 +1245,7 @@ fn interactive_connection_fires_attach_and_detach_event_hooks() {
         if shared
             .inner
             .lock()
+            .history
             .message_log
             .back()
             .is_some_and(|message| message.text == "detached=hook-client")
@@ -1520,7 +1522,7 @@ fn detach_keeps_one_connection_restores_views_and_clears_client_state() {
                 lane: CommittedTextLane::Terminal,
                 suppressed_character: Some('b'),
             }]));
-        inner.pending_gui_requests.insert(
+        inner.transfers.pending_gui_requests.insert(
             99,
             PendingGuiRequest {
                 client,
@@ -1557,6 +1559,7 @@ fn detach_keeps_one_connection_restores_views_and_clears_client_state() {
         assert!(inner.client(client).is_some_and(|c| c.subscriber.is_some()));
         assert!(
             inner
+                .attachment
                 .attached
                 .values()
                 .all(|clients| !clients.contains(&client))
@@ -1583,7 +1586,7 @@ fn detach_keeps_one_connection_restores_views_and_clears_client_state() {
                 .client(client)
                 .is_none_or(|c| c.pending_committed_text.is_none())
         );
-        assert!(!inner.pending_gui_requests.contains_key(&99));
+        assert!(!inner.transfers.pending_gui_requests.contains_key(&99));
     }
     let deadline = Instant::now() + Duration::from_secs(30);
     while terminal.latest_viewport_for(view).is_some() && Instant::now() < deadline {
@@ -1647,7 +1650,7 @@ fn detach_keeps_one_connection_restores_views_and_clears_client_state() {
     {
         let inner = shared.inner.lock();
         assert_eq!(
-            inner.attached.get(&session),
+            inner.attachment.attached.get(&session),
             Some(&BTreeSet::from([client]))
         );
         assert!(inner.client(client).is_none_or(|c| c.key_engine.is_none()));

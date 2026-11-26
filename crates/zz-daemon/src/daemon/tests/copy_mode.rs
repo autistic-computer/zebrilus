@@ -711,8 +711,18 @@ fn copy_pipe_failure_is_a_reliable_client_message_and_releases_its_permit() {
         let pane = context.pane.expect("pane id");
         let client = ClientId(41);
         let control = ClientId(42);
-        inner.attached.entry(session).or_default().insert(client);
-        inner.attached.entry(session).or_default().insert(control);
+        inner
+            .attachment
+            .attached
+            .entry(session)
+            .or_default()
+            .insert(client);
+        inner
+            .attachment
+            .attached
+            .entry(session)
+            .or_default()
+            .insert(control);
         inner
             .client_entry(client)
             .subscriber
@@ -764,7 +774,7 @@ fn copy_pipe_failure_is_a_reliable_client_message_and_releases_its_permit() {
         "{message:?}"
     );
     assert!(control_subscriber.state.lock().reliable.is_empty());
-    assert_eq!(shared.inner.lock().active_copy_pipes, 0);
+    assert_eq!(shared.inner.lock().jobs.active_copy_pipes, 0);
 
     shared.spawn_copy_pipe(pane, control, command.to_owned(), "selection".to_owned());
 
@@ -784,13 +794,13 @@ fn copy_pipe_failure_is_a_reliable_client_message_and_releases_its_permit() {
         "{message:?}"
     );
     assert!(control_subscriber.state.lock().reliable.is_empty());
-    assert_eq!(shared.inner.lock().active_copy_pipes, 0);
+    assert_eq!(shared.inner.lock().jobs.active_copy_pipes, 0);
 }
 
 #[test]
 fn copy_pipe_rejects_work_past_the_process_limit() {
     let shared = Arc::new(Shared::new(1));
-    shared.inner.lock().active_copy_pipes = MAX_COPY_PIPE_PROCESSES;
+    shared.inner.lock().jobs.active_copy_pipes = MAX_COPY_PIPE_PROCESSES;
 
     shared.spawn_copy_pipe(
         PaneId(9),
@@ -800,7 +810,7 @@ fn copy_pipe_rejects_work_past_the_process_limit() {
     );
 
     assert_eq!(
-        shared.inner.lock().active_copy_pipes,
+        shared.inner.lock().jobs.active_copy_pipes,
         MAX_COPY_PIPE_PROCESSES
     );
 }
@@ -1362,7 +1372,7 @@ fn copy_mode_scroll_exit_reconciles_the_client_copy_session() {
             matches!(mode, TerminalMode::Copy { .. })
         });
         wait_for_observed_copy_session(&shared, client);
-        shared.inner.lock().message_log.clear();
+        shared.inner.lock().history.message_log.clear();
         let generation = terminal
             .latest_viewport_for(view)
             .expect("copy viewport")
@@ -1392,6 +1402,7 @@ fn copy_mode_scroll_exit_reconciles_the_client_copy_session() {
                 if shared
                     .inner
                     .lock()
+                    .history
                     .message_log
                     .iter()
                     .any(|message| message.text == "pane-mode-changed")
@@ -1424,7 +1435,7 @@ fn copy_mode_scroll_exit_reconciles_the_client_copy_session() {
                     .and_then(KeyEngine::active_table),
                 Some("copy-mode")
             );
-            assert!(inner.message_log.is_empty());
+            assert!(inner.history.message_log.is_empty());
         }
     }
 }
@@ -1452,7 +1463,7 @@ fn copy_mode_kill_does_not_survive_an_errored_entry() {
         "copy-mode -k with no attached client should error"
     );
     assert!(
-        shared.inner.lock().pending_copy_kill.is_none(),
+        shared.inner.lock().modes.pending_copy_kill.is_none(),
         "an errored copy-mode -k left the kill armed"
     );
 
@@ -1523,7 +1534,7 @@ fn copy_mode_source_does_not_survive_an_errored_entry() {
         "copy-mode -s with no attached client should error"
     );
     assert!(
-        shared.inner.lock().pending_copy_source.is_none(),
+        shared.inner.lock().modes.pending_copy_source.is_none(),
         "an errored copy-mode -s left the source armed"
     );
 }
@@ -1881,6 +1892,7 @@ fn configured_v_e_y_preserves_indentation_in_the_clipboard() {
                         .and_then(KeyEngine::active_table)
                         .map(str::to_owned),
                     inner
+                        .buffers
                         .paste_buffers
                         .iter()
                         .map(|buffer| String::from_utf8_lossy(&buffer.data).into_owned())

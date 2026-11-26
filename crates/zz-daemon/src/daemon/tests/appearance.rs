@@ -108,12 +108,12 @@ fn window_styles_tint_the_pane_appearance_through_worker_options() {
 
     let untouched = terminal_worker_options(
         &inner.engine,
-        &inner.appearance,
-        &inner.config_files,
+        &inner.config.appearance,
+        &inner.config.config_files,
         active,
     )
     .expect("worker options");
-    assert!(Arc::ptr_eq(&untouched.appearance, &inner.appearance));
+    assert!(Arc::ptr_eq(&untouched.appearance, &inner.config.appearance));
 
     inner
         .engine
@@ -135,8 +135,8 @@ fn window_styles_tint_the_pane_appearance_through_worker_options() {
 
     let active_options = terminal_worker_options(
         &inner.engine,
-        &inner.appearance,
-        &inner.config_files,
+        &inner.config.appearance,
+        &inner.config.config_files,
         active,
     )
     .expect("worker options");
@@ -150,8 +150,8 @@ fn window_styles_tint_the_pane_appearance_through_worker_options() {
     );
     let inactive_options = terminal_worker_options(
         &inner.engine,
-        &inner.appearance,
-        &inner.config_files,
+        &inner.config.appearance,
+        &inner.config.config_files,
         inactive,
     )
     .expect("worker options");
@@ -161,7 +161,7 @@ fn window_styles_tint_the_pane_appearance_through_worker_options() {
     );
     assert_eq!(
         inactive_options.appearance.foreground,
-        inner.appearance.foreground
+        inner.config.appearance.foreground
     );
 
     inner
@@ -183,8 +183,8 @@ fn window_styles_tint_the_pane_appearance_through_worker_options() {
         .expect("unset window-active-style");
     let conditional_active = terminal_worker_options(
         &inner.engine,
-        &inner.appearance,
-        &inner.config_files,
+        &inner.config.appearance,
+        &inner.config.config_files,
         active,
     )
     .expect("worker options");
@@ -194,8 +194,8 @@ fn window_styles_tint_the_pane_appearance_through_worker_options() {
     );
     let conditional_inactive = terminal_worker_options(
         &inner.engine,
-        &inner.appearance,
-        &inner.config_files,
+        &inner.config.appearance,
+        &inner.config.config_files,
         inactive,
     )
     .expect("worker options");
@@ -210,7 +210,7 @@ fn renderer_style_conditionals_see_loaded_config_files() {
     let shared = Shared::new(1);
     let mut context = ExecutionContext::default();
     let mut inner = shared.inner.lock();
-    inner.config_files = "/tmp/loaded.conf".to_owned();
+    inner.config.config_files = "/tmp/loaded.conf".to_owned();
     inner
         .engine
         .execute(
@@ -240,9 +240,13 @@ fn renderer_style_conditionals_see_loaded_config_files() {
         )
         .expect("set conditional mode style");
 
-    let terminal =
-        terminal_worker_options(&inner.engine, &inner.appearance, &inner.config_files, pane)
-            .expect("worker options");
+    let terminal = terminal_worker_options(
+        &inner.engine,
+        &inner.config.appearance,
+        &inner.config.config_files,
+        pane,
+    )
+    .expect("worker options");
     assert_eq!(terminal.appearance.background, Color::rgb(0x12, 0x34, 0x56));
     assert_eq!(
         published_appearance(&inner).selection_background,
@@ -256,7 +260,7 @@ fn copy_mode_styles_patch_the_published_appearance_only_when_set() {
     let mut context = ExecutionContext::default();
     let mut inner = shared.inner.lock();
     let base = published_appearance(&inner);
-    assert!(Arc::ptr_eq(&base, &inner.appearance));
+    assert!(Arc::ptr_eq(&base, &inner.config.appearance));
 
     inner
         .engine
@@ -334,7 +338,7 @@ fn copy_mode_styles_patch_the_published_appearance_only_when_set() {
     }
     assert!(Arc::ptr_eq(
         &published_appearance(&inner),
-        &inner.appearance
+        &inner.config.appearance
     ));
 }
 
@@ -657,7 +661,7 @@ fn reload_updates_live_actor_kinds_and_broadcasts_the_appearance() {
         .expect("reload configuration");
 
     let expected = TerminalAppearance::default_for(TerminalColorScheme::Light);
-    assert_eq!(*shared.inner.lock().appearance, expected);
+    assert_eq!(*shared.inner.lock().config.appearance, expected);
     let deadline = Instant::now() + Duration::from_secs(30);
     while live.latest_viewport().background != expected.background
         || output.latest_viewport().background != expected.background
@@ -711,7 +715,7 @@ fn system_color_scheme_change_applies_and_broadcasts_the_appearance() {
     shared.set_client_color_scheme(client, TerminalColorScheme::Light);
 
     let expected = TerminalAppearance::default_for(TerminalColorScheme::Light);
-    assert_eq!(*shared.inner.lock().appearance, expected);
+    assert_eq!(*shared.inner.lock().config.appearance, expected);
     let deadline = Instant::now() + Duration::from_secs(30);
     while terminal.latest_viewport().background != expected.background {
         assert!(Instant::now() < deadline, "appearance did not reach actor");

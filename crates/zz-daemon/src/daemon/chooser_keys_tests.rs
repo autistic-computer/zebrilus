@@ -559,7 +559,7 @@ fn chooser_prompt_styles_see_the_prompt_type_and_input() {
 fn chooser_filter_prompts_walk_and_feed_the_search_history() {
     let named = |code| tests::test_key(code, Modifiers::default(), None);
     let mut scene = attached_scene();
-    scene.shared.inner.lock().search_history = vec!["older".to_owned(), "newer".to_owned()];
+    scene.shared.inner.lock().history.search_history = vec!["older".to_owned(), "newer".to_owned()];
     let filter_input = |scene: &Scene| {
         scene.shared.inner.lock().clients[&scene.client]
             .choose_tree
@@ -583,10 +583,10 @@ fn chooser_filter_prompts_walk_and_feed_the_search_history() {
     scene.press(named(KeyCode::Enter), false);
     assert_eq!(filter_input(&scene), None);
     assert_eq!(
-        scene.shared.inner.lock().search_history,
+        scene.shared.inner.lock().history.search_history,
         ["older".to_owned(), "newer".to_owned(), "x".to_owned()]
     );
-    assert!(scene.shared.inner.lock().command_history.is_empty());
+    assert!(scene.shared.inner.lock().history.command_history.is_empty());
 
     scene.press(key(':', Modifiers::default()), false);
     scene.press(named(KeyCode::ArrowUp), false);
@@ -608,7 +608,10 @@ fn a_chooser_search_answer_is_search_history_the_filter_prompt_recalls() {
         scene.press(key(character, Modifiers::default()), false);
     }
     scene.press(named(KeyCode::Enter), false);
-    assert_eq!(scene.shared.inner.lock().search_history, ["two".to_owned()]);
+    assert_eq!(
+        scene.shared.inner.lock().history.search_history,
+        ["two".to_owned()]
+    );
     scene.press(key('f', Modifiers::default()), false);
     scene.press(named(KeyCode::ArrowUp), false);
     let input = scene.shared.inner.lock().clients[&scene.client]

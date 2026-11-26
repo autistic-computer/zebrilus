@@ -27,6 +27,7 @@ pub(super) fn pane_window_watched(inner: &ServerState, pane: PaneId) -> bool {
         .get(&session)
         .is_some_and(|state| state.active_window == window)
         && inner
+            .attachment
             .attached
             .get(&session)
             .is_some_and(|clients| !clients.is_empty())
@@ -48,12 +49,16 @@ pub(super) fn pane_window_seen(inner: &ServerState, pane: PaneId) -> bool {
     let Some(session_state) = inner.engine.state.sessions.get(&session) else {
         return false;
     };
-    inner.attached.get(&session).is_some_and(|clients| {
-        clients.iter().any(|&client| {
-            inner.client(client).and_then(|client| client.focused) != Some(false)
-                && client_focused_window(inner, client, session_state) == window
+    inner
+        .attachment
+        .attached
+        .get(&session)
+        .is_some_and(|clients| {
+            clients.iter().any(|&client| {
+                inner.client(client).and_then(|client| client.focused) != Some(false)
+                    && client_focused_window(inner, client, session_state) == window
+            })
         })
-    })
 }
 
 pub(super) fn mark_focused_window_seen(inner: &mut ServerState, client: ClientId) -> bool {
@@ -160,7 +165,7 @@ pub(super) fn mirror_agent_state(inner: &mut ServerState, pane: PaneId, now: u64
     else {
         return false;
     };
-    if inner.program_status_panes.contains(&pane) {
+    if inner.panes.program_status_panes.contains(&pane) {
         return false;
     }
     let status = agent_state_status(inner.engine.pane_user_option(pane, "@agent_state"));
@@ -259,7 +264,7 @@ impl Shared {
     pub(super) fn publish_unpublished_tree(self: &Arc<Self>) {
         let unpublished = {
             let inner = self.inner.lock();
-            inner.last_published_mux_generation != inner.engine.state.generation()
+            inner.publication.last_published_mux_generation != inner.engine.state.generation()
         };
         if unpublished {
             self.request_publish(timers::PublishReason::Tree);
@@ -294,10 +299,10 @@ impl Shared {
     fn recheck_pane_locations(self: &Arc<Self>) {
         let start = {
             let mut inner = self.inner.lock();
-            inner.locations.recheck = false;
+            inner.panes.locations.recheck = false;
             let mut sources = Vec::new();
             let mut start = false;
-            for pane in std::mem::take(&mut inner.locations.unread) {
+            for pane in std::mem::take(&mut inner.panes.locations.unread) {
                 if let Some(source) = location_source(&inner, pane)
                     && !sources.contains(&source)
                 {
@@ -320,10 +325,16 @@ impl Shared {
     ) {
         let (changed, start, switched) = {
             let mut inner = self.inner.lock();
-            if inner.locations.jobs.remove(&pane) == Some(true) {
+            if inner.panes.locations.jobs.remove(&pane) == Some(true) {
                 (false, queue_location(&mut inner, pane), Vec::new())
             } else {
-                remember_location(&mut inner.locations.known, source, &cwd, &repo, &branch);
+                remember_location(
+                    &mut inner.panes.locations.known,
+                    source,
+                    &cwd,
+                    &repo,
+                    &branch,
+                );
                 let switched = agents_on_other_branch(&inner, pane, &repo, &branch);
                 let mut changed = share_branch(&mut inner, &cwd, &repo, &branch);
                 for &agent in &switched {
@@ -382,7 +393,7 @@ impl Shared {
             {
                 return;
             }
-            let locations = &mut inner.locations;
+            let locations = &mut inner.panes.locations;
             locations
                 .programs
                 .insert(pane, (foreground, shell, command.to_owned()));
@@ -401,7 +412,7 @@ impl Shared {
     ) {
         let due = Instant::now() + wait;
         {
-            let settling = &mut self.inner.lock().locations.program_settling;
+            let settling = &mut self.inner.lock().panes.locations.program_settling;
             if settling
                 .get(&pane)
                 .is_some_and(|pending| *pending > Instant::now())
@@ -429,7 +440,7 @@ impl Shared {
             .unwrap_or_default();
         let (sighting, shell) = {
             let mut inner = self.inner.lock();
-            inner.locations.program_settling.remove(&pane);
+            inner.panes.locations.program_settling.remove(&pane);
             if !inner
                 .terminals
                 .get(&pane)
@@ -472,7 +483,7 @@ impl Shared {
     ) {
         let (changed, start) = {
             let mut inner = self.inner.lock();
-            let locations = &mut inner.locations;
+            let locations = &mut inner.panes.locations;
             let current = locations.programs.get(&pane) == Some(source);
             let start = locations.program_jobs.remove(&pane) == Some(true)
                 && queue_program(locations, pane);
@@ -506,7 +517,7 @@ impl Shared {
                 program_jobs,
                 program_queue,
                 ..
-            } = &mut inner.locations;
+            } = &mut inner.panes.locations;
             for (pane, ..) in queue.drain(..) {
                 jobs.remove(&pane);
             }
@@ -525,7 +536,7 @@ impl Shared {
     pub(super) fn settle_pane_locations(&self) {
         let deadline = Instant::now() + Duration::from_secs(30);
         while {
-            let locations = &self.inner.lock().locations;
+            let locations = &self.inner.lock().panes.locations;
             !locations.jobs.is_empty() || !locations.program_jobs.is_empty()
         } {
             assert!(Instant::now() < deadline, "pane locations never settled");
@@ -541,7 +552,7 @@ fn locate_panes(owner: &Weak<Shared>) {
                 return;
             };
             let mut inner = shared.inner.lock();
-            let locations = &mut inner.locations;
+            let locations = &mut inner.panes.locations;
             let job = locations
                 .queue
                 .pop_front()
@@ -576,9 +587,9 @@ fn locate_panes(owner: &Weak<Shared>) {
 }
 
 pub(super) fn forget_pane_program(inner: &mut ServerState, pane: PaneId) {
-    inner.locations.programs.remove(&pane);
-    inner.locations.program_settling.remove(&pane);
-    inner.locations.program_checked.remove(&pane);
+    inner.panes.locations.programs.remove(&pane);
+    inner.panes.locations.program_settling.remove(&pane);
+    inner.panes.locations.program_checked.remove(&pane);
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -632,7 +643,7 @@ pub(super) fn sight_program(
         cfg!(windows) || (!command.is_empty() && !process_info::is_shell_name(command))
     });
     let Some(foreground) = running else {
-        inner.locations.programs.remove(&pane);
+        inner.panes.locations.programs.remove(&pane);
         let shown = inner
             .engine
             .state
@@ -650,6 +661,7 @@ pub(super) fn sight_program(
         };
     };
     if inner
+        .panes
         .locations
         .program_settling
         .get(&pane)
@@ -658,6 +670,7 @@ pub(super) fn sight_program(
         return ProgramSighting::Unchanged;
     }
     let known = inner
+        .panes
         .locations
         .programs
         .get(&pane)
@@ -669,7 +682,7 @@ pub(super) fn sight_program(
             ProgramSighting::Changed(foreground)
         };
     }
-    let checked = &mut inner.locations.program_checked;
+    let checked = &mut inner.panes.locations.program_checked;
     if checked
         .get(&pane)
         .is_some_and(|at| now.saturating_duration_since(*at) < PROGRAM_RECHECK)
@@ -711,6 +724,7 @@ fn place_pane(inner: &mut ServerState, pane: PaneId) -> (bool, bool, bool) {
     let mut fresh = false;
     let mut changed = false;
     if let Some(known) = inner
+        .panes
         .locations
         .known
         .iter()
@@ -723,7 +737,7 @@ fn place_pane(inner: &mut ServerState, pane: PaneId) -> (bool, bool, bool) {
             summary.branch.clone_from(&known.branch);
         });
     }
-    let locations = &mut inner.locations;
+    let locations = &mut inner.panes.locations;
     if fresh && !locations.jobs.contains_key(&pane) {
         locations.unread.insert(pane);
         return (
@@ -740,7 +754,7 @@ fn queue_location(inner: &mut ServerState, pane: PaneId) -> bool {
 }
 
 fn queue_source(inner: &mut ServerState, pane: PaneId, source: LocationSource) -> bool {
-    let locations = &mut inner.locations;
+    let locations = &mut inner.panes.locations;
     match locations.jobs.entry(pane) {
         Entry::Occupied(mut job) => {
             job.insert(true);

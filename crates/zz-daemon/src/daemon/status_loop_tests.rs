@@ -20,6 +20,7 @@ fn fixture() -> (
             .unwrap();
         inner.client_entry(client).subscriber = Some(OutboundMailbox::new());
         inner
+            .attachment
             .attached
             .entry(context.session.unwrap())
             .or_default()
@@ -58,7 +59,12 @@ fn status_deadlines_follow_enabled_nonzero_intervals_and_last_consumers() {
     {
         let mut inner = shared.inner.lock();
         inner.client_entry(other).subscriber = Some(OutboundMailbox::new());
-        inner.attached.entry(session).or_default().insert(other);
+        inner
+            .attachment
+            .attached
+            .entry(session)
+            .or_default()
+            .insert(other);
     }
     sync(&shared, &mut timers, &waker);
     assert_eq!(timers.deadlines.entries.len(), 1);
@@ -89,7 +95,7 @@ fn status_deadlines_follow_enabled_nonzero_intervals_and_last_consumers() {
     );
     sync(&shared, &mut timers, &waker);
     assert_eq!(timers.deadlines.entries.len(), 1);
-    shared.inner.lock().attached.clear();
+    shared.inner.lock().attachment.attached.clear();
     sync(&shared, &mut timers, &waker);
     assert!(timers.deadlines.entries.is_empty());
     assert!(timers.next(Instant::now()).is_none());
@@ -428,6 +434,7 @@ fn a_still_border_on_one_client_keeps_another_clients_border_animating() {
         let other = ClientId(2);
         inner.client_entry(other).subscriber = Some(OutboundMailbox::new());
         inner
+            .attachment
             .attached
             .entry(second_context.session.unwrap())
             .or_default()
@@ -486,6 +493,7 @@ fn command_deadlines_change_only_for_status_options_and_monitor_presence() {
             .unwrap();
         inner.client_entry(client).subscriber = Some(OutboundMailbox::new());
         inner
+            .attachment
             .attached
             .entry(context.session.unwrap())
             .or_default()

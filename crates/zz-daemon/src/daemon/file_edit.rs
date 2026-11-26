@@ -73,7 +73,7 @@ impl Shared {
         let inner = self.inner.lock();
         if kind != ClientKind::Interactive {
             Some("file access needs an interactive client".to_owned())
-        } else if inner.client_flags.contains(client) {
+        } else if inner.attachment.client_flags.contains(client) {
             Some("client is read-only".to_owned())
         } else if !client_is_attached_to_pane(&inner, client, pane) {
             Some(format!("{pane} is not in an attached session"))
@@ -125,7 +125,8 @@ impl Shared {
             refuse(error);
             return;
         }
-        let assembled = append_file_write(&mut self.inner.lock().file_writes, client, chunk);
+        let assembled =
+            append_file_write(&mut self.inner.lock().transfers.file_writes, client, chunk);
         let (pane, path, text) = match assembled {
             Ok(Some(write)) => write,
             Ok(None) => return,
@@ -393,7 +394,7 @@ mod tests {
             }
         );
 
-        shared.inner.lock().client_flags.insert(client);
+        shared.inner.lock().attachment.client_flags.insert(client);
         shared.receive_file_write(
             client,
             ClientKind::Interactive,

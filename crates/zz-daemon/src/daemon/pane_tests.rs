@@ -167,7 +167,12 @@ fn a_chooser_keeps_the_panes_it_previews_current() {
         .expect("open the chooser");
     shared.publish_snapshot();
     assert!(
-        !shared.inner.lock().preview_watched.contains(&printing),
+        !shared
+            .inner
+            .lock()
+            .panes
+            .preview_watched
+            .contains(&printing),
         "only the selected row's preview is watched"
     );
     {
@@ -193,7 +198,14 @@ fn a_chooser_keeps_the_panes_it_previews_current() {
         chooser.rendered.selected = u32::try_from(row).expect("row index");
     }
     shared.publish_chooser_presentation(client);
-    assert!(shared.inner.lock().preview_watched.contains(&printing));
+    assert!(
+        shared
+            .inner
+            .lock()
+            .panes
+            .preview_watched
+            .contains(&printing)
+    );
     wait_until("the watched preview", || {
         printer.latest_viewport_is_current()
     });
@@ -235,7 +247,14 @@ fn a_chooser_keeps_the_panes_it_previews_current() {
         .client_mut(client)
         .and_then(|c| c.choose_tree.take());
     shared.publish_snapshot();
-    assert!(!shared.inner.lock().preview_watched.contains(&printing));
+    assert!(
+        !shared
+            .inner
+            .lock()
+            .panes
+            .preview_watched
+            .contains(&printing)
+    );
 }
 
 #[test]

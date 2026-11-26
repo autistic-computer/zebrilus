@@ -149,7 +149,7 @@ fn chooser_mouse_activity_preserves_bell_and_read_only_updates_latest_geometry()
     };
     {
         let mut inner = shared.inner.lock();
-        inner.client_flags.insert(client);
+        inner.attachment.client_flags.insert(client);
         inner.engine.mark_session_active_at(other, 1_700_000_020);
         inner.engine.state.session_mut(session).unwrap().activity = Some(-30);
         assert!(inner.engine.state.set_pane_bell(pane, true));
@@ -168,9 +168,9 @@ fn chooser_mouse_activity_preserves_bell_and_read_only_updates_latest_geometry()
         );
         (
             inner.engine.state.sessions[&other].sort_activity,
-            inner.activity_sequence,
-            inner.terminal_geometries[&pane].clone(),
-            inner.terminal_input_sequence,
+            inner.attachment.activity_sequence,
+            inner.panes.terminal_geometries[&pane].clone(),
+            inner.panes.terminal_input_sequence,
         )
     };
     shared
@@ -186,7 +186,7 @@ fn chooser_mouse_activity_preserves_bell_and_read_only_updates_latest_geometry()
             inner.engine.state.sessions[&session].sort_activity,
             other_sort + 1
         );
-        assert_eq!(inner.activity_sequence, activity_sequence + 1);
+        assert_eq!(inner.attachment.activity_sequence, activity_sequence + 1);
         assert_eq!(
             inner.clients[&client].activity.unwrap(),
             activity_sequence + 1
@@ -200,9 +200,12 @@ fn chooser_mouse_activity_preserves_bell_and_read_only_updates_latest_geometry()
                 .client(client)
                 .is_some_and(|c| c.choose_buffer.is_some())
         );
-        assert_eq!(inner.terminal_geometries[&pane], geometry);
+        assert_eq!(inner.panes.terminal_geometries[&pane], geometry);
         assert_eq!(terminal_geometry_owner(&inner, pane), Some(client));
-        assert_eq!(inner.terminal_input_sequence, terminal_input_sequence + 1);
+        assert_eq!(
+            inner.panes.terminal_input_sequence,
+            terminal_input_sequence + 1
+        );
         assert_eq!(
             inner
                 .client(client)
@@ -224,15 +227,24 @@ fn chooser_mouse_activity_preserves_bell_and_read_only_updates_latest_geometry()
 
     let read_only_motion_before = {
         let inner = shared.inner.lock();
-        (inner.activity_sequence, inner.terminal_input_sequence)
+        (
+            inner.attachment.activity_sequence,
+            inner.panes.terminal_input_sequence,
+        )
     };
     shared
         .input(client, ClientKind::Interactive, &mut context, motion())
         .expect("account read-only chooser mouse motion");
     {
         let inner = shared.inner.lock();
-        assert_eq!(inner.activity_sequence, read_only_motion_before.0 + 1);
-        assert_eq!(inner.terminal_input_sequence, read_only_motion_before.1 + 1);
+        assert_eq!(
+            inner.attachment.activity_sequence,
+            read_only_motion_before.0 + 1
+        );
+        assert_eq!(
+            inner.panes.terminal_input_sequence,
+            read_only_motion_before.1 + 1
+        );
         assert!(
             inner
                 .client(client)
@@ -257,16 +269,16 @@ fn chooser_mouse_activity_preserves_bell_and_read_only_updates_latest_geometry()
         .offset;
     let writable = {
         let mut inner = shared.inner.lock();
-        inner.client_flags.remove(client);
+        inner.attachment.client_flags.remove(client);
         assert!(inner.engine.state.set_pane_bell(pane, true));
         inner.engine.state.session_mut(session).unwrap().activity = Some(-31);
         (
             inner.engine.state.sessions[&session].activity,
             inner.engine.state.sessions[&session].sort_activity,
-            inner.activity_sequence,
+            inner.attachment.activity_sequence,
             inner.clients[&client].activity.unwrap(),
             inner.clients[&client].activity_time.unwrap(),
-            inner.terminal_input_sequence,
+            inner.panes.terminal_input_sequence,
             inner
                 .client(client)
                 .and_then(|c| c.terminal_input_sequence.as_ref())
@@ -285,13 +297,13 @@ fn chooser_mouse_activity_preserves_bell_and_read_only_updates_latest_geometry()
             inner.engine.state.sessions[&session].sort_activity,
             writable.1 + 1
         );
-        assert_eq!(inner.activity_sequence, writable.2 + 1);
+        assert_eq!(inner.attachment.activity_sequence, writable.2 + 1);
         assert_eq!(inner.clients[&client].activity.unwrap(), writable.2 + 1);
         assert_eq!(
             i64::try_from(inner.clients[&client].activity_time.unwrap()).ok(),
             inner.engine.state.sessions[&session].activity
         );
-        assert_eq!(inner.terminal_input_sequence, writable.5 + 1);
+        assert_eq!(inner.panes.terminal_input_sequence, writable.5 + 1);
         assert_eq!(
             inner
                 .client(client)
@@ -304,7 +316,7 @@ fn chooser_mouse_activity_preserves_bell_and_read_only_updates_latest_geometry()
                 .client(client)
                 .is_some_and(|c| c.choose_buffer.is_some())
         );
-        assert_eq!(inner.terminal_geometries[&pane], geometry);
+        assert_eq!(inner.panes.terminal_geometries[&pane], geometry);
         assert_eq!(terminal_geometry_owner(&inner, pane), Some(client));
         assert!(inner.engine.state.pane(pane).expect("modal pane").bell);
     }
@@ -319,14 +331,17 @@ fn chooser_mouse_activity_preserves_bell_and_read_only_updates_latest_geometry()
 
     let before_motion = {
         let inner = shared.inner.lock();
-        (inner.activity_sequence, inner.terminal_input_sequence)
+        (
+            inner.attachment.activity_sequence,
+            inner.panes.terminal_input_sequence,
+        )
     };
     shared
         .input(client, ClientKind::Interactive, &mut context, motion())
         .expect("account chooser mouse motion");
     let inner = shared.inner.lock();
-    assert_eq!(inner.activity_sequence, before_motion.0 + 1);
-    assert_eq!(inner.terminal_input_sequence, before_motion.1 + 1);
+    assert_eq!(inner.attachment.activity_sequence, before_motion.0 + 1);
+    assert_eq!(inner.panes.terminal_input_sequence, before_motion.1 + 1);
     assert!(
         inner
             .client(client)
@@ -397,7 +412,10 @@ fn chooser_actions_count_once_and_raw_keys_stay_client_scoped() {
             0
         );
         assert!(inner.engine.state.set_pane_bell(pane, true));
-        (inner.activity_sequence, inner.terminal_input_sequence)
+        (
+            inner.attachment.activity_sequence,
+            inner.panes.terminal_input_sequence,
+        )
     };
     shared
         .input(
@@ -412,8 +430,8 @@ fn chooser_actions_count_once_and_raw_keys_stay_client_scoped() {
         .expect("ignore pane focus while chooser is active");
     {
         let inner = shared.inner.lock();
-        assert_eq!(inner.activity_sequence, initial.0);
-        assert_eq!(inner.terminal_input_sequence, initial.1);
+        assert_eq!(inner.attachment.activity_sequence, initial.0);
+        assert_eq!(inner.panes.terminal_input_sequence, initial.1);
         assert!(
             inner
                 .client(client)
@@ -433,8 +451,8 @@ fn chooser_actions_count_once_and_raw_keys_stay_client_scoped() {
         .expect("move chooser selection");
     {
         let inner = shared.inner.lock();
-        assert_eq!(inner.activity_sequence, initial.0 + 1);
-        assert_eq!(inner.terminal_input_sequence, initial.1 + 1);
+        assert_eq!(inner.attachment.activity_sequence, initial.0 + 1);
+        assert_eq!(inner.panes.terminal_input_sequence, initial.1 + 1);
         assert_eq!(
             inner.clients[&client]
                 .choose_buffer
@@ -461,8 +479,8 @@ fn chooser_actions_count_once_and_raw_keys_stay_client_scoped() {
         .expect("route raw owner key into chooser");
     let after_owner_key = {
         let inner = shared.inner.lock();
-        assert_eq!(inner.activity_sequence, initial.0 + 2);
-        assert_eq!(inner.terminal_input_sequence, initial.1 + 2);
+        assert_eq!(inner.attachment.activity_sequence, initial.0 + 2);
+        assert_eq!(inner.panes.terminal_input_sequence, initial.1 + 2);
         assert_eq!(
             inner.clients[&client]
                 .choose_buffer
@@ -482,7 +500,10 @@ fn chooser_actions_count_once_and_raw_keys_stay_client_scoped() {
 
     let peer_before = {
         let inner = shared.inner.lock();
-        (inner.activity_sequence, inner.terminal_input_sequence)
+        (
+            inner.attachment.activity_sequence,
+            inner.panes.terminal_input_sequence,
+        )
     };
     shared
         .input(
@@ -498,8 +519,8 @@ fn chooser_actions_count_once_and_raw_keys_stay_client_scoped() {
         .expect("route peer key outside chooser");
     {
         let inner = shared.inner.lock();
-        assert_eq!(inner.activity_sequence, peer_before.0 + 1);
-        assert_eq!(inner.terminal_input_sequence, peer_before.1 + 1);
+        assert_eq!(inner.attachment.activity_sequence, peer_before.0 + 1);
+        assert_eq!(inner.panes.terminal_input_sequence, peer_before.1 + 1);
         assert_eq!(
             inner.clients[&client]
                 .choose_buffer
@@ -512,11 +533,11 @@ fn chooser_actions_count_once_and_raw_keys_stay_client_scoped() {
 
     let read_only_before = {
         let mut inner = shared.inner.lock();
-        inner.client_flags.insert(client);
+        inner.attachment.client_flags.insert(client);
         assert!(inner.engine.state.set_pane_bell(pane, true));
         (
-            inner.activity_sequence,
-            inner.terminal_input_sequence,
+            inner.attachment.activity_sequence,
+            inner.panes.terminal_input_sequence,
             inner.clients[&client]
                 .choose_buffer
                 .as_ref()
@@ -539,8 +560,8 @@ fn chooser_actions_count_once_and_raw_keys_stay_client_scoped() {
         .expect("bypass chooser with read-only root key");
     {
         let inner = shared.inner.lock();
-        assert_eq!(inner.activity_sequence, read_only_before.0 + 1);
-        assert_eq!(inner.terminal_input_sequence, read_only_before.1 + 1);
+        assert_eq!(inner.attachment.activity_sequence, read_only_before.0 + 1);
+        assert_eq!(inner.panes.terminal_input_sequence, read_only_before.1 + 1);
         assert_eq!(
             inner.clients[&client]
                 .choose_buffer
@@ -558,7 +579,10 @@ fn chooser_actions_count_once_and_raw_keys_stay_client_scoped() {
 
     let safe_view_before = {
         let inner = shared.inner.lock();
-        (inner.activity_sequence, inner.terminal_input_sequence)
+        (
+            inner.attachment.activity_sequence,
+            inner.panes.terminal_input_sequence,
+        )
     };
     shared
         .input(
@@ -573,8 +597,8 @@ fn chooser_actions_count_once_and_raw_keys_stay_client_scoped() {
         .expect("bypass chooser with read-only-safe copy-mode action");
     {
         let inner = shared.inner.lock();
-        assert_eq!(inner.activity_sequence, safe_view_before.0 + 1);
-        assert_eq!(inner.terminal_input_sequence, safe_view_before.1 + 1);
+        assert_eq!(inner.attachment.activity_sequence, safe_view_before.0 + 1);
+        assert_eq!(inner.panes.terminal_input_sequence, safe_view_before.1 + 1);
         assert_eq!(
             inner.clients[&client]
                 .choose_buffer
@@ -595,7 +619,10 @@ fn chooser_actions_count_once_and_raw_keys_stay_client_scoped() {
 
     let dedicated_before = {
         let inner = shared.inner.lock();
-        (inner.activity_sequence, inner.terminal_input_sequence)
+        (
+            inner.attachment.activity_sequence,
+            inner.panes.terminal_input_sequence,
+        )
     };
     shared
         .input(
@@ -608,8 +635,8 @@ fn chooser_actions_count_once_and_raw_keys_stay_client_scoped() {
         )
         .expect("reject read-only dedicated chooser action");
     let inner = shared.inner.lock();
-    assert_eq!(inner.activity_sequence, dedicated_before.0 + 1);
-    assert_eq!(inner.terminal_input_sequence, dedicated_before.1 + 1);
+    assert_eq!(inner.attachment.activity_sequence, dedicated_before.0 + 1);
+    assert_eq!(inner.panes.terminal_input_sequence, dedicated_before.1 + 1);
     assert_eq!(
         inner.clients[&client]
             .choose_buffer
@@ -657,7 +684,7 @@ fn cross_session_chooser_activation_touches_source_input_then_target_attach() {
             .expect("target session row");
         (
             target_row,
-            inner.activity_sequence,
+            inner.attachment.activity_sequence,
             inner.engine.state.sessions[&source].sort_activity,
             inner.engine.state.sessions[&target].sort_activity,
         )
@@ -677,7 +704,7 @@ fn cross_session_chooser_activation_touches_source_input_then_target_attach() {
     let inner = shared.inner.lock();
     assert_eq!(client_attached_session(&inner, client), Some(target));
     assert!(inner.client(client).is_none_or(|c| c.choose_tree.is_none()));
-    assert_eq!(inner.activity_sequence, activity_sequence + 2);
+    assert_eq!(inner.attachment.activity_sequence, activity_sequence + 2);
     assert_eq!(
         inner.clients[&client].activity.unwrap(),
         activity_sequence + 2
@@ -723,11 +750,11 @@ fn read_only_prompt_keys_bypass_consumption_and_preserve_prompt_and_bell() {
         .expect("open prompt");
     let initial = {
         let mut inner = shared.inner.lock();
-        inner.client_flags.insert(client);
+        inner.attachment.client_flags.insert(client);
         assert!(inner.engine.state.set_pane_bell(pane, true));
         (
-            inner.activity_sequence,
-            inner.terminal_input_sequence,
+            inner.attachment.activity_sequence,
+            inner.panes.terminal_input_sequence,
             inner.clients[&client]
                 .command_prompt
                 .as_ref()
@@ -751,8 +778,8 @@ fn read_only_prompt_keys_bypass_consumption_and_preserve_prompt_and_bell() {
         .expect("bypass read-only prompt with root key");
     {
         let inner = shared.inner.lock();
-        assert_eq!(inner.activity_sequence, initial.0 + 1);
-        assert_eq!(inner.terminal_input_sequence, initial.1 + 1);
+        assert_eq!(inner.attachment.activity_sequence, initial.0 + 1);
+        assert_eq!(inner.panes.terminal_input_sequence, initial.1 + 1);
         assert_eq!(
             inner.clients[&client]
                 .command_prompt
@@ -770,7 +797,10 @@ fn read_only_prompt_keys_bypass_consumption_and_preserve_prompt_and_bell() {
 
     let update_before = {
         let inner = shared.inner.lock();
-        (inner.activity_sequence, inner.terminal_input_sequence)
+        (
+            inner.attachment.activity_sequence,
+            inner.panes.terminal_input_sequence,
+        )
     };
     shared
         .input(
@@ -786,8 +816,8 @@ fn read_only_prompt_keys_bypass_consumption_and_preserve_prompt_and_bell() {
         )
         .expect("reject read-only native prompt update");
     let inner = shared.inner.lock();
-    assert_eq!(inner.activity_sequence, update_before.0 + 1);
-    assert_eq!(inner.terminal_input_sequence, update_before.1 + 1);
+    assert_eq!(inner.attachment.activity_sequence, update_before.0 + 1);
+    assert_eq!(inner.panes.terminal_input_sequence, update_before.1 + 1);
     assert_eq!(
         inner.clients[&client]
             .command_prompt
@@ -817,8 +847,8 @@ fn terminal_committed_text_accounts_standalone_and_paired_input_at_most_once() {
     let activity = || {
         let inner = shared.inner.lock();
         (
-            inner.activity_sequence,
-            inner.terminal_input_sequence,
+            inner.attachment.activity_sequence,
+            inner.panes.terminal_input_sequence,
             inner.engine.state.sessions[&session].sort_activity,
         )
     };
@@ -886,7 +916,7 @@ fn terminal_committed_text_accounts_standalone_and_paired_input_at_most_once() {
 
     {
         let mut inner = shared.inner.lock();
-        inner.client_flags.insert(client);
+        inner.attachment.client_flags.insert(client);
         assert!(inner.engine.state.set_pane_bell(pane, true));
     }
     let read_only_before = activity();
@@ -986,7 +1016,10 @@ fn browser_committed_text_respects_pairing_and_modal_consumption() {
     take_reliable_messages(&mailbox);
     let activity = || {
         let inner = shared.inner.lock();
-        (inner.activity_sequence, inner.terminal_input_sequence)
+        (
+            inner.attachment.activity_sequence,
+            inner.panes.terminal_input_sequence,
+        )
     };
 
     let standalone_before = activity();
@@ -1166,7 +1199,7 @@ fn browser_committed_text_respects_pairing_and_modal_consumption() {
         );
     }
 
-    shared.inner.lock().client_flags.insert(client);
+    shared.inner.lock().attachment.client_flags.insert(client);
     let read_only_before = activity();
     for input in [
         InputMessage::BrowserSurfaceText {
@@ -1233,7 +1266,10 @@ fn terminal_committed_text_inherits_writable_and_read_only_modal_results() {
         .expect("create modal buffer");
     let activity = || {
         let inner = shared.inner.lock();
-        (inner.activity_sequence, inner.terminal_input_sequence)
+        (
+            inner.attachment.activity_sequence,
+            inner.panes.terminal_input_sequence,
+        )
     };
     let paired = |context: &mut ExecutionContext, character: &str| {
         shared
@@ -1377,7 +1413,7 @@ fn terminal_committed_text_inherits_writable_and_read_only_modal_results() {
         .expect("open read-only chooser");
     {
         let mut inner = shared.inner.lock();
-        inner.client_flags.insert(client);
+        inner.attachment.client_flags.insert(client);
         inner.engine.state.set_pane_bell(pane, true);
     }
     let read_only_chooser_before = activity();
@@ -1402,7 +1438,7 @@ fn terminal_committed_text_inherits_writable_and_read_only_modal_results() {
                 .client(client)
                 .is_none_or(|c| c.pending_committed_text.is_none())
         );
-        inner.client_flags.remove(client);
+        inner.attachment.client_flags.remove(client);
         inner
             .client_mut(client)
             .and_then(|c| c.choose_buffer.take());
@@ -1416,7 +1452,7 @@ fn terminal_committed_text_inherits_writable_and_read_only_modal_results() {
             &CommandInvocation::new("command-prompt", ["-p", "read-only"]),
         )
         .expect("open read-only prompt");
-    shared.inner.lock().client_flags.insert(client);
+    shared.inner.lock().attachment.client_flags.insert(client);
     let read_only_prompt_before = activity();
     paired(&mut context, "z");
     assert_eq!(
@@ -1439,7 +1475,7 @@ fn terminal_committed_text_inherits_writable_and_read_only_modal_results() {
                 .client(client)
                 .is_none_or(|c| c.pending_committed_text.is_none())
         );
-        inner.client_flags.remove(client);
+        inner.attachment.client_flags.remove(client);
         inner
             .client_mut(client)
             .and_then(|c| c.command_prompt.take());
@@ -1453,7 +1489,7 @@ fn terminal_committed_text_inherits_writable_and_read_only_modal_results() {
             &CommandInvocation::new("display-panes", ["-d", "0"]),
         )
         .expect("open read-only display-panes");
-    shared.inner.lock().client_flags.insert(client);
+    shared.inner.lock().attachment.client_flags.insert(client);
     let read_only_display_before = activity();
     paired(&mut context, "z");
     assert_eq!(
@@ -1518,7 +1554,10 @@ fn committed_text_fifo_handles_overlap_mismatch_switch_and_cleanup() {
     take_reliable_messages(&mailbox);
     let activity = || {
         let inner = shared.inner.lock();
-        (inner.activity_sequence, inner.terminal_input_sequence)
+        (
+            inner.attachment.activity_sequence,
+            inner.panes.terminal_input_sequence,
+        )
     };
 
     let overlap_before = activity();

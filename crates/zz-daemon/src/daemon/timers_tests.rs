@@ -31,7 +31,10 @@ fn copy_and_clock_deadlines_follow_consumers_with_fifty_ms_copy_cadence() {
             sourced: false,
             exiting: false,
         });
-        inner.pane_modes.insert(pane, vec![PaneModeRequest::Clock]);
+        inner
+            .modes
+            .pane_modes
+            .insert(pane, vec![PaneModeRequest::Clock]);
     }
     clients.sync(&shared, &mut deadlines, now);
     assert_eq!(
@@ -43,6 +46,7 @@ fn copy_and_clock_deadlines_follow_consumers_with_fifty_ms_copy_cadence() {
         let mut inner = shared.inner.lock();
         inner.client_entry(client).subscriber = Some(OutboundMailbox::new());
         inner
+            .attachment
             .attached
             .entry(context.session.unwrap())
             .or_default()
@@ -73,7 +77,7 @@ fn copy_and_clock_deadlines_follow_consumers_with_fifty_ms_copy_cadence() {
             .as_mut()
             .unwrap()
             .refresh = false;
-        inner.pane_modes.clear();
+        inner.modes.pane_modes.clear();
     }
     clients.sync(&shared, &mut deadlines, tick);
     assert!(deadlines.get(TimerKey::CopyRefresh).is_none());
@@ -202,8 +206,8 @@ fn parked_shell_hooks_resume_owned_frames_in_enqueue_order_without_workers() {
         inner.engine.format_user_option("", "", "", "@second"),
         Some("yes")
     );
-    assert_eq!(inner.active_shell_jobs, 0);
-    assert!(inner.shell_jobs.is_empty());
+    assert_eq!(inner.jobs.active_shell_jobs, 0);
+    assert!(inner.jobs.shell_jobs.is_empty());
     assert_eq!(shared.connection_threads.worker_count(), 0);
 }
 
@@ -277,6 +281,7 @@ fn mode_exits_cancel_copy_and_clock_deadlines_before_the_next_tick() {
         let mut inner = shared.inner.lock();
         inner.client_entry(client).subscriber = Some(OutboundMailbox::new());
         inner
+            .attachment
             .attached
             .entry(context.session.unwrap())
             .or_default()
@@ -291,7 +296,10 @@ fn mode_exits_cancel_copy_and_clock_deadlines_before_the_next_tick() {
             sourced: false,
             exiting: false,
         });
-        inner.pane_modes.insert(pane, vec![PaneModeRequest::Clock]);
+        inner
+            .modes
+            .pane_modes
+            .insert(pane, vec![PaneModeRequest::Clock]);
         Arc::clone(&inner.terminals[&pane])
     };
     let poll = mio::Poll::new().unwrap();

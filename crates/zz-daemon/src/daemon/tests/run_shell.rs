@@ -1311,7 +1311,7 @@ fn run_shell_routes_to_command_interactive_control_and_background_sinks() {
         )
         .expect("background shell job");
     assert!(output.output.is_empty());
-    assert_eq!(shared.inner.lock().active_shell_jobs, 1);
+    assert_eq!(shared.inner.lock().jobs.active_shell_jobs, 1);
     let deadline = Instant::now() + Duration::from_secs(2);
     while shared.read_client(interactive, |c| {
         c.is_none_or(|c| c.command_output.is_none())
@@ -1330,10 +1330,10 @@ fn run_shell_routes_to_command_interactive_control_and_background_sinks() {
     );
     drop(inner);
     let deadline = Instant::now() + Duration::from_secs(2);
-    while shared.inner.lock().active_shell_jobs != 0 && Instant::now() < deadline {
+    while shared.inner.lock().jobs.active_shell_jobs != 0 && Instant::now() < deadline {
         thread::sleep(Duration::from_millis(10));
     }
-    assert_eq!(shared.inner.lock().active_shell_jobs, 0);
+    assert_eq!(shared.inner.lock().jobs.active_shell_jobs, 0);
 
     shared
         .inner
@@ -1365,10 +1365,10 @@ fn run_shell_routes_to_command_interactive_control_and_background_sinks() {
         target
     );
     let deadline = Instant::now() + Duration::from_secs(2);
-    while shared.inner.lock().active_shell_jobs != 0 && Instant::now() < deadline {
+    while shared.inner.lock().jobs.active_shell_jobs != 0 && Instant::now() < deadline {
         thread::sleep(Duration::from_millis(10));
     }
-    assert_eq!(shared.inner.lock().active_shell_jobs, 0);
+    assert_eq!(shared.inner.lock().jobs.active_shell_jobs, 0);
     assert!(shared.read_client(control, |c| c.is_none_or(|c| c.command_output.is_none())));
     assert!(control_command_outputs(take_reliable_messages(&control_mailbox)).is_empty());
     assert!(control_command_outputs(take_reliable_messages(&peer_mailbox)).is_empty());
@@ -1510,10 +1510,10 @@ fn foreground_shell_jobs_run_concurrently_and_obey_the_process_cap() {
         .collect::<Vec<_>>();
     barrier.wait();
     let deadline = Instant::now() + Duration::from_secs(2);
-    while shared.inner.lock().active_shell_jobs != 2 && Instant::now() < deadline {
+    while shared.inner.lock().jobs.active_shell_jobs != 2 && Instant::now() < deadline {
         thread::sleep(Duration::from_millis(10));
     }
-    assert_eq!(shared.inner.lock().active_shell_jobs, 2);
+    assert_eq!(shared.inner.lock().jobs.active_shell_jobs, 2);
     let outputs = workers
         .into_iter()
         .map(|worker| {
@@ -1526,12 +1526,12 @@ fn foreground_shell_jobs_run_concurrently_and_obey_the_process_cap() {
         .collect::<Vec<_>>();
     assert_eq!(outputs, ["first", "second"]);
     let deadline = Instant::now() + Duration::from_secs(2);
-    while shared.inner.lock().active_shell_jobs != 0 && Instant::now() < deadline {
+    while shared.inner.lock().jobs.active_shell_jobs != 0 && Instant::now() < deadline {
         thread::sleep(Duration::from_millis(10));
     }
-    assert_eq!(shared.inner.lock().active_shell_jobs, 0);
+    assert_eq!(shared.inner.lock().jobs.active_shell_jobs, 0);
 
-    shared.inner.lock().active_shell_jobs = MAX_SHELL_JOBS;
+    shared.inner.lock().jobs.active_shell_jobs = MAX_SHELL_JOBS;
     let error = shared
         .execute(
             ClientId(103),
@@ -1545,7 +1545,7 @@ fn foreground_shell_jobs_run_concurrently_and_obey_the_process_cap() {
         DaemonError::Server(ServerError::InvalidCommand(message))
             if message == "failed to run command: printf never"
     ));
-    shared.inner.lock().active_shell_jobs = 0;
+    shared.inner.lock().jobs.active_shell_jobs = 0;
 }
 
 #[cfg(unix)]
@@ -1583,9 +1583,10 @@ fn kill_server_reaps_running_shell_job_process_groups() {
     loop {
         {
             let inner = shared.inner.lock();
-            assert_eq!(inner.active_shell_jobs, 1);
-            assert_eq!(inner.shell_jobs.len(), 1);
+            assert_eq!(inner.jobs.active_shell_jobs, 1);
+            assert_eq!(inner.jobs.shell_jobs.len(), 1);
             if inner
+                .jobs
                 .shell_jobs
                 .values()
                 .all(|process| process.lock().is_some())
@@ -1610,14 +1611,14 @@ fn kill_server_reaps_running_shell_job_process_groups() {
         .expect("kill server");
     #[cfg(unix)]
     lifecycle::wait_for_cleanup(&shared);
-    assert!(shared.inner.lock().shell_jobs.is_empty());
+    assert!(shared.inner.lock().jobs.shell_jobs.is_empty());
 
     wait_for_process_group_exit(group, Duration::from_secs(2), "shell job");
     let deadline = Instant::now() + Duration::from_secs(2);
-    while shared.inner.lock().active_shell_jobs != 0 && Instant::now() < deadline {
+    while shared.inner.lock().jobs.active_shell_jobs != 0 && Instant::now() < deadline {
         thread::sleep(Duration::from_millis(10));
     }
-    assert_eq!(shared.inner.lock().active_shell_jobs, 0);
+    assert_eq!(shared.inner.lock().jobs.active_shell_jobs, 0);
 }
 
 #[cfg(unix)]
@@ -1674,7 +1675,7 @@ fn background_command_insertion_and_if_shell_return_before_their_work_runs() {
         )
         .expect("background if-shell");
     assert!(output.output.is_empty());
-    assert_eq!(shared.inner.lock().active_shell_jobs, 1);
+    assert_eq!(shared.inner.lock().jobs.active_shell_jobs, 1);
     let deadline = Instant::now() + Duration::from_secs(2);
     loop {
         let value = shared
@@ -1691,7 +1692,7 @@ fn background_command_insertion_and_if_shell_return_before_their_work_runs() {
         assert!(Instant::now() < deadline);
         thread::sleep(Duration::from_millis(10));
     }
-    assert_eq!(shared.inner.lock().active_shell_jobs, 0);
+    assert_eq!(shared.inner.lock().jobs.active_shell_jobs, 0);
 }
 
 #[cfg(unix)]

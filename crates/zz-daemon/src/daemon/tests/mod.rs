@@ -189,6 +189,7 @@ fn client_event_log(shared: &Shared) -> Vec<String> {
     shared
         .inner
         .lock()
+        .history
         .message_log
         .iter()
         .map(|message| message.text.clone())
@@ -737,6 +738,7 @@ fn claude_peer_status_drives_agent_state_for_terminal_panes() {
                 while shared
                     .inner
                     .lock()
+                    .waits
                     .wait_channels
                     .get(&channel)
                     .is_none_or(|channel| channel.waiters.is_empty())
@@ -766,6 +768,7 @@ fn claude_peer_status_drives_agent_state_for_terminal_panes() {
                 !shared
                     .inner
                     .lock()
+                    .waits
                     .wait_channels
                     .get(&channel)
                     .is_some_and(|channel| channel.woken),
@@ -1342,6 +1345,7 @@ fn top_is_panes_mode(shared: &Shared, pane: PaneId) -> bool {
         shared
             .inner
             .lock()
+            .modes
             .pane_modes
             .get(&pane)
             .and_then(|modes| modes.last()),
@@ -1396,8 +1400,9 @@ pub(super) fn spawn_foreground_shell_job(
     loop {
         let registered = {
             let inner = shared.inner.lock();
-            inner.shell_jobs.len() == 1
+            inner.jobs.shell_jobs.len() == 1
                 && inner
+                    .jobs
                     .shell_jobs
                     .values()
                     .all(|process| process.lock().is_some())

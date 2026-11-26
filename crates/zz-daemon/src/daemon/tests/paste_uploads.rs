@@ -25,12 +25,17 @@ fn paste_path_image_upload_writes_a_private_file_stages_preview_and_pastes_the_p
     );
     shared.extend_paste_upload(client, 1, &image[..3]);
     assert!(
-        shared.inner.lock().paste_uploads.contains_key(&(client, 1)),
+        shared
+            .inner
+            .lock()
+            .transfers
+            .paste_uploads
+            .contains_key(&(client, 1)),
         "a partial upload should stay open"
     );
     shared.extend_paste_upload(client, 1, &image[3..]);
     assert!(
-        shared.inner.lock().paste_uploads.is_empty(),
+        shared.inner.lock().transfers.paste_uploads.is_empty(),
         "reaching the declared total should finish the upload"
     );
 
@@ -123,7 +128,7 @@ fn record_only_paste_upload_stays_encoded_and_opens_a_pending_binding_window() {
     shared.extend_paste_upload(client, 71, &image[..3]);
     shared.extend_paste_upload(client, 71, &image[3..]);
 
-    assert!(shared.inner.lock().paste_uploads.is_empty());
+    assert!(shared.inner.lock().transfers.paste_uploads.is_empty());
     let pasted_images = shared.pasted_images.lock();
     let stored = pasted_images.get(&pane).expect("pane image state");
     assert_eq!(stored.pending.len(), 1);
@@ -143,7 +148,7 @@ fn paste_uploads_are_bounded_per_client_and_dropped_on_overflow() {
     take_reliable_messages(&mailbox);
 
     shared.extend_paste_upload(client, 404, &[0; 8]);
-    assert!(shared.inner.lock().paste_uploads.is_empty());
+    assert!(shared.inner.lock().transfers.paste_uploads.is_empty());
     assert!(client_message_texts(take_reliable_messages(&mailbox)).is_empty());
 
     shared.begin_paste_upload(
@@ -157,7 +162,7 @@ fn paste_uploads_are_bounded_per_client_and_dropped_on_overflow() {
     );
     shared.extend_paste_upload(client, 1, &[0; 5]);
     assert!(
-        shared.inner.lock().paste_uploads.is_empty(),
+        shared.inner.lock().transfers.paste_uploads.is_empty(),
         "an overflowing upload should be dropped"
     );
     assert_eq!(
@@ -202,7 +207,7 @@ fn paste_uploads_are_bounded_per_client_and_dropped_on_overflow() {
         64,
     );
     assert_eq!(
-        shared.inner.lock().paste_uploads.len(),
+        shared.inner.lock().transfers.paste_uploads.len(),
         MAX_CONCURRENT_PASTE_UPLOADS
     );
     assert_eq!(
@@ -226,7 +231,7 @@ fn paste_uploads_are_bounded_per_client_and_dropped_on_overflow() {
 
     shared.unregister(client);
     assert!(
-        shared.inner.lock().paste_uploads.is_empty(),
+        shared.inner.lock().transfers.paste_uploads.is_empty(),
         "a disconnect should take its client's uploads with it"
     );
 }

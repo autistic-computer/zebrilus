@@ -140,6 +140,7 @@ pub(super) fn normalize_resize(
                 .client(client)
                 .is_some_and(|c| c.ctrl_subscriptions.is_some())
                 && inner
+                    .panes
                     .terminal_geometries
                     .get(&pane)
                     .and_then(|geometries| geometries.get(&client))
@@ -186,21 +187,21 @@ fn shared_tree(
     let contexts = inner.engine.format_context_snapshot(FormatClient::NoClient);
     expand_window_status_labels(
         &inner.engine,
-        &inner.config_files,
+        &inner.config.config_files,
         facts,
         &contexts,
         &mut tree,
     );
     stamp_pane_border_colours(
         &inner.engine,
-        &inner.config_files,
+        &inner.config.config_files,
         facts,
         &contexts,
         &mut tree,
     );
     let _ = stamp_pane_border_chrome(
         &inner.engine,
-        &inner.config_files,
+        &inner.config.config_files,
         facts,
         &contexts,
         &mut tree,
@@ -258,7 +259,10 @@ fn client_view(
                 Some(window.id),
                 Some(window.active_pane),
             );
-            inner.config_files.clone_into(&mut context.config_files);
+            inner
+                .config
+                .config_files
+                .clone_into(&mut context.config_files);
             let mut hooks = DaemonFormatHooks::command(facts).with_option_engine(engine);
             let style = expand_window_status_style(&formats, &context, &mut hooks);
             let label = expand_status(format, &context, &mut hooks);
@@ -292,7 +296,10 @@ fn client_view(
             for (pane, entry) in &window.panes {
                 let mut context =
                     contexts.status_context(Some(session.id), Some(window.id), Some(*pane));
-                inner.config_files.clone_into(&mut context.config_files);
+                inner
+                    .config
+                    .config_files
+                    .clone_into(&mut context.config_files);
                 let mut hooks = DaemonFormatHooks::command(facts).with_option_engine(engine);
                 let mut border_colour = entry.border_colour;
                 let mut active_border_colour = entry.active_border_colour;
@@ -333,7 +340,7 @@ fn client_view(
             }
         }
     }
-    let flags = inner.client_flags.get(client);
+    let flags = inner.attachment.client_flags.get(client);
     ClientView {
         session: client_attached_session(inner, client),
         focused_window: client_focused_window_for_attachment(inner, client),
@@ -615,7 +622,7 @@ pub(super) fn control_query_can_defer_wakeup(
         return false;
     };
     if !hook_events::command_is_read_only(name, &command.invocation.args)
-        || !inner.deferred_event_hooks.is_empty()
+        || !inner.waits.deferred_event_hooks.is_empty()
     {
         return false;
     }
@@ -643,6 +650,7 @@ impl Shared {
             let session = inner.engine.state.windows[&window].session;
             let current = inner.engine.state.sessions[&session].active_window == window;
             let attached = inner
+                .attachment
                 .attached
                 .get(&session)
                 .is_some_and(|clients| !clients.is_empty());
@@ -651,7 +659,7 @@ impl Shared {
             }
             let changed = inner.engine.state.set_window_activity_flag(window, true);
             if changed {
-                inner.control_activity_pending.insert(pane);
+                inner.panes.control_activity_pending.insert(pane);
             }
             changed
         };
@@ -687,7 +695,7 @@ impl Shared {
                         .is_none_or(|subscription| subscription.keys == KeySubscription::Full)
                 })
         {
-            inner.key_table_generations = inner
+            inner.publication.key_table_generations = inner
                 .engine
                 .keys
                 .table_generations()
@@ -704,7 +712,7 @@ impl Shared {
                         .is_some_and(|subscription| subscription.keys == KeySubscription::Hash)
                 })
             {
-                inner.key_tables_generation = inner.engine.keys.generation();
+                inner.publication.key_tables_generation = inner.engine.keys.generation();
             }
         }
         inner
@@ -738,7 +746,12 @@ impl Shared {
         let mut messages = Vec::new();
         let raw = if let Some(scope) = scope(&inner, client) {
             let mut raw = shared_tree(&inner, &snapshot, scope, &facts);
-            let before = inner.ctrl_trees.get(&scope).cloned().unwrap_or_default();
+            let before = inner
+                .publication
+                .ctrl_trees
+                .get(&scope)
+                .cloned()
+                .unwrap_or_default();
             raw.generation = before.generation.saturating_add(1);
             let delta = TreeDelta::between(&before, &raw);
             if delta.ops.is_empty() {
@@ -760,7 +773,7 @@ impl Shared {
                     .ctrl_tree_version
                     .replace(raw.generation);
             }
-            inner.ctrl_trees.insert(scope, raw.clone());
+            inner.publication.ctrl_trees.insert(scope, raw.clone());
             raw
         } else {
             MuxSnapshot {
@@ -839,7 +852,12 @@ impl Shared {
             }
             let mut sends = BTreeMap::<ClientId, (Arc<OutboundMailbox>, Vec<OutboundFrame>)>::new();
             for (scope, clients) in groups {
-                let before = inner.ctrl_trees.get(&scope).cloned().unwrap_or_default();
+                let before = inner
+                    .publication
+                    .ctrl_trees
+                    .get(&scope)
+                    .cloned()
+                    .unwrap_or_default();
                 let mut raw = shared_tree(&inner, &snapshot, scope, &facts);
                 raw.generation = before.generation.saturating_add(1);
                 let delta = TreeDelta::between(&before, &raw);
@@ -896,7 +914,7 @@ impl Shared {
                         }
                     }
                 }
-                inner.ctrl_trees.insert(scope, raw);
+                inner.publication.ctrl_trees.insert(scope, raw);
             }
             for client in view_only {
                 let view = client_view(&mut inner, client, &MuxSnapshot::default(), &facts);
@@ -1124,7 +1142,7 @@ impl Shared {
             }
             (
                 (*published_appearance(&inner)).clone(),
-                inner.appearance_provenance.clone(),
+                inner.config.appearance_provenance.clone(),
                 (subscriptions.options != 0).then(|| {
                     let options = effective_mux_options(&inner, client);
                     MuxOptions::from_entries(

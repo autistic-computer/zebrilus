@@ -4,7 +4,10 @@ fn fixture() -> (ServerState, ClientId, ExecutionContext) {
     let mut inner = ServerState::default();
     let (session, window, pane) = inner.engine.state.create_session("borders").unwrap();
     let client = ClientId(3);
-    inner.attached.insert(session, BTreeSet::from([client]));
+    inner
+        .attachment
+        .attached
+        .insert(session, BTreeSet::from([client]));
     inner.client_entry(client).focused_window.replace(window);
     inner.engine.set_format_now(1_700_000_000);
     BORDER_FORMAT_EXPANSIONS.with(|count| count.set(0));
@@ -133,7 +136,10 @@ fn live_scalar_border_probe_preserves_headers_options_and_fresh_mode_counts() {
         assert!(Arc::ptr_eq(&first, &later));
     }
     inner.engine.set_format_now(second);
-    inner.pane_modes.insert(pane, vec![PaneModeRequest::Clock]);
+    inner
+        .modes
+        .pane_modes
+        .insert(pane, vec![PaneModeRequest::Clock]);
     assert!(
         cached_live_border_presentations(
             &inner,
@@ -205,7 +211,7 @@ fn border_format_cache_reuses_default_styles_at_twenty_windows() {
     assert_eq!(second, first);
     assert!(Arc::ptr_eq(&first, &second));
     assert_eq!(expansions(), before);
-    let cache = inner.border_presentations_cache.lock();
+    let cache = inner.publication.border_presentations_cache.lock();
     let retained = cache.as_ref().unwrap().retained_bytes();
     eprintln!("twenty-window border cache retained {retained} bytes");
     assert!(retained <= BORDER_FORMAT_CACHE_BYTES);
@@ -386,6 +392,7 @@ fn border_format_cache_keeps_clock_guards_for_raw_nested_and_time_modifier_sourc
         let first = borders(&inner, client, session, &facts);
         assert!(
             inner
+                .publication
                 .border_presentations_cache
                 .lock()
                 .as_ref()
@@ -448,7 +455,11 @@ fn border_format_cache_bypasses_loops_jobs_terminal_and_unknown_inputs() {
         assert_eq!(second, first, "{source}");
         assert_eq!(expansions(), before + 1, "{source}");
         assert!(
-            inner.border_presentations_cache.lock().is_none(),
+            inner
+                .publication
+                .border_presentations_cache
+                .lock()
+                .is_none(),
             "{source}"
         );
     }
@@ -474,7 +485,13 @@ fn border_format_cache_bypasses_oversized_retained_inputs() {
     let before = expansions();
     borders(&inner, client, context.session.unwrap(), &facts);
     assert_eq!(expansions(), before + 1);
-    assert!(inner.border_presentations_cache.lock().is_none());
+    assert!(
+        inner
+            .publication
+            .border_presentations_cache
+            .lock()
+            .is_none()
+    );
 }
 
 #[test]
@@ -514,6 +531,7 @@ fn border_format_cache_tracks_linked_window_owner_attachments_in_the_same_second
         .windows
         .push(window);
     inner
+        .attachment
         .attached
         .insert(viewer, BTreeSet::from([viewer_client]));
     inner
@@ -557,14 +575,20 @@ fn border_format_cache_preserves_borrowed_window_client_callbacks() {
         borders(&inner, client, session, &facts)
     };
     assert_eq!(first[0].style, "fg=green");
-    inner.attached.get_mut(&session).unwrap().clear();
+    inner.attachment.attached.get_mut(&session).unwrap().clear();
     let second = {
         let facts = readonly_borrowed_format_hook_facts(&inner, CommandFormatSeed::default());
         borders(&inner, client, session, &facts)
     };
     assert_eq!(second[0].style, "fg=red");
     assert_eq!(expansions(), 2);
-    assert!(inner.border_presentations_cache.lock().is_none());
+    assert!(
+        inner
+            .publication
+            .border_presentations_cache
+            .lock()
+            .is_none()
+    );
 }
 
 #[test]
@@ -600,7 +624,7 @@ fn border_format_cache_checks_borrowed_mode_counts_without_materializing_maps() 
     };
     assert!(first.iter().all(|pane| pane.style == "fg=green"));
     {
-        let cache = inner.border_presentations_cache.lock();
+        let cache = inner.publication.border_presentations_cache.lock();
         let cache = cache.as_ref().unwrap();
         assert!(cache.callbacks.is_empty());
         assert!(
@@ -612,8 +636,9 @@ fn border_format_cache_checks_borrowed_mode_counts_without_materializing_maps() 
     }
     let revision = inner.engine.format_cache_revision();
     for (active, inactive) in [(first_pane, second_pane), (second_pane, first_pane)] {
-        inner.pane_modes.insert(inactive, Vec::new());
+        inner.modes.pane_modes.insert(inactive, Vec::new());
         inner
+            .modes
             .pane_modes
             .insert(active, vec![PaneModeRequest::Clock, PaneModeRequest::Clock]);
         let facts = readonly_borrowed_format_hook_facts(&inner, CommandFormatSeed::default());
@@ -660,6 +685,7 @@ fn border_format_cache_checks_live_copy_sessions_without_materializing_maps() {
     inner.terminals_mut().insert(pane, terminal);
     enter_copy_session(&mut inner, copy_client, pane).unwrap();
     inner
+        .modes
         .pane_modes
         .insert(pane, vec![PaneModeRequest::Clock, PaneModeRequest::Clock]);
     set_style(
@@ -848,6 +874,7 @@ fn border_format_cache_pins_one_mode_count_for_style_and_expected_callbacks() {
     assert_eq!(facts.reads.get(), 1);
     assert_eq!(
         inner
+            .publication
             .border_presentations_cache
             .lock()
             .as_ref()
@@ -868,6 +895,7 @@ fn border_format_cache_pins_one_mode_count_for_style_and_expected_callbacks() {
     assert_eq!(facts.reads.get(), 4);
     assert_eq!(
         inner
+            .publication
             .border_presentations_cache
             .lock()
             .as_ref()

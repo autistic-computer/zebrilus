@@ -152,7 +152,7 @@ fn file_reply_bypasses_a_queued_exec_chain() {
         matches!(received.as_slice(), [ProtocolMessage::CommandResponse(CommandResponse::Success { .. }), ProtocolMessage::ExecExit(_), ProtocolMessage::CommandResponse(CommandResponse::Success { output, .. }), ProtocolMessage::ExecExit(_)] if output == "after")
     );
     assert_eq!(
-        shared.inner.lock().paste_buffers[0].data.as_ref(),
+        shared.inner.lock().buffers.paste_buffers[0].data.as_ref(),
         b"client data\n"
     );
     event_loop.remove(token, &shared);

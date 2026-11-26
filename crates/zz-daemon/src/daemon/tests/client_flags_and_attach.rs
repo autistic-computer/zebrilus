@@ -455,26 +455,34 @@ fn client_context_formats_share_retained_facts_across_surfaces() {
             ]))));
         inner.client_entry(client).activity_time.replace(222);
         inner.client_entry(client).created_time.replace(111);
-        inner.session_last_attached.insert(session, 333);
+        inner.attachment.session_last_attached.insert(session, 333);
         inner
             .client_entry(client)
             .last_session
             .replace(last_session);
-        inner.client_flags.apply(client, "read-only,active-pane");
+        inner
+            .attachment
+            .client_flags
+            .apply(client, "read-only,active-pane");
         inner
             .client_entry(client)
             .key_engine
             .get_or_insert_default()
             .switch_table(Some("copy-mode".to_owned()));
-        inner.terminal_geometries.entry(pane).or_default().insert(
-            client,
-            TerminalGeometry {
-                columns: 120,
-                rows: 40,
-                cell_width_px: 9,
-                cell_height_px: 19,
-            },
-        );
+        inner
+            .panes
+            .terminal_geometries
+            .entry(pane)
+            .or_default()
+            .insert(
+                client,
+                TerminalGeometry {
+                    columns: 120,
+                    rows: 40,
+                    cell_width_px: 9,
+                    cell_height_px: 19,
+                },
+            );
     }
     let format = "#{client_activity}|#{client_cell_height}|#{client_cell_width}|#{client_colours}|#{client_control_mode}|#{client_created}|#{client_discarded}|#{client_flags}|#{client_height}|#{client_key_table}|#{client_last_session}|#{client_name}|#{client_pid}|#{client_prefix}|#{client_readonly}|#{client_session}|#{client_termfeatures}|#{client_termname}|#{client_termtype}|#{client_theme}|#{client_tty}|#{client_uid}|#{client_user}|#{client_utf8}|#{client_width}|#{client_written}|#{session_last_attached}|#{session_active}";
     let listed = shared
@@ -699,11 +707,11 @@ fn switch_mode_lifetime_kill_follows_the_entry_below_the_top() {
     ));
     assert!(push_pane_mode(&mut inner, pane, PaneModeRequest::Clock));
     assert!(pop_pane_mode(&mut inner, pane));
-    assert!(inner.pane_mode_kill_panes.is_empty());
+    assert!(inner.modes.pane_mode_kill_panes.is_empty());
     assert_eq!(pane_mode_format_facts(&inner)[&pane], (1, "switch-mode"));
     assert!(pop_pane_mode(&mut inner, pane));
-    assert_eq!(inner.pane_mode_kill_panes, [pane]);
-    assert!(!inner.pane_modes.contains_key(&pane));
+    assert_eq!(inner.modes.pane_mode_kill_panes, [pane]);
+    assert!(!inner.modes.pane_modes.contains_key(&pane));
 }
 
 #[test]
@@ -718,21 +726,21 @@ fn switch_mode_lifetime_promotion_updates_kill_but_reentry_does_not() {
         switch_lifetime_mode(true, true)
     ));
     assert!(matches!(
-        inner.pane_modes[&pane].last(),
+        inner.modes.pane_modes[&pane].last(),
         Some(PaneModeRequest::Switch(mode)) if !mode.kill_source && !mode.zoom
     ));
     push_pane_mode(&mut inner, pane, PaneModeRequest::Clock);
     push_pane_mode(&mut inner, pane, switch_lifetime_mode(true, true));
-    assert!(!inner.pane_mode_zooms.contains(&pane));
+    assert!(!inner.modes.pane_mode_zooms.contains(&pane));
     assert!(clear_pane_modes(&mut inner, pane));
-    assert_eq!(inner.pane_mode_kill_panes, [pane]);
+    assert_eq!(inner.modes.pane_mode_kill_panes, [pane]);
     assert!(!clear_pane_modes(&mut inner, pane));
-    inner.pane_mode_kill_panes.clear();
+    inner.modes.pane_mode_kill_panes.clear();
     push_pane_mode(&mut inner, pane, switch_lifetime_mode(true, false));
     push_pane_mode(&mut inner, pane, PaneModeRequest::Clock);
     push_pane_mode(&mut inner, pane, switch_lifetime_mode(false, false));
     clear_pane_modes(&mut inner, pane);
-    assert!(inner.pane_mode_kill_panes.is_empty());
+    assert!(inner.modes.pane_mode_kill_panes.is_empty());
 }
 
 #[test]
@@ -774,7 +782,7 @@ fn switch_mode_lifetime_single_pane_remembers_unzoomed_entry() {
     assert_eq!(inner.engine.state.windows[&window].zoomed_pane, Some(pane));
     clear_pane_modes(&mut inner, pane);
     assert_eq!(inner.engine.state.windows[&window].zoomed_pane, None);
-    assert!(inner.pane_mode_zooms.is_empty());
+    assert!(inner.modes.pane_mode_zooms.is_empty());
 }
 
 #[test]
@@ -855,7 +863,7 @@ fn attach_session_r_marks_the_client_read_only_and_gates_its_routes() {
             &CommandInvocation::new("attach-session", ["-r", "-t", "A"]),
         )
         .expect("read-only attach");
-    assert!(shared.inner.lock().client_flags.contains(client));
+    assert!(shared.inner.lock().attachment.client_flags.contains(client));
     assert_eq!(
         format_client_flags(&shared.inner.lock(), client),
         "attached,focused,read-only"
@@ -919,7 +927,7 @@ fn attach_session_r_marks_the_client_read_only_and_gates_its_routes() {
             &CommandInvocation::new("switch-client", ["-r"]),
         )
         .expect("switch-client -r clears read-only");
-    assert!(!shared.inner.lock().client_flags.contains(client));
+    assert!(!shared.inner.lock().attachment.client_flags.contains(client));
 }
 
 #[test]
@@ -956,7 +964,7 @@ fn requested_client_flags_mutate_in_tmux_order_and_survive_detach_and_switch() {
         format_client_flags(&shared.inner.lock(), client),
         "attached,focused,ignore-size,no-detach-on-destroy,read-only"
     );
-    let flags = shared.inner.lock().client_flags.get(client);
+    let flags = shared.inner.lock().attachment.client_flags.get(client);
     assert_eq!(flags.reconnect_flags(), "ignore-size,no-detach-on-destroy");
     let messages = take_reliable_messages(&mailbox);
     assert!(messages.iter().any(|message| matches!(
@@ -1029,7 +1037,7 @@ fn requested_client_flags_mutate_in_tmux_order_and_survive_detach_and_switch() {
 
     shared.unregister(client);
     assert_eq!(
-        shared.inner.lock().client_flags.get(client),
+        shared.inner.lock().attachment.client_flags.get(client),
         ClientFlagState::default()
     );
 }
@@ -1172,6 +1180,7 @@ fn attach_flags_follow_resolution_and_precede_the_terminal_open_error() {
         !shared
             .inner
             .lock()
+            .attachment
             .client_flags
             .get(client)
             .no_detach_on_destroy
@@ -1192,6 +1201,7 @@ fn attach_flags_follow_resolution_and_precede_the_terminal_open_error() {
         !shared
             .inner
             .lock()
+            .attachment
             .client_flags
             .get(client)
             .no_detach_on_destroy
@@ -1313,7 +1323,7 @@ fn attach_environment_refresh_runs_after_terminal_preflight_and_honors_dash_e() 
         Some(("ATTACHED_ENV".into(), Some("control".into())))
     );
     assert!(
-        shared.inner.lock().terminal_spawns[&original_pane]
+        shared.inner.lock().panes.terminal_spawns[&original_pane]
             .env
             .contains(&("ATTACHED_ENV".into(), Some("before".into())))
     );
@@ -1334,7 +1344,7 @@ fn attach_environment_refresh_runs_after_terminal_preflight_and_honors_dash_e() 
         })
         .expect("refreshed environment pane");
     assert!(
-        shared.inner.lock().terminal_spawns[&future_pane]
+        shared.inner.lock().panes.terminal_spawns[&future_pane]
             .env
             .contains(&("ATTACHED_ENV".into(), Some("control".into())))
     );
@@ -1645,7 +1655,7 @@ fn attached_fresh_new_session_applies_flags_after_terminal_materialization() {
             ),
         )
         .expect("create and attach with flags");
-    let flags = shared.inner.lock().client_flags.get(client);
+    let flags = shared.inner.lock().attachment.client_flags.get(client);
     assert!(flags.ignore_size);
     assert_eq!(
         format_client_flags(&shared.inner.lock(), client),
@@ -2076,6 +2086,7 @@ fn nested_attach_refuses_only_preexisting_sessions_when_the_caller_tty_matches_a
             .expect("expanded detached session");
         assert!(
             inner
+                .attachment
                 .attached
                 .get(&expanded)
                 .is_none_or(|clients| !clients.contains(&nested))
@@ -2126,6 +2137,7 @@ fn nested_attach_refuses_only_preexisting_sessions_when_the_caller_tty_matches_a
         shared
             .inner
             .lock()
+            .attachment
             .attached
             .values()
             .all(|clients| !clients.contains(&nested))
@@ -2149,6 +2161,7 @@ fn nested_attach_refuses_only_preexisting_sessions_when_the_caller_tty_matches_a
             .expect("fresh detached session");
         assert!(
             inner
+                .attachment
                 .attached
                 .get(&fresh)
                 .is_none_or(|clients| !clients.contains(&nested))

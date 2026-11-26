@@ -52,7 +52,7 @@ fn twenty_exit_waits_add_no_workers_or_polling_deadlines() {
         })
         .collect::<Vec<_>>();
     assert_eq!(
-        shared.inner.lock().pane_exit_waits[&context.pane.unwrap()]
+        shared.inner.lock().panes.pane_exit_waits[&context.pane.unwrap()]
             .current
             .waiters(),
         20
@@ -86,7 +86,7 @@ fn client_loss_cancels_a_parked_exit_wait_once() {
     shared.unregister(client);
     assert!(task.ready());
     assert_eq!(
-        shared.inner.lock().pane_exit_waits[&context.pane.unwrap()]
+        shared.inner.lock().panes.pane_exit_waits[&context.pane.unwrap()]
             .current
             .waiters(),
         0
@@ -104,7 +104,7 @@ fn pane_exit_notifications_broadcast_and_preserve_pending_split_status() {
     let pane = context.pane.unwrap();
     let terminal = Arc::clone(&shared.inner.lock().terminals[&pane]);
     let completion = pane_exit::Completion::new(&terminal);
-    shared.inner.lock().pane_exit_waits.insert(
+    shared.inner.lock().panes.pane_exit_waits.insert(
         pane,
         PaneExitWait {
             current: Arc::clone(&completion),
@@ -145,7 +145,14 @@ fn pane_exit_notifications_broadcast_and_preserve_pending_split_status() {
     );
     assert!(result.is_ok());
     assert_eq!(status.unwrap().load(Ordering::Acquire), 7);
-    assert!(!shared.inner.lock().pane_exit_waits.contains_key(&pane));
+    assert!(
+        !shared
+            .inner
+            .lock()
+            .panes
+            .pane_exit_waits
+            .contains_key(&pane)
+    );
     shared.request_shutdown();
 }
 
@@ -156,7 +163,12 @@ fn wait_pane_exit_after_respawn_preserves_an_unconsumed_split_wait() {
     let terminal = Arc::clone(&shared.inner.lock().terminals[&pane]);
     let mut entry = PaneExitWait::new(&terminal);
     entry.command_wait = Some(Arc::clone(&entry.current));
-    shared.inner.lock().pane_exit_waits.insert(pane, entry);
+    shared
+        .inner
+        .lock()
+        .panes
+        .pane_exit_waits
+        .insert(pane, entry);
     shared
         .execute(
             client,
@@ -198,7 +210,14 @@ fn client_loss_cancels_a_split_wait_without_taking_a_later_exit_status() {
         &CommandInvocation::new("split-window", ["-d", "-W", "exec sleep 30"]),
     );
     assert!(matches!(task.run(true), wait_queue::Progress::Waiting));
-    let pane = *shared.inner.lock().pane_exit_waits.keys().next().unwrap();
+    let pane = *shared
+        .inner
+        .lock()
+        .panes
+        .pane_exit_waits
+        .keys()
+        .next()
+        .unwrap();
     shared.unregister(client);
     assert!(task.ready());
     Shared::wake_pane_exit_wait(&mut shared.inner.lock(), pane, 9);

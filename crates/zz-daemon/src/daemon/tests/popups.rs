@@ -65,6 +65,7 @@ fn popup_geometry_uses_the_clients_terminal_metrics_when_a_browser_is_active() {
     let retina = ClientId(1);
     let other = ClientId(2);
     inner
+        .attachment
         .attached
         .insert(session, BTreeSet::from([retina, other]));
     inner
@@ -86,7 +87,7 @@ fn popup_geometry_uses_the_clients_terminal_metrics_when_a_browser_is_active() {
         cell_height_px: 20,
         ..measured
     };
-    inner.terminal_geometries.insert(
+    inner.panes.terminal_geometries.insert(
         terminal,
         BTreeMap::from([(retina, measured), (other, other_measured)]),
     );
@@ -108,6 +109,7 @@ fn popup_geometry_uses_the_clients_terminal_metrics_when_a_browser_is_active() {
         }),
     );
     inner
+        .panes
         .terminal_geometries
         .get_mut(&terminal)
         .unwrap()
@@ -137,7 +139,10 @@ fn popup_geometry_takes_the_clients_full_terminal_height_like_tty_sy() {
         .set_manual_window_extent(window, 79, 22)
         .unwrap();
     let client = ClientId(1);
-    inner.attached.insert(session, BTreeSet::from([client]));
+    inner
+        .attachment
+        .attached
+        .insert(session, BTreeSet::from([client]));
     inner
         .client_entry(client)
         .kind
@@ -315,7 +320,7 @@ fn nested_attach_passes_from_a_popup_and_is_refused_from_a_modal_pane() {
         )
         .expect("open a modal pane");
     let modal = modal_pane(&shared, &context).expect("new-pane -O made a modal pane");
-    assert!(!shared.inner.lock().popup_panes.contains(&modal));
+    assert!(!shared.inner.lock().panes.popup_panes.contains(&modal));
     match attach_from(modal, "from-modal") {
         Err(DaemonError::Server(ServerError::InvalidCommand(message))) => assert_eq!(
             message,

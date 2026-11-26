@@ -115,16 +115,17 @@ impl Completion {
 
 pub(super) fn remove_unused(inner: &mut ServerState, pane: PaneId) {
     if inner
+        .panes
         .pane_exit_waits
         .get(&pane)
         .is_some_and(|entry| entry.command_wait.is_none() && entry.current.state.lock().completed)
     {
-        inner.pane_exit_waits.remove(&pane);
+        inner.panes.pane_exit_waits.remove(&pane);
     }
 }
 
 fn cancel_matching(inner: &mut ServerState, mut matches: impl FnMut(&Subscriber) -> bool) {
-    for entry in inner.pane_exit_waits.values() {
+    for entry in inner.panes.pane_exit_waits.values() {
         entry.current.cancel(&mut matches);
         if let Some(command) = &entry.command_wait
             && !Arc::ptr_eq(command, &entry.current)
@@ -146,7 +147,7 @@ pub(super) fn cancel_token(inner: &mut ServerState, token: cmdq::ContinuationTok
 
 pub(super) fn cancel_all(inner: &mut ServerState) {
     cancel_matching(inner, |_| true);
-    inner.pane_exit_waits.clear();
+    inner.panes.pane_exit_waits.clear();
 }
 
 pub(super) fn wait(
@@ -161,6 +162,7 @@ pub(super) fn wait(
     let completion = {
         let mut inner = shared.inner.lock();
         let entry = inner
+            .panes
             .pane_exit_waits
             .entry(pane)
             .or_insert_with(|| PaneExitWait::new(terminal));

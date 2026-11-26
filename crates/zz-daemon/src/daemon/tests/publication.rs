@@ -414,6 +414,7 @@ fn terminal_preview_streams_inactive_windows_without_owning_geometry() {
         let inner = shared.inner.lock();
         assert!(
             !inner
+                .panes
                 .terminal_geometries
                 .get(&first)
                 .is_some_and(|geometries| geometries.contains_key(&first_client))
@@ -662,7 +663,10 @@ fn command_error_that_mutates_mux_state_publishes_snapshot() {
         let inner = shared.inner.lock();
         assert_eq!(inner.engine.state.windows[&window].zoomed_pane, None);
         assert_eq!(inner.engine.state.generation(), generation + 1);
-        assert_eq!(inner.last_published_mux_generation, generation + 1);
+        assert_eq!(
+            inner.publication.last_published_mux_generation,
+            generation + 1
+        );
     }
     let snapshots = take_reliable_messages(&mailbox)
         .into_iter()

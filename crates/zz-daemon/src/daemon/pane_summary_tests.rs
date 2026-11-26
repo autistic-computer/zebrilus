@@ -151,6 +151,7 @@ fn a_finish_in_a_watched_window_stays_seen() {
         .select_window(session, first)
         .expect("select first window");
     inner
+        .attachment
         .attached
         .entry(session)
         .or_default()
@@ -170,7 +171,7 @@ fn a_finish_in_a_watched_window_stays_seen() {
     assert!(!summary(&inner, watched).unseen);
     assert!(summary(&inner, hidden).unseen);
 
-    inner.attached.clear();
+    inner.attachment.attached.clear();
     assert!(!pane_window_watched(&inner, watched));
     apply_pane_status(
         &mut inner,
@@ -192,6 +193,7 @@ fn a_finish_behind_an_unfocused_client_stays_unseen_until_focus_in() {
     let mut inner = ServerState::default();
     let (session, _, pane) = inner.engine.state.create_session("away").expect("session");
     inner
+        .attachment
         .attached
         .entry(session)
         .or_default()
@@ -244,6 +246,7 @@ fn a_new_turn_drops_a_stale_unseen() {
     assert!(!summary(&inner, pane).unseen);
 
     inner
+        .attachment
         .attached
         .entry(session)
         .or_default()
@@ -362,10 +365,10 @@ fn agent_state_mirror_covers_terminals_without_7501() {
     );
     assert_eq!(read().0, None);
 
-    shared.inner.lock().program_status_panes.insert(pane);
+    shared.inner.lock().panes.program_status_panes.insert(pane);
     set("working");
     assert_eq!(read().0, None);
-    shared.inner.lock().program_status_panes.remove(&pane);
+    shared.inner.lock().panes.program_status_panes.remove(&pane);
 }
 
 #[test]
@@ -955,9 +958,12 @@ fn location_jobs_coalesce_while_in_flight() {
         (summary.cwd, summary.repo, summary.branch)
     };
 
-    shared.inner.lock().locations.jobs.insert(pane, false);
+    shared.inner.lock().panes.locations.jobs.insert(pane, false);
     shared.synchronize_pane_reported_path(pane, &terminal, &report);
-    assert_eq!(shared.inner.lock().locations.jobs.get(&pane), Some(&true));
+    assert_eq!(
+        shared.inner.lock().panes.locations.jobs.get(&pane),
+        Some(&true)
+    );
     assert_eq!(location(), Default::default());
 
     shared.finish_pane_location(
@@ -970,13 +976,13 @@ fn location_jobs_coalesce_while_in_flight() {
         ("stale".to_owned(), "stale".to_owned(), "old".to_owned())
     );
     wait_until("the resubmitted location", || location() == expected);
-    assert!(shared.inner.lock().locations.jobs.is_empty());
+    assert!(shared.inner.lock().panes.locations.jobs.is_empty());
     assert_eq!(summary(&shared.inner.lock(), pane).changed_at, 0);
 
     fs::write(repo.join(".git").join("HEAD"), "ref: refs/heads/next\n").expect("HEAD");
     shared.request_pane_location(pane);
     wait_until("the new branch", || location().2 == "next");
-    assert!(shared.inner.lock().locations.jobs.is_empty());
+    assert!(shared.inner.lock().panes.locations.jobs.is_empty());
 }
 
 #[cfg(unix)]
@@ -1010,7 +1016,7 @@ fn a_stalled_location_leaves_the_helper_pool_free() {
     let read = thread::spawn(move || reader.helpers.read(&plain));
     wait_until("an unrelated helper read", || read.is_finished());
     assert_eq!(read.join().expect("reader").expect("read"), b"hello");
-    assert!(!shared.inner.lock().locations.jobs.is_empty());
+    assert!(!shared.inner.lock().panes.locations.jobs.is_empty());
 
     wait_until("the stalled locations", || {
         if let Ok(writer) = fs::OpenOptions::new()
@@ -1020,7 +1026,7 @@ fn a_stalled_location_leaves_the_helper_pool_free() {
         {
             drop(writer);
         }
-        shared.inner.lock().locations.jobs.is_empty()
+        shared.inner.lock().panes.locations.jobs.is_empty()
     });
     shared.request_shutdown();
 }
@@ -1127,12 +1133,12 @@ fn a_spawn_in_a_known_directory_rides_its_own_publish() {
     shared.settle_pane_locations();
     let age_known = |age: Duration| {
         let read_at = Instant::now().checked_sub(age).expect("monotonic clock");
-        for known in &mut shared.inner.lock().locations.known {
+        for known in &mut shared.inner.lock().panes.locations.known {
             known.read_at = read_at;
         }
         read_at
     };
-    let read_at = || shared.inner.lock().locations.known[0].read_at;
+    let read_at = || shared.inner.lock().panes.locations.known[0].read_at;
     let spawn = || {
         let before = shared
             .inner
@@ -1153,7 +1159,8 @@ fn a_spawn_in_a_known_directory_rides_its_own_publish() {
             .find(|pane| !before.contains(pane))
             .expect("new pane");
         let summary = summary(&inner, pane);
-        let published = inner.last_published_mux_generation == inner.engine.state.generation();
+        let published =
+            inner.publication.last_published_mux_generation == inner.engine.state.generation();
         (pane, (summary.cwd, summary.repo, summary.branch), published)
     };
     let generation = || shared.inner.lock().engine.state.generation();
@@ -1191,7 +1198,7 @@ fn a_spawn_in_a_known_directory_rides_its_own_publish() {
     wait_until("the switched branch", || {
         summary(&shared.inner.lock(), pane).branch == "next"
     });
-    assert_eq!(shared.inner.lock().locations.known[0].branch, "next");
+    assert_eq!(shared.inner.lock().panes.locations.known[0].branch, "next");
     shared.request_shutdown();
 }
 
@@ -1291,7 +1298,7 @@ fn a_read_reaches_every_pane_and_answer_for_its_directory() {
 
     let third = new_pane(&shared, &split);
     assert_eq!(branch(third), "next");
-    assert!(shared.inner.lock().locations.jobs.is_empty());
+    assert!(shared.inner.lock().panes.locations.jobs.is_empty());
     shared.request_shutdown();
 }
 
@@ -1323,12 +1330,12 @@ fn a_reused_answer_is_read_again_within_the_window() {
     );
     let taken = Instant::now();
     assert_eq!(branch(second), "main");
-    assert!(shared.inner.lock().locations.jobs.is_empty());
+    assert!(shared.inner.lock().panes.locations.jobs.is_empty());
     wait_until("the recheck", || {
         branch(first) == "next" && branch(second) == "next"
     });
     assert!(taken.elapsed() < LOCATION_FRESH);
-    assert!(shared.inner.lock().locations.unread.is_empty());
+    assert!(shared.inner.lock().panes.locations.unread.is_empty());
     shared.request_shutdown();
 }
 
@@ -1348,7 +1355,7 @@ fn a_move_into_a_known_directory_publishes_the_tree() {
         ((report.clone(), PathBuf::new()), "~/report", "next"),
     ] {
         remember_location(
-            &mut shared.inner.lock().locations.known,
+            &mut shared.inner.lock().panes.locations.known,
             source,
             cwd,
             "",
@@ -1361,8 +1368,8 @@ fn a_move_into_a_known_directory_publishes_the_tree() {
         (
             summary.cwd,
             summary.branch,
-            inner.last_published_mux_generation == inner.engine.state.generation(),
-            inner.locations.jobs.is_empty(),
+            inner.publication.last_published_mux_generation == inner.engine.state.generation(),
+            inner.panes.locations.jobs.is_empty(),
         )
     };
 
@@ -1400,7 +1407,7 @@ fn a_settled_foreground_program_fills_the_summary_and_a_shell_clears_it() {
         let inner = shared.inner.lock();
         (
             summary(&inner, pane).process,
-            inner.last_published_mux_generation == inner.engine.state.generation(),
+            inner.publication.last_published_mux_generation == inner.engine.state.generation(),
             inner.engine.state.generation(),
         )
     };
@@ -1420,7 +1427,7 @@ fn a_settled_foreground_program_fills_the_summary_and_a_shell_clears_it() {
 
     at(0);
     check(Some(pid), "sleep");
-    assert!(shared.inner.lock().locations.programs.is_empty());
+    assert!(shared.inner.lock().panes.locations.programs.is_empty());
     thread::sleep(PROGRAM_SETTLE);
     at(1);
     check(Some(pid), "sleep");
@@ -1432,16 +1439,16 @@ fn a_settled_foreground_program_fills_the_summary_and_a_shell_clears_it() {
     assert!(published);
 
     check(Some(pid), "sleep");
-    assert!(shared.inner.lock().locations.program_jobs.is_empty());
+    assert!(shared.inner.lock().panes.locations.program_jobs.is_empty());
     assert_eq!(state().2, generation);
 
     at(2);
     check(Some(pid), "-zsh");
-    assert!(shared.inner.lock().locations.program_jobs.is_empty());
+    assert!(shared.inner.lock().panes.locations.program_jobs.is_empty());
     let (process, published, _) = state();
     assert!(process.is_empty());
     assert!(published);
-    assert!(shared.inner.lock().locations.programs.is_empty());
+    assert!(shared.inner.lock().panes.locations.programs.is_empty());
 
     let generation = state().2;
     check(None, "");

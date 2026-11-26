@@ -73,7 +73,7 @@ fn capture_reply_for_a_respawned_terminal_is_rejected_before_buffer_insertion() 
     drain(&shared, &state);
     state.apply(&mut result);
     assert!(matches!(result, Err(DaemonError::Server(ServerError::PaneExited(id))) if id == pane));
-    assert!(shared.inner.lock().paste_buffers.is_empty());
+    assert!(shared.inner.lock().buffers.paste_buffers.is_empty());
     shared.request_shutdown();
 }
 
@@ -97,7 +97,7 @@ fn capture_reply_for_a_departed_client_is_dropped_before_buffer_insertion() {
     drain(&shared, &state);
     state.apply(&mut result);
     assert!(result.unwrap().output.is_empty());
-    assert!(shared.inner.lock().paste_buffers.is_empty());
+    assert!(shared.inner.lock().buffers.paste_buffers.is_empty());
     shared.request_shutdown();
 }
 

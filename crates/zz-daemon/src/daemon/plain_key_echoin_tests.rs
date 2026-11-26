@@ -190,9 +190,9 @@ fn messages_read_only_and_unattached_clients_take_the_full_path() {
     let (shared, client, mut context, pane, _) = key_table_fixture("clients");
     let plain = |shared: &Arc<Shared>| shared.plain_key_generation(client, pane, &letter('a'));
     assert!(plain(&shared).is_some());
-    shared.inner.lock().client_flags.insert(client);
+    shared.inner.lock().attachment.client_flags.insert(client);
     assert!(plain(&shared).is_none());
-    shared.inner.lock().client_flags.remove(client);
+    shared.inner.lock().attachment.client_flags.remove(client);
     assert!(plain(&shared).is_some());
     run(
         &shared,

@@ -309,6 +309,7 @@ fn startup_sources_use_the_initial_client_cwd_until_replay_finishes() {
         shared
             .inner
             .lock()
+            .config
             .startup_source_client_working_directory
             .is_none()
     );
@@ -379,7 +380,7 @@ fn startup_source_cwd_overrides_a_registered_reentry_client() {
             .client_entry(reentry)
             .working_directory
             .replace(reentry_cwd.clone());
-        inner.startup_source_client_working_directory = Some(initial_cwd);
+        inner.config.startup_source_client_working_directory = Some(initial_cwd);
     }
     let mut context = ExecutionContext::default();
     context.set_client_working_directory(Some(reentry_cwd));
@@ -2267,11 +2268,12 @@ fn configuration_override_updates_state_provenance_and_broadcast() {
 
     let inner = shared.inner.lock();
     assert_eq!(
-        inner.appearance.background,
+        inner.config.appearance.background,
         zz_terminal::Color::rgb(0x12, 0x34, 0x56)
     );
     assert_eq!(
         inner
+            .config
             .appearance_provenance
             .source(zz_terminal::AppearanceConfigKey::Background),
         zz_terminal::AppearanceSource::Override
@@ -2328,14 +2330,14 @@ fn a_remote_client_cannot_restyle_a_machine_with_a_local_client() {
         .client_mut(remote)
         .expect("remote client")
         .remote = true;
-    let before = Arc::clone(&shared.inner.lock().appearance);
+    let before = Arc::clone(&shared.inner.lock().config.appearance);
     assert_eq!(before.color_scheme, TerminalColorScheme::Dark);
     take_reliable_messages(&local_mailbox);
     let overrides = [("background".to_owned(), "#123456".to_owned())];
 
     shared.set_config_overrides(remote, ClientKind::Interactive, &overrides);
     shared.set_client_color_scheme(remote, TerminalColorScheme::Light);
-    assert_eq!(*shared.inner.lock().appearance, *before);
+    assert_eq!(*shared.inner.lock().config.appearance, *before);
     assert_eq!(appearance_events(&local_mailbox), []);
 
     shared.set_config_overrides(local, ClientKind::Interactive, &overrides);
@@ -2350,7 +2352,7 @@ fn a_remote_client_cannot_restyle_a_machine_with_a_local_client() {
     shared.unregister(local);
     shared.set_client_color_scheme(remote, TerminalColorScheme::Light);
     assert_eq!(
-        shared.inner.lock().appearance.color_scheme,
+        shared.inner.lock().config.appearance.color_scheme,
         TerminalColorScheme::Light
     );
 }
@@ -2396,6 +2398,7 @@ fn mux_override_beats_mux_config_file_and_survives_reload_user_config() {
         assert_eq!(inner.engine.keys.prefix(), "C-a");
         assert_eq!(
             inner
+                .config
                 .mux_options
                 .get(MuxOptionKey::Prefix)
                 .expect("effective prefix"),
@@ -2415,6 +2418,7 @@ fn mux_override_beats_mux_config_file_and_survives_reload_user_config() {
     assert_eq!(inner.engine.mux_option_value(MuxOptionKey::ModeKeys), "vi");
     assert_eq!(
         inner
+            .config
             .mux_options
             .get(MuxOptionKey::Prefix)
             .expect("replayed prefix")
@@ -2910,6 +2914,7 @@ fn mux_option_source_tracks_default_tmux_override_and_runtime_writers() {
         shared
             .inner
             .lock()
+            .config
             .mux_options
             .get(MuxOptionKey::Prefix)
             .expect("default prefix")
@@ -2923,6 +2928,7 @@ fn mux_option_source_tracks_default_tmux_override_and_runtime_writers() {
         shared
             .inner
             .lock()
+            .config
             .mux_options
             .get(MuxOptionKey::Prefix)
             .expect("tmux prefix")
@@ -2938,6 +2944,7 @@ fn mux_option_source_tracks_default_tmux_override_and_runtime_writers() {
         shared
             .inner
             .lock()
+            .config
             .mux_options
             .get(MuxOptionKey::Prefix)
             .expect("override prefix")
@@ -2955,6 +2962,7 @@ fn mux_option_source_tracks_default_tmux_override_and_runtime_writers() {
         .expect("runtime prefix command");
     let inner = shared.inner.lock();
     let runtime = inner
+        .config
         .mux_options
         .get(MuxOptionKey::Prefix)
         .expect("runtime prefix");

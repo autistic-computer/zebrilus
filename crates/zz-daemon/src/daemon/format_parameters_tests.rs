@@ -104,7 +104,7 @@ fn status_parameters_retarget_sessions_and_reject_a_replaced_engine_with_equal_r
 fn status_parameters_bound_includes_environment_and_disables_retention_on_rollback() {
     let mut inner = ServerState::default();
     parameters(&inner, None);
-    assert!(inner.status_parameters_cache.lock().is_some());
+    assert!(inner.publication.status_parameters_cache.lock().is_some());
     let large = "v".repeat(600_000);
     execute(
         &mut inner,
@@ -112,7 +112,7 @@ fn status_parameters_bound_includes_environment_and_disables_retention_on_rollba
     );
     let oversized = parameters(&inner, None);
     assert!(oversized.retained_bytes() > 1024 * 1024);
-    assert!(inner.status_parameters_cache.lock().is_none());
+    assert!(inner.publication.status_parameters_cache.lock().is_none());
     assert!(oversized.environment.iter().any(|(name, value)| {
         name.as_bytes() == b"FORMAT_PARAMETER_TEST"
             && value
@@ -148,7 +148,7 @@ fn raw_text_bound_rejects_large_job_parameters_and_keeps_small_raw_values() {
         assert_eq!(stored.as_str(), value.as_str());
         if value.as_bytes().len() == 300_000 {
             assert!(first.retained_bytes() > STATUS_PREPARATION_MAX_BYTES);
-            assert!(inner.status_parameters_cache.lock().is_none());
+            assert!(inner.publication.status_parameters_cache.lock().is_none());
             assert!(!Arc::ptr_eq(&first, &same));
         } else {
             assert!(first.retained_bytes() < STATUS_PREPARATION_MAX_BYTES);
@@ -162,7 +162,10 @@ fn status_preparation_reuses_engine_capture_and_keeps_client_and_config_values_f
     let mut inner = ServerState::default();
     let (session, window, _) = inner.engine.state.create_session("work").unwrap();
     let client = ClientId(3);
-    inner.attached.insert(session, BTreeSet::from([client]));
+    inner
+        .attachment
+        .attached
+        .insert(session, BTreeSet::from([client]));
     inner.client_entry(client).focused_window.replace(window);
     inner
         .client_entry(client)
@@ -215,7 +218,7 @@ fn status_preparation_reuses_engine_capture_and_keeps_client_and_config_values_f
         renderer.render_initial(&resized).left,
         format!("{prefix}120::1")
     );
-    inner.config_files = "new.conf".to_owned();
+    inner.config.config_files = "new.conf".to_owned();
     let configured = request(&inner);
     assert_eq!(
         renderer.render_initial(&configured).left,
@@ -229,7 +232,10 @@ fn status_fact_selection_plans_reuse_dependencies_and_keep_referenced_facts_fres
     let mut inner = ServerState::default();
     let (session, window, pane) = inner.engine.state.create_session("work").unwrap();
     let client = ClientId(3);
-    inner.attached.insert(session, BTreeSet::from([client]));
+    inner
+        .attachment
+        .attached
+        .insert(session, BTreeSet::from([client]));
     inner.client_entry(client).focused_window.replace(window);
     inner
         .client_entry(client)
@@ -277,7 +283,10 @@ fn status_fact_selection_plans_reuse_dependencies_and_keep_referenced_facts_fres
         .tty
         .replace("/dev/changed".to_owned());
     inner.client_entry(client).size.replace((120, 24));
-    inner.pane_modes.insert(pane, vec![PaneModeRequest::Clock]);
+    inner
+        .modes
+        .pane_modes
+        .insert(pane, vec![PaneModeRequest::Clock]);
     assert_eq!(inner.engine.format_cache_revision(), revision);
     for _ in 0..3 {
         let current = parameters(&inner, Some(session));

@@ -718,7 +718,7 @@ impl Shared {
                 Some("path listing needs an interactive client".to_owned())
             } else if !inner.client(client).is_some_and(|c| c.path_picker) {
                 Some("path listing needs the zz desktop app".to_owned())
-            } else if inner.client_flags.contains(client) {
+            } else if inner.attachment.client_flags.contains(client) {
                 Some("client is read-only".to_owned())
             } else if own_root {
                 None
@@ -2126,7 +2126,7 @@ mod tests {
                 "{messages:?}"
             );
         }
-        shared.inner.lock().client_flags.insert(client);
+        shared.inner.lock().attachment.client_flags.insert(client);
         let messages = listing(&shared, client, ClientKind::Interactive, (8, pane, None));
         assert!(matches!(
             messages.as_slice(),
@@ -2180,7 +2180,7 @@ mod tests {
                 "{messages:?}"
             );
         }
-        shared.inner.lock().client_flags.insert(client);
+        shared.inner.lock().attachment.client_flags.insert(client);
         let messages = listing(
             &shared,
             client,

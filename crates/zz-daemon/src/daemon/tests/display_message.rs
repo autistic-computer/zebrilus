@@ -495,7 +495,7 @@ fn display_message_target_client_routes_and_selects_format_client() {
     }
 
     {
-        shared.inner.lock().client_flags.insert(same);
+        shared.inner.lock().attachment.client_flags.insert(same);
     }
     shared
         .execute(
@@ -514,7 +514,7 @@ fn display_message_target_client_routes_and_selects_format_client() {
     );
     let same_message = *shared.inner.lock().clients[&same].message.as_ref().unwrap();
 
-    shared.inner.lock().client_flags.insert(caller);
+    shared.inner.lock().attachment.client_flags.insert(caller);
     let response = shared.execute_command_request(
         caller,
         ClientKind::Interactive,
@@ -903,7 +903,7 @@ fn stale_owned_publication_cannot_outlive_the_authoritative_message() {
     );
     assert!(shared.read_client(client, |c| c.is_none_or(|c| c.message.is_none())));
 
-    shared.inner.lock().client_flags.insert(client);
+    shared.inner.lock().attachment.client_flags.insert(client);
     shared
         .execute_key_commands(
             client,
@@ -1495,8 +1495,8 @@ fn display_message_ignore_keys_preempts_writable_terminal_input() {
     let unchanged = {
         let inner = shared.inner.lock();
         (
-            inner.activity_sequence,
-            inner.terminal_input_sequence,
+            inner.attachment.activity_sequence,
+            inner.panes.terminal_input_sequence,
             inner.engine.state.sessions[&session].sort_activity,
             inner.clients[&client].display_panes.as_ref().unwrap().token,
         )
@@ -1520,8 +1520,8 @@ fn display_message_ignore_keys_preempts_writable_terminal_input() {
         assert_eq!(inner.engine.state.sessions[&session].name, "ignore-input");
         assert_eq!(
             (
-                inner.activity_sequence,
-                inner.terminal_input_sequence,
+                inner.attachment.activity_sequence,
+                inner.panes.terminal_input_sequence,
                 inner.engine.state.sessions[&session].sort_activity,
                 inner.clients[&client].display_panes.as_ref().unwrap().token,
             ),
@@ -1726,8 +1726,8 @@ fn display_message_ignore_keys_preempts_writable_terminal_input() {
         assert!(client_terminal_publication_frozen(&inner, client));
         assert_eq!(
             (
-                inner.activity_sequence,
-                inner.terminal_input_sequence,
+                inner.attachment.activity_sequence,
+                inner.panes.terminal_input_sequence,
                 inner.engine.state.sessions[&session].sort_activity,
                 inner.clients[&client].display_panes.as_ref().unwrap().token,
             ),
@@ -1764,7 +1764,7 @@ fn display_message_ignore_keys_preempts_writable_terminal_input() {
                 None,
             ));
     }
-    let prompt_activity = shared.inner.lock().activity_sequence;
+    let prompt_activity = shared.inner.lock().attachment.activity_sequence;
     for input in [
         InputMessage::Text {
             pane,
@@ -1786,7 +1786,7 @@ fn display_message_ignore_keys_preempts_writable_terminal_input() {
                 .input,
             "kept"
         );
-        assert_eq!(inner.activity_sequence, prompt_activity);
+        assert_eq!(inner.attachment.activity_sequence, prompt_activity);
         assert_eq!((*inner.clients[&client].message.as_ref().unwrap()), armed);
     }
 
@@ -1796,7 +1796,7 @@ fn display_message_ignore_keys_preempts_writable_terminal_input() {
         .client_mut(client)
         .and_then(|c| c.command_prompt.take());
     take_reliable_messages(&mailbox);
-    let native_activity = shared.inner.lock().activity_sequence;
+    let native_activity = shared.inner.lock().attachment.activity_sequence;
     shared
         .input(
             client,
@@ -1839,7 +1839,7 @@ fn display_message_ignore_keys_preempts_writable_terminal_input() {
         .expect("deliver native browser text");
     {
         let inner = shared.inner.lock();
-        assert_eq!(inner.activity_sequence, native_activity + 1);
+        assert_eq!(inner.attachment.activity_sequence, native_activity + 1);
         assert_eq!(
             inner.clients[&client]
                 .pending_committed_text
@@ -1886,7 +1886,7 @@ fn display_message_ignore_keys_preempts_writable_terminal_input() {
         },
         deadline,
     );
-    let trailing_activity = shared.inner.lock().activity_sequence;
+    let trailing_activity = shared.inner.lock().attachment.activity_sequence;
     shared
         .input(
             client,
@@ -1900,7 +1900,7 @@ fn display_message_ignore_keys_preempts_writable_terminal_input() {
         .expect("retire shifted trailing text");
     {
         let inner = shared.inner.lock();
-        assert_eq!(inner.activity_sequence, trailing_activity);
+        assert_eq!(inner.attachment.activity_sequence, trailing_activity);
         assert!(
             inner
                 .client(client)
@@ -1985,7 +1985,7 @@ fn display_message_ignore_keys_preempts_writable_terminal_input() {
         },
         reverse_deadline,
     );
-    let reverse_trailing_activity = shared.inner.lock().activity_sequence;
+    let reverse_trailing_activity = shared.inner.lock().attachment.activity_sequence;
     shared
         .input(
             client,
@@ -1997,7 +1997,7 @@ fn display_message_ignore_keys_preempts_writable_terminal_input() {
             },
         )
         .expect("deliver retired reverse-order terminal text");
-    assert!(shared.inner.lock().activity_sequence > reverse_trailing_activity);
+    assert!(shared.inner.lock().attachment.activity_sequence > reverse_trailing_activity);
     shared
         .execute(
             client,
@@ -2010,8 +2010,8 @@ fn display_message_ignore_keys_preempts_writable_terminal_input() {
 
     let read_only_activity = {
         let mut inner = shared.inner.lock();
-        inner.client_flags.insert(client);
-        inner.activity_sequence
+        inner.attachment.client_flags.insert(client);
+        inner.attachment.activity_sequence
     };
     shared
         .input(
@@ -2027,10 +2027,10 @@ fn display_message_ignore_keys_preempts_writable_terminal_input() {
         .expect("pass read-only key");
     {
         let inner = shared.inner.lock();
-        assert!(inner.activity_sequence > read_only_activity);
+        assert!(inner.attachment.activity_sequence > read_only_activity);
         assert_eq!((*inner.clients[&client].message.as_ref().unwrap()), armed);
     }
-    let read_only_focus_activity = shared.inner.lock().activity_sequence;
+    let read_only_focus_activity = shared.inner.lock().attachment.activity_sequence;
     shared
         .input(
             client,
@@ -2041,7 +2041,7 @@ fn display_message_ignore_keys_preempts_writable_terminal_input() {
         .expect("pass read-only focus");
     {
         let inner = shared.inner.lock();
-        assert!(inner.activity_sequence > read_only_focus_activity);
+        assert!(inner.attachment.activity_sequence > read_only_focus_activity);
         assert_eq!((*inner.clients[&client].message.as_ref().unwrap()), armed);
         assert!(inner.client(client).is_some_and(|c| c.message_ignore_keys));
     }
@@ -2283,7 +2283,7 @@ fn surviving_text_and_explicit_paste_dismiss_messages_but_read_only_input_does_n
         )
         .expect("read-only message");
     let read_only_message = armed_client_message(&shared, client);
-    shared.inner.lock().client_flags.insert(client);
+    shared.inner.lock().attachment.client_flags.insert(client);
     take_reliable_messages(&mailbox);
     for input in [
         InputMessage::Key {
@@ -2482,7 +2482,7 @@ fn modal_consumed_text_and_paste_still_dismiss_writable_messages() {
         )
         .expect("read-only modal message");
     let read_only_message = armed_client_message(&shared, client);
-    shared.inner.lock().client_flags.insert(client);
+    shared.inner.lock().attachment.client_flags.insert(client);
     take_reliable_messages(&mailbox);
     for input in [
         InputMessage::Text {

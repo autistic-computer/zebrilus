@@ -115,13 +115,13 @@ mod unix {
                 &CommandInvocation::new("set-window-option", ["-g", "monitor-silence", "1"]),
             )
             .expect("monitor silence");
-        let armed = shared.inner.lock().silence_deadlines[&window];
+        let armed = shared.inner.lock().panes.silence_deadlines[&window];
         let set = Instant::now();
         wait_until("output after the deadline was armed", || {
             terminal.last_output().is_some_and(|last| last > set)
         });
         shared.expire_window_silence(armed, armed.deadline);
-        let rearmed = shared.inner.lock().silence_deadlines[&window];
+        let rearmed = shared.inner.lock().panes.silence_deadlines[&window];
         assert_ne!(rearmed.token, armed.token);
         assert!(rearmed.deadline > armed.deadline);
         assert!(

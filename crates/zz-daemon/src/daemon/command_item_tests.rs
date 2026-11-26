@@ -172,6 +172,7 @@ fn interleaved_items_for_one_client_keep_captures_and_scopes_separate() {
         shared
             .inner
             .lock()
+            .waits
             .control_command_event_captures
             .is_empty()
     );

@@ -20,6 +20,7 @@ fn customize_quit_fires_the_mode_exit_hooks_without_further_input() {
     let Some(PaneModeRequest::Customize(mode)) = shared
         .inner
         .lock()
+        .modes
         .pane_modes
         .get(&pane)
         .and_then(|modes| modes.last())
@@ -43,8 +44,8 @@ fn customize_quit_fires_the_mode_exit_hooks_without_further_input() {
         },
     );
     let inner = shared.inner.lock();
-    assert!(!inner.pane_modes.contains_key(&pane));
-    assert!(inner.pane_mode_transitions.is_empty());
+    assert!(!inner.modes.pane_modes.contains_key(&pane));
+    assert!(inner.modes.pane_mode_transitions.is_empty());
 }
 
 #[test]
@@ -121,6 +122,7 @@ fn customize_errors_are_status_messages_that_fire_no_display_hooks_and_answers_a
     let Some(PaneModeRequest::Customize(mode)) = shared
         .inner
         .lock()
+        .modes
         .pane_modes
         .get(&pane)
         .and_then(|modes| modes.last())
@@ -148,7 +150,7 @@ fn customize_errors_are_status_messages_that_fire_no_display_hooks_and_answers_a
         },
     );
     assert_eq!(
-        shared.inner.lock().command_history,
+        shared.inner.lock().history.command_history,
         ["C-a nosuchcommand".to_owned()]
     );
     let shown = take_reliable_messages(&mailbox)
@@ -208,6 +210,7 @@ fn customize_stop_on_error_results_skip_the_commands_after_a_failure() {
     let Some(PaneModeRequest::Customize(mode)) = shared
         .inner
         .lock()
+        .modes
         .pane_modes
         .get(&pane)
         .and_then(|modes| modes.last())
@@ -589,7 +592,7 @@ fn chooser_templates_substitute_targets_and_resolve_aliases_at_selection() {
         &mut context,
         CommandInvocation::new("choose-buffer", ["set-environment -g CHOOSER_STALE %%"]),
     );
-    shared.inner.lock().paste_buffers.clear();
+    shared.inner.lock().buffers.paste_buffers.clear();
     select_buffer(&mut context);
     assert_eq!(
         shared
@@ -1181,6 +1184,7 @@ fn daemon_choose_buffer_searches_pastes_and_deletes_across_native_surfaces() {
         shared
             .inner
             .lock()
+            .buffers
             .paste_buffers
             .iter()
             .any(|buffer| buffer.name == "binary"),
@@ -1367,7 +1371,7 @@ fn daemon_choose_buffer_searches_pastes_and_deletes_across_native_surfaces() {
             }) if state.as_ref().map_or(0, |state| state.items.len()) == remaining
         )));
     }
-    assert!(shared.inner.lock().paste_buffers.is_empty());
+    assert!(shared.inner.lock().buffers.paste_buffers.is_empty());
     assert!(shared.read_client(client, |c| c.is_none_or(|c| c.choose_buffer.is_none())));
 }
 
@@ -1822,7 +1826,12 @@ fn choose_tree_closes_when_its_source_pane_is_removed() {
             .state
             .create_session("ephemeral")
             .expect("session");
-        inner.attached.entry(session).or_default().insert(client);
+        inner
+            .attachment
+            .attached
+            .entry(session)
+            .or_default()
+            .insert(client);
         let facts = format_hook_facts(&inner);
         let chooser = ChooseTreeSession::new(
             ChooseTreeKind::Panes,
@@ -2093,12 +2102,12 @@ fn choose_path_opens_only_for_desktop_clients_in_a_usable_terminal_pane() {
     let mut context =
         ExecutionContext::for_pane(&shared.inner.lock().engine.state, pane).expect("pane context");
 
-    shared.inner.lock().client_flags.insert(client);
+    shared.inner.lock().attachment.client_flags.insert(client);
     assert_eq!(
         choose_path_error(choose_path(ClientKind::Interactive, &mut context, &[])),
         "client is read-only"
     );
-    shared.inner.lock().client_flags.remove(client);
+    shared.inner.lock().attachment.client_flags.remove(client);
 
     shared
         .execute(

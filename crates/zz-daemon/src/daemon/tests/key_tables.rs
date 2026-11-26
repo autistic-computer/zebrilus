@@ -575,7 +575,7 @@ fn unparsable_alias_shadows_fail_direct_commands_while_bindings_stay_frozen() {
             ))
     );
 
-    shared.inner.lock().client_flags.remove(client);
+    shared.inner.lock().attachment.client_flags.remove(client);
     shared
         .execute(
             ClientId(u64::MAX),

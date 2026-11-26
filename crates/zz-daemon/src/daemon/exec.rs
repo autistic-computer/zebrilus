@@ -324,14 +324,15 @@ impl Shared {
         if self.stopping.load(Ordering::Acquire) || self.shutdown_pending.load(Ordering::Acquire) {
             return None;
         }
-        let client = ClientId(inner.next_client_id);
-        inner.next_client_id = inner.next_client_id.saturating_add(1);
+        let client = ClientId(inner.attachment.next_client_id);
+        inner.attachment.next_client_id = inner.attachment.next_client_id.saturating_add(1);
         inner
+            .attachment
             .cold_bootstrap
             .register(client, request.startup_reentry == Some(self.server_id));
         let now = unix_timestamp();
-        inner.activity_sequence = inner.activity_sequence.saturating_add(1);
-        let activity = inner.activity_sequence;
+        inner.attachment.activity_sequence = inner.attachment.activity_sequence.saturating_add(1);
+        let activity = inner.attachment.activity_sequence;
         let mut entry = Box::<Client>::default();
         entry.instance_id = Some(request.client_instance_id);
         entry.kind = Some(ClientKind::Command);
@@ -608,7 +609,7 @@ impl<S: TransportStream> ExecConnection<S> {
                 let failed = prepared
                     .iter()
                     .any(|command| matches!(command.result, PreparedCommandResult::Error(_)));
-                inner.cold_bootstrap.prepare(self.client, failed);
+                inner.attachment.cold_bootstrap.prepare(self.client, failed);
             }
             prepared
         };
@@ -944,7 +945,7 @@ impl LoopExec {
                 let failed = commands
                     .iter()
                     .any(|command| matches!(command.result, PreparedCommandResult::Error(_)));
-                inner.cold_bootstrap.prepare(self.client, failed);
+                inner.attachment.cold_bootstrap.prepare(self.client, failed);
             }
             commands
         };
@@ -1131,8 +1132,8 @@ impl LoopExec {
             return false;
         }
         let inner = self.shared.inner.lock();
-        if !inner.deferred_event_hooks.is_empty()
-            || !inner.pane_modes.is_empty()
+        if !inner.waits.deferred_event_hooks.is_empty()
+            || !inner.modes.pane_modes.is_empty()
             || inner
                 .clients
                 .values()
@@ -1161,7 +1162,7 @@ impl LoopExec {
             return false;
         };
         if name == "send-keys" {
-            inner.attached.is_empty()
+            inner.attachment.attached.is_empty()
         } else {
             inner
                 .engine

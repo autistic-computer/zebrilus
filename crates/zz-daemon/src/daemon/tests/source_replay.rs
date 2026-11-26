@@ -695,6 +695,7 @@ fn control_command_event_capture_does_not_intercept_other_items() {
         shared
             .inner
             .lock()
+            .waits
             .control_command_event_captures
             .is_empty()
     );
@@ -1167,6 +1168,7 @@ fn control_if_shell_replay_preserves_indirect_source_guard_order() {
         shared
             .inner
             .lock()
+            .waits
             .control_command_event_captures
             .is_empty()
     );
@@ -1470,6 +1472,7 @@ fn control_command_hooks_use_flags_zero_without_folding_or_leaking() {
         shared
             .inner
             .lock()
+            .waits
             .control_command_event_captures
             .is_empty()
     );

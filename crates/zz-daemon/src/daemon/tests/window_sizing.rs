@@ -45,6 +45,7 @@ fn resize_window_from_attached_clients_filters_scope_and_freezes_manual_extent()
     {
         let mut inner = shared.inner.lock();
         inner
+            .attachment
             .attached
             .entry(session)
             .or_default()
@@ -144,7 +145,10 @@ fn resize_window_from_attached_clients_filters_scope_and_freezes_manual_extent()
         let mut inner = shared.inner.lock();
         inner.client_entry(first).size.replace((101, 31));
         inner.client_entry(second).size.replace((141, 21));
-        inner.client_flags.apply(unrelated, "ignore-size");
+        inner
+            .attachment
+            .client_flags
+            .apply(unrelated, "ignore-size");
     }
     shared
         .execute(
@@ -170,7 +174,12 @@ fn resize_window_from_attached_clients_filters_scope_and_freezes_manual_extent()
             ),
         )
         .unwrap();
-    shared.inner.lock().client_flags.apply(first, "ignore-size");
+    shared
+        .inner
+        .lock()
+        .attachment
+        .client_flags
+        .apply(first, "ignore-size");
     assert_eq!(resize("-A", &mut context), (141, 21));
     shared
         .execute(
@@ -187,6 +196,7 @@ fn resize_window_from_attached_clients_filters_scope_and_freezes_manual_extent()
     shared
         .inner
         .lock()
+        .attachment
         .client_flags
         .apply(unrelated_control, "ignore-size");
     assert_eq!(resize("-A", &mut context), (141, 31));
@@ -221,15 +231,20 @@ fn attached_client_extents_clamp_retained_and_default_dimensions() {
         let mut inner = shared.inner.lock();
         inner.client_entry(first).size.replace((u16::MAX, 12_001));
         inner.client_entry(second).size.replace((12_002, u16::MAX));
-        inner.terminal_geometries.entry(pane).or_default().insert(
-            projected,
-            TerminalGeometry {
-                columns: u16::MAX,
-                rows: u16::MAX,
-                cell_width_px: 8,
-                cell_height_px: 16,
-            },
-        );
+        inner
+            .panes
+            .terminal_geometries
+            .entry(pane)
+            .or_default()
+            .insert(
+                projected,
+                TerminalGeometry {
+                    columns: u16::MAX,
+                    rows: u16::MAX,
+                    cell_width_px: 8,
+                    cell_height_px: 16,
+                },
+            );
     }
     let mut context = ExecutionContext::new(Some(session), Some(window), Some(pane));
     shared
@@ -275,7 +290,7 @@ fn attached_client_extents_clamp_retained_and_default_dimensions() {
     {
         let mut inner = shared.inner.lock();
         for client in [first, second, projected] {
-            inner.client_flags.apply(client, "ignore-size");
+            inner.attachment.client_flags.apply(client, "ignore-size");
         }
     }
     assert_eq!(resize("-A", &mut context), (10_000, 10_000));
@@ -305,15 +320,20 @@ fn attached_client_extents_subtract_status_project_gui_and_clamp_control() {
     {
         let mut inner = shared.inner.lock();
         inner.client_entry(outer).size.replace((200, 50));
-        inner.terminal_geometries.entry(pane).or_default().insert(
-            projected,
-            TerminalGeometry {
-                columns: 180,
-                rows: 60,
-                cell_width_px: 8,
-                cell_height_px: 16,
-            },
-        );
+        inner
+            .panes
+            .terminal_geometries
+            .entry(pane)
+            .or_default()
+            .insert(
+                projected,
+                TerminalGeometry {
+                    columns: 180,
+                    rows: 60,
+                    cell_width_px: 8,
+                    cell_height_px: 16,
+                },
+            );
     }
 
     {
@@ -458,7 +478,10 @@ fn status_rows_resize_every_window_of_an_interactive_clients_session() {
             .client_entry(client)
             .kind
             .replace(ClientKind::Interactive);
-        inner.attached.insert(session, BTreeSet::from([client]));
+        inner
+            .attachment
+            .attached
+            .insert(session, BTreeSet::from([client]));
         inner.client_entry(client).size.replace((80, 10));
         assert!(inner.engine.resize_window_to_extent(window, 80, 9));
         assert_eq!(inner.engine.state.windows[&window].active_pane, second);
@@ -1067,7 +1090,12 @@ fn automatic_window_modes_share_the_global_ignore_size_fallback() {
             )
             .unwrap();
     }
-    shared.inner.lock().client_flags.apply(first, "ignore-size");
+    shared
+        .inner
+        .lock()
+        .attachment
+        .client_flags
+        .apply(first, "ignore-size");
     {
         let inner = shared.inner.lock();
         for mode in [
@@ -1085,6 +1113,7 @@ fn automatic_window_modes_share_the_global_ignore_size_fallback() {
     shared
         .inner
         .lock()
+        .attachment
         .client_flags
         .apply(second, "ignore-size");
     assert_eq!(
@@ -1094,6 +1123,7 @@ fn automatic_window_modes_share_the_global_ignore_size_fallback() {
     shared
         .inner
         .lock()
+        .attachment
         .client_flags
         .apply(control, "ignore-size");
     let inner = shared.inner.lock();
@@ -1925,11 +1955,11 @@ fn multi_client_session_switch_and_unregister_clean_views_and_geometry() {
     {
         let inner = shared.inner.lock();
         assert_eq!(
-            inner.attached.get(&first_session),
+            inner.attachment.attached.get(&first_session),
             Some(&BTreeSet::from([first_client]))
         );
         assert_eq!(
-            inner.attached.get(&second_session),
+            inner.attachment.attached.get(&second_session),
             Some(&BTreeSet::from([second_client]))
         );
         assert_eq!(
@@ -1990,10 +2020,10 @@ fn multi_client_session_switch_and_unregister_clean_views_and_geometry() {
 
     let inner = shared.inner.lock();
     assert_eq!(
-        inner.attached.get(&first_session),
+        inner.attachment.attached.get(&first_session),
         Some(&BTreeSet::from([first_client]))
     );
-    assert!(!inner.attached.contains_key(&second_session));
+    assert!(!inner.attachment.attached.contains_key(&second_session));
     assert!(
         inner
             .client(first_client)
@@ -2001,6 +2031,7 @@ fn multi_client_session_switch_and_unregister_clean_views_and_geometry() {
     );
     assert!(
         inner
+            .panes
             .terminal_geometries
             .values()
             .all(|geometries| !geometries.contains_key(&second_client))

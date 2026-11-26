@@ -270,7 +270,14 @@ fn switch_client_resolves_origin_errors_names_and_walks_name_order() {
         client_attached_session(&shared.inner.lock(), a_client),
         Some(a)
     );
-    assert!(shared.inner.lock().client_flags.contains(a_client));
+    assert!(
+        shared
+            .inner
+            .lock()
+            .attachment
+            .client_flags
+            .contains(a_client)
+    );
     shared
         .execute(
             a_client,
@@ -295,7 +302,14 @@ fn switch_client_resolves_origin_errors_names_and_walks_name_order() {
         client_attached_session(&shared.inner.lock(), a_client),
         Some(m)
     );
-    assert!(!shared.inner.lock().client_flags.contains(a_client));
+    assert!(
+        !shared
+            .inner
+            .lock()
+            .attachment
+            .client_flags
+            .contains(a_client)
+    );
     shared
         .execute(
             a_client,
@@ -339,7 +353,14 @@ fn switch_client_resolves_origin_errors_names_and_walks_name_order() {
         Err(DaemonError::Server(ServerError::InvalidCommand(message)))
             if message == "invalid sort order"
     ));
-    assert!(shared.inner.lock().client_flags.contains(a_client));
+    assert!(
+        shared
+            .inner
+            .lock()
+            .attachment
+            .client_flags
+            .contains(a_client)
+    );
 
     for target in ["bogus", "bogus:"] {
         assert!(matches!(
@@ -1141,6 +1162,7 @@ fn detach_on_destroy_applies_no_detach_fallback_per_client() {
         shared
             .inner
             .lock()
+            .attachment
             .client_flags
             .apply(flagged, "no-detach-on-destroy");
         take_reliable_messages(&flagged_mailbox);
@@ -1218,8 +1240,20 @@ fn detach_on_destroy_applies_no_detach_fallback_per_client() {
                 .is_none_or(|c| c.last_session.is_none())
         );
         assert!(inner.client(plain).is_none_or(|c| c.last_session.is_none()));
-        assert!(inner.client_flags.get(flagged).no_detach_on_destroy);
-        assert!(!inner.client_flags.get(plain).no_detach_on_destroy);
+        assert!(
+            inner
+                .attachment
+                .client_flags
+                .get(flagged)
+                .no_detach_on_destroy
+        );
+        assert!(
+            !inner
+                .attachment
+                .client_flags
+                .get(plain)
+                .no_detach_on_destroy
+        );
     }
 
     run_case("on", Some(false), Some(true), Some("c"), None);
@@ -1263,6 +1297,7 @@ fn detach_on_destroy_selects_each_policy_survivor() {
             shared
                 .inner
                 .lock()
+                .attachment
                 .client_flags
                 .apply(target, "no-detach-on-destroy");
         }
@@ -1534,5 +1569,5 @@ fn destroy_unattached_refuses_an_attach_that_lands_before_the_kill() {
     assert!(!inner.engine.state.sessions.contains_key(&b));
     assert!(inner.engine.state.sessions.contains_key(&a));
     assert_eq!(client_attached_session(&inner, joiner), None);
-    assert!(inner.destroying_unattached.is_empty());
+    assert!(inner.attachment.destroying_unattached.is_empty());
 }

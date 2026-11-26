@@ -379,7 +379,7 @@ fn save_buffer_fails_instead_of_writing_locally_when_the_command_client_is_gone(
             if message.contains("the invoking client is gone")
     ));
     assert!(!output.exists());
-    assert!(shared.inner.lock().client_file_waiters.is_empty());
+    assert!(shared.inner.lock().transfers.client_file_waiters.is_empty());
 }
 
 #[test]
@@ -890,9 +890,12 @@ fn set_buffer_append_updates_named_buffers_but_creates_automatic_buffers_without
     }
 
     let inner = shared.inner.lock();
-    assert_eq!(inner.paste_buffers.len(), 3);
-    assert_eq!(inner.paste_buffers[0].data.as_ref(), b"new automatic");
-    assert!(inner.paste_buffers[0].automatic);
+    assert_eq!(inner.buffers.paste_buffers.len(), 3);
+    assert_eq!(
+        inner.buffers.paste_buffers[0].data.as_ref(),
+        b"new automatic"
+    );
+    assert!(inner.buffers.paste_buffers[0].automatic);
     let named =
         resolve_buffer(&inner, Some("named"), BufferMissing::NoBuffer).expect("named buffer");
     assert_eq!(named.data.as_ref(), b"alpha-omega");
@@ -1030,7 +1033,7 @@ fn set_buffer_rename_replaces_destinations_ignores_data_and_uses_the_top_automat
         let renamed = resolve_buffer(&inner, Some("destination"), BufferMissing::NoBuffer)
             .expect("renamed buffer");
         assert_eq!(renamed.data.as_ref(), b"alpha");
-        assert_eq!(inner.paste_buffers.len(), 2);
+        assert_eq!(inner.buffers.paste_buffers.len(), 2);
     }
 
     shared
@@ -1046,7 +1049,13 @@ fn set_buffer_rename_replaces_destinations_ignores_data_and_uses_the_top_automat
             .expect("named top buffer");
         assert_eq!(renamed.data.as_ref(), b"top automatic");
         assert!(!renamed.automatic);
-        assert!(!inner.paste_buffers.iter().any(|buffer| buffer.automatic));
+        assert!(
+            !inner
+                .buffers
+                .paste_buffers
+                .iter()
+                .any(|buffer| buffer.automatic)
+        );
     }
 
     assert!(matches!(
@@ -1193,9 +1202,15 @@ fn unnamed_buffer_commands_target_the_newest_automatic_buffer() {
         .buffer_command(&context, "delete-buffer", &[])
         .expect("delete automatic buffer");
     let inner = shared.inner.lock();
-    assert_eq!(inner.paste_buffers.len(), 2);
-    assert!(inner.paste_buffers.iter().all(|buffer| !buffer.automatic));
-    assert_eq!(inner.paste_buffers[0].name, "named-new");
+    assert_eq!(inner.buffers.paste_buffers.len(), 2);
+    assert!(
+        inner
+            .buffers
+            .paste_buffers
+            .iter()
+            .all(|buffer| !buffer.automatic)
+    );
+    assert_eq!(inner.buffers.paste_buffers[0].name, "named-new");
     drop(inner);
     assert!(matches!(
         shared.buffer_command(&context, "show-buffer", &[]),
@@ -1302,7 +1317,7 @@ fn buffer_file_commands_bound_input_and_reject_unsupported_stream_modes() {
             &[empty.to_string_lossy().into_owned().into()],
         )
         .expect("empty load is a no-op");
-    assert!(shared.inner.lock().paste_buffers.is_empty());
+    assert!(shared.inner.lock().buffers.paste_buffers.is_empty());
 
     let error = shared
         .buffer_command(
@@ -1316,7 +1331,7 @@ fn buffer_file_commands_bound_input_and_reject_unsupported_stream_modes() {
         DaemonError::Server(ServerError::InvalidCommand(message))
             if message.contains("exceeds")
     ));
-    assert!(shared.inner.lock().paste_buffers.is_empty());
+    assert!(shared.inner.lock().buffers.paste_buffers.is_empty());
 
     shared
         .buffer_command(
@@ -1339,13 +1354,13 @@ fn buffer_file_commands_bound_input_and_reject_unsupported_stream_modes() {
         )
         .expect("load-buffer target is inert without clipboard output");
     let inner = shared.inner.lock();
-    assert_eq!(inner.paste_buffers.len(), 2);
+    assert_eq!(inner.buffers.paste_buffers.len(), 2);
     assert_eq!(
-        inner.paste_buffers[0].data.as_ref(),
+        inner.buffers.paste_buffers[0].data.as_ref(),
         b"loaded through inert target"
     );
     assert_eq!(
-        inner.paste_buffers[1].data.as_ref(),
+        inner.buffers.paste_buffers[1].data.as_ref(),
         b"set through inert target"
     );
     drop(inner);
@@ -1375,11 +1390,12 @@ fn named_buffers_replace_in_place_and_automatic_eviction_preserves_them() {
         true,
     )
     .expect("replace named buffer");
-    assert_eq!(inner.paste_buffers[0].name, "named");
-    assert_eq!(inner.paste_buffers[0].data.as_ref(), b"replacement");
-    assert!(!inner.paste_buffers[0].automatic);
+    assert_eq!(inner.buffers.paste_buffers[0].name, "named");
+    assert_eq!(inner.buffers.paste_buffers[0].data.as_ref(), b"replacement");
+    assert!(!inner.buffers.paste_buffers[0].automatic);
     assert_eq!(
         inner
+            .buffers
             .paste_buffers
             .iter()
             .filter(|buffer| buffer.name == "named")
@@ -1399,13 +1415,14 @@ fn named_buffers_replace_in_place_and_automatic_eviction_preserves_them() {
     }
     assert_eq!(
         inner
+            .buffers
             .paste_buffers
             .iter()
             .filter(|buffer| buffer.automatic)
             .count(),
         DEFAULT_BUFFER_LIMIT
     );
-    assert!(inner.paste_buffers.iter().any(|buffer| {
+    assert!(inner.buffers.paste_buffers.iter().any(|buffer| {
         buffer.name == "named" && buffer.data.as_ref() == b"replacement" && !buffer.automatic
     }));
 }
@@ -1422,7 +1439,10 @@ fn configured_buffer_limit_controls_daemon_automatic_eviction() {
             &CommandInvocation::new("set-option", ["-g", "buffer-limit", "2"]),
         )
         .expect("configure buffer limit");
-    assert_eq!(shared.inner.lock().automatic_paste_buffer_limit.0, 2);
+    assert_eq!(
+        shared.inner.lock().buffers.automatic_paste_buffer_limit.0,
+        2
+    );
 
     for data in ["zero", "one", "two"] {
         shared
@@ -1432,6 +1452,7 @@ fn configured_buffer_limit_controls_daemon_automatic_eviction() {
     let inner = shared.inner.lock();
     assert_eq!(
         inner
+            .buffers
             .paste_buffers
             .iter()
             .filter(|buffer| buffer.automatic)
@@ -1452,18 +1473,18 @@ fn native_copy_buffers_create_named_entries_and_append_to_the_top() {
     );
     {
         let inner = shared.inner.lock();
-        assert_eq!(inner.paste_buffers.len(), 1);
-        assert_eq!(inner.paste_buffers[0].name, "selection0");
-        assert_eq!(inner.paste_buffers[0].data.as_ref(), b"alpha");
-        assert!(inner.paste_buffers[0].automatic);
+        assert_eq!(inner.buffers.paste_buffers.len(), 1);
+        assert_eq!(inner.buffers.paste_buffers[0].name, "selection0");
+        assert_eq!(inner.buffers.paste_buffers[0].data.as_ref(), b"alpha");
+        assert!(inner.buffers.paste_buffers[0].automatic);
     }
 
     shared.store_copy_buffer("-beta".to_owned(), PasteBufferAction::Append);
     {
         let inner = shared.inner.lock();
-        assert_eq!(inner.paste_buffers.len(), 1);
-        assert_eq!(inner.paste_buffers[0].data.as_ref(), b"alpha-beta");
-        assert!(!inner.paste_buffers[0].automatic);
+        assert_eq!(inner.buffers.paste_buffers.len(), 1);
+        assert_eq!(inner.buffers.paste_buffers[0].data.as_ref(), b"alpha-beta");
+        assert!(!inner.buffers.paste_buffers[0].automatic);
     }
 
     shared.store_copy_buffer(
@@ -1471,10 +1492,10 @@ fn native_copy_buffers_create_named_entries_and_append_to_the_top() {
         PasteBufferAction::Create { prefix: None },
     );
     let inner = shared.inner.lock();
-    assert_eq!(inner.paste_buffers.len(), 2);
-    assert_eq!(inner.paste_buffers[0].name, "buffer1");
-    assert_eq!(inner.paste_buffers[0].data.as_ref(), b"gamma");
-    assert!(inner.paste_buffers[0].automatic);
+    assert_eq!(inner.buffers.paste_buffers.len(), 2);
+    assert_eq!(inner.buffers.paste_buffers[0].name, "buffer1");
+    assert_eq!(inner.buffers.paste_buffers[0].data.as_ref(), b"gamma");
+    assert!(inner.buffers.paste_buffers[0].automatic);
 }
 
 #[test]
@@ -1513,7 +1534,7 @@ fn app_clipboard_writes_reach_every_viewer_only_under_set_clipboard_on() {
         "input_osc_52_parse refuses unless set-clipboard is on"
     );
     assert!(take_clipboard_writes(&observer_mailbox, pane).is_empty());
-    assert!(shared.inner.lock().paste_buffers.is_empty());
+    assert!(shared.inner.lock().buffers.paste_buffers.is_empty());
 
     shared
         .execute(
@@ -1532,9 +1553,9 @@ fn app_clipboard_writes_reach_every_viewer_only_under_set_clipboard_on() {
     );
     {
         let inner = shared.inner.lock();
-        assert_eq!(inner.paste_buffers.len(), 1);
-        assert_eq!(inner.paste_buffers[0].data.as_ref(), b"buffered");
-        assert!(inner.paste_buffers[0].automatic);
+        assert_eq!(inner.buffers.paste_buffers.len(), 1);
+        assert_eq!(inner.buffers.paste_buffers[0].data.as_ref(), b"buffered");
+        assert!(inner.buffers.paste_buffers[0].automatic);
     }
 
     shared
@@ -1550,7 +1571,7 @@ fn app_clipboard_writes_reach_every_viewer_only_under_set_clipboard_on() {
     shared.deliver_clipboard_write(pane, ClipboardTarget::Clipboard, "dropped".to_owned());
     assert!(take_clipboard_writes(&mailbox, pane).is_empty());
     assert!(take_clipboard_writes(&observer_mailbox, pane).is_empty());
-    assert_eq!(shared.inner.lock().paste_buffers.len(), 1);
+    assert_eq!(shared.inner.lock().buffers.paste_buffers.len(), 1);
 }
 
 #[test]
@@ -1704,6 +1725,7 @@ fn buffer_writes_reach_only_the_target_client_and_ignore_set_clipboard() {
 
     let inner = shared.inner.lock();
     let stored = inner
+        .buffers
         .paste_buffers
         .iter()
         .map(|buffer| String::from_utf8_lossy(&buffer.data).into_owned())

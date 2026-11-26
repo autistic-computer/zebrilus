@@ -8,7 +8,10 @@ fn fixture() -> (Arc<Shared>, ClientId, ExecutionContext) {
         let mut inner = shared.inner.lock();
         let (session, window, pane) = inner.engine.state.create_session("alpha").unwrap();
         inner.engine.state.create_session("beta").unwrap();
-        inner.attached.insert(session, BTreeSet::from([client]));
+        inner
+            .attachment
+            .attached
+            .insert(session, BTreeSet::from([client]));
         inner
             .client_entry(client)
             .name
@@ -19,7 +22,7 @@ fn fixture() -> (Arc<Shared>, ClientId, ExecutionContext) {
             .tty
             .replace("/dev/ttys003".to_owned());
         inner.client_entry(client).focused_window.replace(window);
-        inner.session_last_attached.insert(session, 73);
+        inner.attachment.session_last_attached.insert(session, 73);
         inner
             .client_entry(client)
             .environment
@@ -46,13 +49,13 @@ fn borrowed<'a>(
 ) -> BorrowedFormatHookFacts<'a> {
     BorrowedFormatHookFacts {
         client_fields: ClientFormatFields::from_inner(inner),
-        paste_buffers: &inner.paste_buffers,
+        paste_buffers: &inner.buffers.paste_buffers,
         terminals: &inner.terminals,
-        pane_pipes: &inner.pane_pipes,
-        attached: &inner.attached,
+        pane_pipes: &inner.jobs.pane_pipes,
+        attached: &inner.attachment.attached,
         clients: &inner.clients,
-        session_last_attached: &inner.session_last_attached,
-        pane_modes: &inner.pane_modes,
+        session_last_attached: &inner.attachment.session_last_attached,
+        pane_modes: &inner.modes.pane_modes,
         seed: command_format_seed(inner, client, context),
         derived: LazyDerivedFormatFacts::default(),
     }
@@ -358,7 +361,10 @@ fn selected_status_client_callbacks_match_complete_capture_for_every_field() {
         .client_entry(client)
         .last_session
         .replace(last_session);
-    inner.client_flags.apply(client, "read-only,active-pane");
+    inner
+        .attachment
+        .client_flags
+        .apply(client, "read-only,active-pane");
     inner
         .client_entry(client)
         .key_engine
@@ -384,6 +390,7 @@ fn selected_status_client_callbacks_match_complete_capture_for_every_field() {
     }
     inner.client_entry(client).subscriber.replace(mailbox);
     inner
+        .panes
         .terminal_geometries
         .entry(target.pane.unwrap())
         .or_default()
@@ -529,13 +536,14 @@ fn selected_status_client_dynamic_references_keep_terminal_and_environment_facts
 fn selected_status_explicit_fact_groups_match_complete_capture() {
     let (shared, client, mut target) = fixture();
     let mut inner = shared.inner.lock();
-    inner.paste_buffers.push(PasteBuffer {
+    inner.buffers.paste_buffers.push(PasteBuffer {
         name: "kept-buffer".to_owned(),
         data: Arc::from(b"buffer data".as_slice()),
         created: UNIX_EPOCH + Duration::from_secs(17),
         automatic: true,
     });
     inner
+        .modes
         .pane_modes
         .insert(target.pane.unwrap(), vec![PaneModeRequest::Clock]);
     let template = "#{session_attached}:#{session_attached_list}:#{session_many_attached}:#{session_last_attached}:#{window_active_clients}:#{window_active_clients_list}:#{pane_in_mode}:#{pane_mode}:#{pane_unseen_changes}:#{buffer_created}:#{buffer_full}:#{buffer_name}:#{buffer_sample}:#{buffer_size}:#{pane_kind}:#{browser_url}:#{agent_state}:#{agent_pending_permission}:#{pane_pipe}:#{pane_pipe_pid}:#{history_size}:#{cursor_x}:#{cursor_y}:#{alternate_on}:#{mouse_any_flag}:#{pane_last_command_status}:#{pane_search_string}:#{pane_pb_progress}:#{pane_pb_state}:#{@kept}:#{client_name}:#{client_width}";
@@ -636,7 +644,7 @@ fn selected_status_modes_capture_their_own_detached_fact_dependencies() {
     let mut inner = shared.inner.lock();
     inner.terminals_mut().insert(target.pane.unwrap(), terminal);
     enter_copy_session(&mut inner, client, target.pane.unwrap()).unwrap();
-    inner.paste_buffers.push(PasteBuffer {
+    inner.buffers.paste_buffers.push(PasteBuffer {
         name: "mode-buffer".to_owned(),
         data: Arc::from(b"mode data".as_slice()),
         created: UNIX_EPOCH,

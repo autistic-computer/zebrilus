@@ -80,7 +80,7 @@ fn suspend_client_leaves_control_and_nonterminal_clients_attached() {
             .unwrap();
         let inner = shared.inner.lock();
         assert!(!inner.client(client).is_some_and(|c| c.suspended));
-        assert!(inner.attached[&session].contains(&client));
+        assert!(inner.attachment.attached[&session].contains(&client));
     }
 }
 

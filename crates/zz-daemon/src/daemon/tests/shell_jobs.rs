@@ -205,6 +205,7 @@ fn shell_job_working_directory_follows_tmux_precedence() {
         .working_directory
         .replace(PathBuf::from("/job-attached-client-decoy"));
     inner
+        .attachment
         .attached
         .entry(attached)
         .or_default()
@@ -222,12 +223,12 @@ fn shell_job_working_directory_follows_tmux_precedence() {
         PathBuf::from("/job-explicit-cwd")
     );
 
-    inner.startup_source_client_working_directory = Some(PathBuf::from("/job-startup-cwd"));
+    inner.config.startup_source_client_working_directory = Some(PathBuf::from("/job-startup-cwd"));
     assert_eq!(
         shell_job_working_directory(&inner, invoking_client, &target_context, None),
         PathBuf::from("/job-startup-cwd")
     );
-    inner.startup_source_client_working_directory = None;
+    inner.config.startup_source_client_working_directory = None;
 
     assert_eq!(
         shell_job_working_directory(&inner, invoking_client, &target_context, None),
@@ -609,7 +610,7 @@ fn positive_delay_shell_job_samples_launch_environment_and_freezes_command_conte
     });
 
     let deadline = Instant::now() + Duration::from_secs(2);
-    while shared.inner.lock().active_shell_jobs != 1 {
+    while shared.inner.lock().jobs.active_shell_jobs != 1 {
         assert!(Instant::now() < deadline, "delayed job was not scheduled");
         thread::sleep(Duration::from_millis(5));
     }
@@ -682,7 +683,7 @@ fn positive_delay_shell_job_samples_launch_environment_and_freezes_command_conte
         )
     });
     let deadline = Instant::now() + Duration::from_secs(2);
-    while shared.inner.lock().active_shell_jobs != 1 {
+    while shared.inner.lock().jobs.active_shell_jobs != 1 {
         assert!(Instant::now() < deadline, "fallback job was not scheduled");
         thread::sleep(Duration::from_millis(5));
     }
@@ -842,7 +843,7 @@ fn positive_delay_shell_job_retains_destroyed_target_and_keeps_missing_target_se
         thread::sleep(Duration::from_millis(5));
     }
     let deadline = Instant::now() + Duration::from_secs(2);
-    while shared.inner.lock().active_shell_jobs != 0 {
+    while shared.inner.lock().jobs.active_shell_jobs != 0 {
         assert!(Instant::now() < deadline, "retained job did not retire");
         thread::sleep(Duration::from_millis(5));
     }
@@ -1105,7 +1106,7 @@ fn shell_jobs_resolve_literal_tmux_through_the_private_zz_shim() {
             .expect("spawn pane with private tmux shim");
         let pane = context.pane.expect("spawned pane");
         let inner = shared.inner.lock();
-        let environment = &inner.terminal_spawns[&pane].env;
+        let environment = &inner.panes.terminal_spawns[&pane].env;
         let value = |name: &str| {
             environment
                 .iter()

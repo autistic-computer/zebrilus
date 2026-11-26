@@ -1432,7 +1432,13 @@ fn gui_requests_fail_when_the_window_disconnects() {
     });
 
     let deadline = Instant::now() + Duration::from_secs(30);
-    while shared.inner.lock().pending_gui_requests.is_empty() {
+    while shared
+        .inner
+        .lock()
+        .transfers
+        .pending_gui_requests
+        .is_empty()
+    {
         assert!(Instant::now() < deadline, "request was never registered");
         thread::sleep(Duration::from_millis(10));
     }

@@ -162,6 +162,7 @@ fn a_legacy_leaf_returns_to_the_loop_without_replaying_queries() {
         shared
             .inner
             .lock()
+            .waits
             .wait_channels
             .get("e02-leaf")
             .is_some_and(|channel| !channel.waiters.is_empty())
@@ -413,13 +414,14 @@ fn gui_replies_bypass_a_waiting_control_queue() {
         shared
             .inner
             .lock()
+            .waits
             .wait_channels
             .get("e02-gui")
             .is_some_and(|channel| !channel.waiters.is_empty())
     });
     let client = event_loop.connections[&token].client.unwrap();
     let (reply, replied) = crossbeam_channel::bounded(1);
-    shared.inner.lock().pending_gui_requests.insert(
+    shared.inner.lock().transfers.pending_gui_requests.insert(
         202,
         PendingGuiRequest {
             client,

@@ -43,8 +43,8 @@ impl Shared {
                                 let mut load = shared.prompt_history_source.lock();
                                 load.loading = false;
                                 let mut inner = shared.inner.lock();
-                                inner.command_history = command;
-                                inner.search_history = search;
+                                inner.history.command_history = command;
+                                inner.history.search_history = search;
                                 shared.prompt_history_settled.store(true, Ordering::Release);
                                 std::mem::take(&mut load.waiters)
                             };
@@ -103,8 +103,8 @@ impl Shared {
                 let inner = self.inner.lock();
                 prompt_history_path(inner.engine.history_file()).map(|path| Save {
                     path,
-                    command: inner.command_history.clone(),
-                    search: inner.search_history.clone(),
+                    command: inner.history.command_history.clone(),
+                    search: inner.history.search_history.clone(),
                     done: done.clone(),
                 })
             };

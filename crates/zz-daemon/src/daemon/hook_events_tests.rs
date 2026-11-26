@@ -21,6 +21,7 @@ fn messages(shared: &Shared) -> Vec<String> {
     shared
         .inner
         .lock()
+        .history
         .message_log
         .iter()
         .map(|message| message.text.clone())
@@ -62,7 +63,7 @@ fn read_only_commands_still_fire_their_after_hooks() {
             &["set-hook", "-g", &hook, "display-message 'fired #{hook}'"],
         )
         .expect("set-hook");
-        shared.inner.lock().message_log.clear();
+        shared.inner.lock().history.message_log.clear();
         run(&shared, &mut context, command).expect("read-only command");
         assert_eq!(messages(&shared), [format!("fired {hook}")], "{command:?}");
         run(&shared, &mut context, &["set-hook", "-gu", &hook]).expect("unset hook");
@@ -84,7 +85,7 @@ fn swap_window_fires_the_after_swap_window_hook_the_pin_added() {
         ],
     )
     .expect("set-hook accepts the pinned name");
-    shared.inner.lock().message_log.clear();
+    shared.inner.lock().history.message_log.clear();
     run(&shared, &mut context, &["swap-window", "-t", ":1"]).expect("swap-window");
     assert_eq!(messages(&shared), ["fired after-swap-window"]);
 }
@@ -144,7 +145,7 @@ fn read_only_commands_leave_the_structure_and_its_hooks_alone() {
         )
         .expect("set-hook");
     }
-    shared.inner.lock().message_log.clear();
+    shared.inner.lock().history.message_log.clear();
     shared.settle_pane_locations();
     let generation = shared.inner.lock().engine.state.generation();
     for command in [
@@ -490,7 +491,7 @@ fn record_mux_hooks(shared: &Arc<Shared>, context: &mut ExecutionContext) {
         )
         .expect("set-hook");
     }
-    shared.inner.lock().message_log.clear();
+    shared.inner.lock().history.message_log.clear();
 }
 
 #[test]
@@ -579,7 +580,7 @@ fn an_attached_client_is_detached_by_the_journal_when_its_session_goes() {
         &["new-session", "-d", "-s", "survivor"],
     )
     .expect("survivor");
-    shared.inner.lock().message_log.clear();
+    shared.inner.lock().history.message_log.clear();
     shared
         .execute(
             client,
@@ -752,7 +753,14 @@ fn a_bind_with_a_subscriber_publishes_only_the_table_it_changed() {
 }
 
 fn focused_panes(shared: &Shared) -> BTreeSet<PaneId> {
-    shared.inner.lock().pane_focus.iter().copied().collect()
+    shared
+        .inner
+        .lock()
+        .attachment
+        .pane_focus
+        .iter()
+        .copied()
+        .collect()
 }
 
 fn session_active_pane_set(shared: &Shared, name: &str) -> BTreeSet<PaneId> {
@@ -948,9 +956,9 @@ fn a_stale_mode_transition_fires_with_the_next_command() {
     {
         let mut inner = shared.inner.lock();
         assert!(pop_pane_mode(&mut inner, pane));
-        assert!(!inner.pane_mode_transitions.is_empty());
+        assert!(!inner.modes.pane_mode_transitions.is_empty());
     }
-    shared.inner.lock().message_log.clear();
+    shared.inner.lock().history.message_log.clear();
     let mut quiet = context.clone();
     quiet.no_hooks = true;
     run(
@@ -959,7 +967,7 @@ fn a_stale_mode_transition_fires_with_the_next_command() {
         &["set-hook", "-gu", "pane-mode-entered"],
     )
     .expect("unrelated");
-    assert!(shared.inner.lock().pane_mode_transitions.is_empty());
+    assert!(shared.inner.lock().modes.pane_mode_transitions.is_empty());
     assert_eq!(messages(&shared), ["exited clock-mode"]);
 }
 
@@ -981,12 +989,12 @@ fn an_interactive_client_parks_on_an_event_wait() {
         })
     };
     let deadline = Instant::now() + Duration::from_secs(10);
-    while shared.inner.lock().event_waiters.is_empty() {
+    while shared.inner.lock().waits.event_waiters.is_empty() {
         assert!(!waiter.is_finished(), "the wait returned without parking");
         assert!(Instant::now() < deadline, "the wait never parked");
         std::thread::sleep(Duration::from_millis(5));
     }
     run(&shared, &mut context, &["set-hook", "-E", "@done"]).expect("fire @done");
     waiter.join().expect("waiter thread").expect("wait-for -E");
-    assert!(shared.inner.lock().event_waiters.is_empty());
+    assert!(shared.inner.lock().waits.event_waiters.is_empty());
 }

@@ -86,8 +86,8 @@ fn every_upstream_command_spelling_has_exact_flag_diagnostics_before_state_or_ef
         let inner = shared.inner.lock();
         assert_eq!(inner.engine.state.snapshot(), snapshot, "{spelling}");
         assert_eq!(inner.engine.keys.snapshot(), keys, "{spelling}");
-        assert!(inner.attached.is_empty(), "{spelling}");
-        assert!(inner.paste_buffers.is_empty(), "{spelling}");
+        assert!(inner.attachment.attached.is_empty(), "{spelling}");
+        assert!(inner.buffers.paste_buffers.is_empty(), "{spelling}");
         assert!(
             inner.clients.values().all(|c| c.choose_tree.is_none()),
             "{spelling}"
@@ -322,9 +322,9 @@ fn catalogued_positional_maximums_precede_daemon_targets_and_effects() {
     assert!(inner.engine.state.sessions.is_empty());
     assert!(inner.clients.values().all(|c| c.choose_buffer.is_none()));
     assert!(inner.clients.values().all(|c| c.display_panes.is_none()));
-    assert_eq!(inner.paste_buffers.len(), 1);
-    assert_eq!(inner.paste_buffers[0].name, "source");
-    assert_eq!(inner.paste_buffers[0].data.as_ref(), b"alpha");
+    assert_eq!(inner.buffers.paste_buffers.len(), 1);
+    assert_eq!(inner.buffers.paste_buffers[0].name, "source");
+    assert_eq!(inner.buffers.paste_buffers[0].data.as_ref(), b"alpha");
 }
 
 #[test]
@@ -375,6 +375,6 @@ fn catalogued_positional_minimums_precede_daemon_targets_and_effects() {
     assert!(inner.engine.state.sessions.is_empty());
     assert!(inner.clients.values().all(|c| c.menu.is_none()));
     assert!(inner.clients.values().all(|c| c.confirm.is_none()));
-    assert!(inner.wait_channels.is_empty());
-    assert!(inner.paste_buffers.is_empty());
+    assert!(inner.waits.wait_channels.is_empty());
+    assert!(inner.buffers.paste_buffers.is_empty());
 }

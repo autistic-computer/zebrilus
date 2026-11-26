@@ -48,7 +48,12 @@ fn fixture() -> (
         if let Some(client) = inner.client_mut(client) {
             client.ctrl_initializing = false;
         }
-        inner.attached.entry(session).or_default().insert(client);
+        inner
+            .attachment
+            .attached
+            .entry(session)
+            .or_default()
+            .insert(client);
     }
     shared.send_compact_state(client, &mailbox, true);
     let initial = messages(&mailbox)
@@ -263,7 +268,14 @@ fn raw_activity_preserves_one_viewport_alert_without_reinstating_cleared_flags()
     assert!(!shared.inner.lock().engine.state.windows[&window].activity_flag);
     let alerts = messages(&mailbox).into_iter().filter(|message| matches!(message, ProtocolMessage::Event(Event { payload: EventPayload::HookEvent { name, .. }, .. }) if name == "alert-activity")).count();
     assert_eq!(alerts, 1);
-    assert!(!shared.inner.lock().control_activity_pending.contains(&pane));
+    assert!(
+        !shared
+            .inner
+            .lock()
+            .panes
+            .control_activity_pending
+            .contains(&pane)
+    );
 }
 
 #[test]
@@ -293,7 +305,14 @@ fn raw_activity_respects_monitoring_and_the_attached_current_window() {
     }
     shared.publish_control_output_for_pane(pane, &Arc::from(b"current".as_slice()));
     assert!(!shared.inner.lock().engine.state.windows[&window].activity_flag);
-    assert!(shared.inner.lock().control_activity_pending.is_empty());
+    assert!(
+        shared
+            .inner
+            .lock()
+            .panes
+            .control_activity_pending
+            .is_empty()
+    );
     messages(&mailbox);
 }
 

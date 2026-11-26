@@ -388,7 +388,7 @@ fn a_departed_client_cannot_insert_a_file_waiter_after_its_initial_check() {
         complete: Box::new(|_, _| panic!("departed client must not retain a completion")),
     });
     assert!(result.is_err());
-    assert!(shared.inner.lock().client_file_waiters.is_empty());
+    assert!(shared.inner.lock().transfers.client_file_waiters.is_empty());
 }
 
 #[test]
@@ -421,7 +421,7 @@ fn unregister_removes_the_client_before_completing_its_file_waiters() {
         .unwrap();
     shared.unregister(client);
     result.try_recv().unwrap();
-    assert!(shared.inner.lock().client_file_waiters.is_empty());
+    assert!(shared.inner.lock().transfers.client_file_waiters.is_empty());
 }
 
 pub(super) fn drive_loop_until(

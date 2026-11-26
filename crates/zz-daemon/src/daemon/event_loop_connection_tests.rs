@@ -99,6 +99,7 @@ fn disconnected_initializer_stops_after_its_parked_command() {
         shared
             .inner
             .lock()
+            .waits
             .wait_channels
             .get("b2-init")
             .is_some_and(|channel| !channel.waiters.is_empty())
@@ -184,6 +185,7 @@ fn parked_worker_has_bounded_pending_messages() {
         shared
             .inner
             .lock()
+            .waits
             .wait_channels
             .get("b2-queue")
             .is_some_and(|channel| !channel.waiters.is_empty())
@@ -444,6 +446,7 @@ fn control_output_loop_delivers_bytes_without_readers() {
         shared
             .inner
             .lock()
+            .attachment
             .control_routes
             .values()
             .any(|route| route.panes.contains(&pane))

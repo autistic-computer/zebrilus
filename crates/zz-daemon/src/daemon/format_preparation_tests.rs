@@ -4,7 +4,10 @@ fn fixture(left: &str) -> (ServerState, ClientId, ExecutionContext) {
     let mut inner = ServerState::default();
     let (session, window, pane) = inner.engine.state.create_session("prepared").unwrap();
     let client = ClientId(3);
-    inner.attached.insert(session, BTreeSet::from([client]));
+    inner
+        .attachment
+        .attached
+        .insert(session, BTreeSet::from([client]));
     inner.client_entry(client).focused_window.replace(window);
     inner
         .client_entry(client)
@@ -80,6 +83,7 @@ fn selected_preparation_keeps_scalar_and_string_border_callbacks_fresh() {
     let same = shared_request(&inner, client);
     assert_eq!(same.pane_borders[0].style, "fg=green");
     inner
+        .modes
         .pane_modes
         .insert(context.pane.unwrap(), vec![PaneModeRequest::Clock]);
     let changed = shared_request(&inner, client);
@@ -93,7 +97,7 @@ fn selected_preparation_keeps_scalar_and_string_border_callbacks_fresh() {
     );
     let with_mode = shared_request(&inner, client);
     assert_eq!(with_mode.pane_borders[0].style, "fg=red");
-    inner.pane_modes.remove(&context.pane.unwrap());
+    inner.modes.pane_modes.remove(&context.pane.unwrap());
     let without_mode = shared_request(&inner, client);
     assert_eq!(without_mode.pane_borders[0].style, "fg=green");
     assert_eq!(with_mode.pane_borders[0].style, "fg=red");
@@ -116,23 +120,23 @@ fn assert_fresh(first: &StatusRequest, next: &StatusRequest) {
 #[test]
 fn status_preparation_omits_large_unused_config_capture_and_reuses_requests() {
     let (mut inner, client, context) = fixture("#{session_name}:#{client_width}");
-    inner.config_files = "a".repeat(STATUS_PREPARATION_MAX_BYTES + 1);
+    inner.config.config_files = "a".repeat(STATUS_PREPARATION_MAX_BYTES + 1);
     let first = shared_request(&inner, client);
     assert_left(&first, "prepared:80");
     assert!(!first.references.contains("*"));
     assert!(!first.references.contains("config_files"));
     let selective = reuse_enabled();
     if selective {
-        let cache = inner.status_preparation_cache.lock();
+        let cache = inner.publication.status_preparation_cache.lock();
         let cached = cache.as_ref().unwrap();
         assert!(!cached.config_files_requested);
         assert!(cached.config_files.is_empty());
         assert!(cached.retained_bytes <= STATUS_PREPARATION_MAX_BYTES);
     } else {
-        assert!(inner.status_preparation_cache.lock().is_none());
+        assert!(inner.publication.status_preparation_cache.lock().is_none());
     }
     let revision = inner.engine.format_cache_revision();
-    inner.config_files = "b".repeat(STATUS_PREPARATION_MAX_BYTES + 2);
+    inner.config.config_files = "b".repeat(STATUS_PREPARATION_MAX_BYTES + 2);
     let changed = shared_request(&inner, client);
     assert_eq!(inner.engine.format_cache_revision(), revision);
     assert_eq!(Arc::ptr_eq(&first, &changed), selective);
@@ -161,16 +165,16 @@ fn status_preparation_keeps_static_indirect_config_dependencies_fresh() {
     for template in ["#{config_files}", "#{E:status-right}", "#{T:status-right}"] {
         let (mut inner, client, mut context) = fixture(template);
         set_option(&mut inner, &mut context, "status-right", "#{config_files}");
-        inner.config_files = "/first.conf".to_owned();
+        inner.config.config_files = "/first.conf".to_owned();
         let first = shared_request(&inner, client);
         assert!(first.references.contains("config_files"), "{template}");
         assert_left(&first, "/first.conf");
         if reuse_enabled() {
-            let cache = inner.status_preparation_cache.lock();
+            let cache = inner.publication.status_preparation_cache.lock();
             assert!(cache.as_ref().unwrap().config_files_requested);
         }
         let revision = inner.engine.format_cache_revision();
-        inner.config_files = "/next.conf".to_owned();
+        inner.config.config_files = "/next.conf".to_owned();
         let next = shared_request(&inner, client);
         assert_eq!(inner.engine.format_cache_revision(), revision);
         assert_fresh(&first, &next);
@@ -191,7 +195,7 @@ fn status_preparation_keeps_nested_loop_config_dependencies_fresh() {
             zz_mux::PaneKind::Terminal,
         )
         .unwrap();
-    inner.config_files = "/first.conf".to_owned();
+    inner.config.config_files = "/first.conf".to_owned();
     let first = shared_request(&inner, client);
     assert!(first.references.contains("config_files"));
     assert_eq!(
@@ -200,7 +204,7 @@ fn status_preparation_keeps_nested_loop_config_dependencies_fresh() {
     );
     assert_left(&first, "[0:;;]");
     let revision = inner.engine.format_cache_revision();
-    inner.config_files = "/next.conf".to_owned();
+    inner.config.config_files = "/next.conf".to_owned();
     let next = shared_request(&inner, client);
     assert_eq!(inner.engine.format_cache_revision(), revision);
     assert_fresh(&first, &next);
@@ -235,7 +239,7 @@ fn status_preparation_keeps_border_only_config_capture_and_guard() {
         "pane-active-border-style",
         "fg=#{?config_files,red,green}",
     );
-    inner.config_files = "/first.conf".to_owned();
+    inner.config.config_files = "/first.conf".to_owned();
     let first = shared_request(&inner, client);
     assert!(!first.references.contains("config_files"));
     let parameters = status_parameters(&inner, context.session, &first.option_snapshot);
@@ -245,11 +249,11 @@ fn status_preparation_keeps_border_only_config_capture_and_guard() {
         Some("/first.conf")
     );
     if reuse_enabled() {
-        let cache = inner.status_preparation_cache.lock();
+        let cache = inner.publication.status_preparation_cache.lock();
         assert!(cache.as_ref().unwrap().config_files_requested);
     }
     let revision = inner.engine.format_cache_revision();
-    inner.config_files = "/next.conf".to_owned();
+    inner.config.config_files = "/next.conf".to_owned();
     let next = shared_request(&inner, client);
     assert_eq!(inner.engine.format_cache_revision(), revision);
     assert_fresh(&first, &next);
@@ -275,7 +279,7 @@ fn status_preparation_keeps_border_only_config_capture_and_guard() {
 #[test]
 fn status_preparation_retains_config_for_unknown_jobs_full_providers_and_rollback() {
     let (mut inner, client, mut context) = fixture("#{session_name}");
-    inner.config_files = "/retained.conf".to_owned();
+    inner.config.config_files = "/retained.conf".to_owned();
     let job = status_request_with_selected_facts(
         &inner,
         client,
@@ -378,7 +382,7 @@ fn status_preparation_shares_the_whole_immutable_request() {
         assert_eq!(Arc::ptr_eq(&first, &second), reuse_enabled());
         assert_left(&second, "prepared:80");
         if reuse_enabled() {
-            let cache = inner.status_preparation_cache.lock();
+            let cache = inner.publication.status_preparation_cache.lock();
             let cached = cache.as_ref().unwrap();
             assert!(Arc::ptr_eq(&cached.request, &first));
             assert!(Arc::ptr_eq(
@@ -414,6 +418,7 @@ fn status_preparation_replaces_shared_requests_for_border_clock_and_source_chang
         );
         let first = shared_request(&inner, client);
         inner
+            .modes
             .pane_modes
             .insert(context.pane.unwrap(), vec![PaneModeRequest::Clock]);
         let changed = shared_request(&inner, client);
@@ -425,7 +430,7 @@ fn status_preparation_replaces_shared_requests_for_border_clock_and_source_chang
             reuse_enabled(),
         );
         inner.engine.set_format_now(1_700_000_001);
-        inner.pane_modes.remove(&context.pane.unwrap());
+        inner.modes.pane_modes.remove(&context.pane.unwrap());
         let tick = shared_request(&inner, client);
         assert!(!Arc::ptr_eq(&changed, &tick));
         assert_eq!(changed.context.format_now, Some(1_700_000_000));
@@ -437,7 +442,7 @@ fn status_preparation_replaces_shared_requests_for_border_clock_and_source_chang
             Arc::ptr_eq(&tick, &shared_request(&inner, client)),
             reuse_enabled()
         );
-        inner.config_files = "/new.conf".to_owned();
+        inner.config.config_files = "/new.conf".to_owned();
         let source = shared_request(&inner, client);
         assert!(!Arc::ptr_eq(&tick, &source));
         assert_left(&source, "prepared:/new.conf");
@@ -485,7 +490,7 @@ fn status_preparation_clock_reuse_refreshes_nested_loop_times_and_preserves_fact
             reuse_enabled()
         );
         if reuse_enabled() {
-            let cache = inner.status_preparation_cache.lock();
+            let cache = inner.publication.status_preparation_cache.lock();
             let cached = cache.as_ref().unwrap();
             assert_eq!(cached.revision, inner.engine.format_cache_revision());
             assert!(cached.retained_bytes() <= STATUS_PREPARATION_MAX_BYTES);
@@ -543,7 +548,7 @@ fn status_preparation_reuses_retained_size_only_for_unchanged_clock_storage() {
         let tick = shared_request(&inner, client);
         assert_left(&tick, "prepared:1");
         if reuse_enabled() {
-            let mut cache = inner.status_preparation_cache.lock();
+            let mut cache = inner.publication.status_preparation_cache.lock();
             let cached = cache.as_mut().unwrap();
             assert_eq!(cached.retained_bytes, cached.retained_bytes());
             cached.retained_bytes += 128;
@@ -552,19 +557,20 @@ fn status_preparation_reuses_retained_size_only_for_unchanged_clock_storage() {
         let same_storage = shared_request(&inner, client);
         assert_left(&same_storage, "prepared:2");
         if reuse_enabled() {
-            let cache = inner.status_preparation_cache.lock();
+            let cache = inner.publication.status_preparation_cache.lock();
             let cached = cache.as_ref().unwrap();
             assert_eq!(cached.retained_bytes, cached.retained_bytes() + 128);
             assert!(Arc::ptr_eq(&tick.pane_borders, &same_storage.pane_borders));
         }
         inner
+            .modes
             .pane_modes
             .insert(context.pane.unwrap(), vec![PaneModeRequest::Clock]);
         let borders = shared_request(&inner, client);
         assert_eq!(borders.pane_borders[0].style, "fg=red");
         assert_eq!(same_storage.pane_borders[0].style, "fg=green");
         if reuse_enabled() {
-            let cache = inner.status_preparation_cache.lock();
+            let cache = inner.publication.status_preparation_cache.lock();
             let cached = cache.as_ref().unwrap();
             assert_eq!(cached.retained_bytes, cached.retained_bytes());
             assert!(!Arc::ptr_eq(
@@ -663,7 +669,7 @@ fn status_preparation_reuses_safe_engine_width_and_colour_dependencies() {
             reuse_enabled()
         );
         assert_eq!(Arc::ptr_eq(&first.facts, &second.facts), reuse_enabled());
-        let cache = inner.status_preparation_cache.lock();
+        let cache = inner.publication.status_preparation_cache.lock();
         if reuse_enabled() {
             assert!(cache.as_ref().unwrap().retained_bytes() <= STATUS_PREPARATION_MAX_BYTES);
         } else {
@@ -716,9 +722,9 @@ fn status_preparation_invalidates_config_state_options_data_environment_and_cloc
         let pane = context.pane.unwrap();
         inner.engine.state.update_pane_title(pane, "first").unwrap();
         inner.engine.set_format_server_identity(11, "22", "user");
-        inner.config_files = "/first.conf".to_owned();
+        inner.config.config_files = "/first.conf".to_owned();
         let first = request(&inner, client);
-        inner.config_files = "/second.conf".to_owned();
+        inner.config.config_files = "/second.conf".to_owned();
         let config = request(&inner, client);
         assert_fresh(&first, &config);
         assert_eq!(
@@ -816,8 +822,14 @@ fn status_preparation_retargets_focus_session_and_replaced_engine() {
         let focused = request(&inner, client);
         assert_fresh(&first, &focused);
         assert_left(&focused, "prepared:second");
-        inner.attached.get_mut(&session).unwrap().remove(&client);
         inner
+            .attachment
+            .attached
+            .get_mut(&session)
+            .unwrap()
+            .remove(&client);
+        inner
+            .attachment
             .attached
             .insert(other_session, BTreeSet::from([client]));
         inner
@@ -865,6 +877,7 @@ fn status_preparation_invalidates_scheme_startup_and_client_identity() {
         assert!(startup.startup);
         let other_client = ClientId(4);
         inner
+            .attachment
             .attached
             .get_mut(&context.session.unwrap())
             .unwrap()
@@ -904,7 +917,7 @@ fn status_preparation_bypasses_live_callbacks_jobs_modes_control_and_rollback() 
             let second = request(&inner, client);
             assert_fresh(&first, &second);
             assert!(
-                inner.status_preparation_cache.lock().is_none(),
+                inner.publication.status_preparation_cache.lock().is_none(),
                 "{template}"
             );
         }
@@ -950,6 +963,7 @@ fn status_preparation_reuse_keeps_border_mode_callbacks_fresh() {
         assert_eq!(first.pane_borders[0].style, "fg=green");
         let revision = inner.engine.format_cache_revision();
         inner
+            .modes
             .pane_modes
             .insert(context.pane.unwrap(), vec![PaneModeRequest::Clock]);
         let second = request(&inner, client);
@@ -984,7 +998,7 @@ fn status_preparation_bypasses_border_prefix_and_cell_dependencies() {
         let prefix = request(&inner, client);
         assert_fresh(&first, &prefix);
         assert_eq!(prefix.pane_borders[0].style, "fg=red");
-        assert!(inner.status_preparation_cache.lock().is_none());
+        assert!(inner.publication.status_preparation_cache.lock().is_none());
         assert_eq!(inner.engine.format_cache_revision(), revision);
         set_option(
             &mut inner,
@@ -996,6 +1010,7 @@ fn status_preparation_bypasses_border_prefix_and_cell_dependencies() {
         assert_eq!(before.pane_borders[0].style, "fg=green,bg=black");
         let revision = inner.engine.format_cache_revision();
         inner
+            .panes
             .terminal_geometries
             .entry(context.pane.unwrap())
             .or_default()
@@ -1011,7 +1026,7 @@ fn status_preparation_bypasses_border_prefix_and_cell_dependencies() {
         let geometry = request(&inner, client);
         assert_fresh(&before, &geometry);
         assert_eq!(geometry.pane_borders[0].style, "fg=red,bg=blue");
-        assert!(inner.status_preparation_cache.lock().is_none());
+        assert!(inner.publication.status_preparation_cache.lock().is_none());
         assert_eq!(inner.engine.format_cache_revision(), revision);
     });
 }
@@ -1022,9 +1037,9 @@ fn status_preparation_rejects_oversized_context_and_environment_capture() {
         let (mut inner, client, mut context) = fixture("#{session_name}:#{config_files}");
         let small = request(&inner, client);
         if reuse_enabled() {
-            assert!(inner.status_preparation_cache.lock().is_some());
+            assert!(inner.publication.status_preparation_cache.lock().is_some());
         }
-        inner.config_files = "c".repeat(400_000);
+        inner.config.config_files = "c".repeat(400_000);
         let large_environment = "e".repeat(400_000);
         inner
             .engine
@@ -1056,7 +1071,7 @@ fn status_preparation_rejects_oversized_context_and_environment_capture() {
             Arc::new(large),
         );
         assert!(candidate.retained_bytes() > STATUS_PREPARATION_MAX_BYTES);
-        assert!(inner.status_preparation_cache.lock().is_none());
+        assert!(inner.publication.status_preparation_cache.lock().is_none());
     });
 }
 
@@ -1112,7 +1127,7 @@ fn raw_text_bound_rejects_large_prepared_job_environment_and_reuses_small_values
                 );
                 assert!(candidate.retained_bytes() >= empty.retained_bytes() + 2_400_000);
                 assert!(candidate.retained_bytes() > STATUS_PREPARATION_MAX_BYTES);
-                assert!(inner.status_preparation_cache.lock().is_none());
+                assert!(inner.publication.status_preparation_cache.lock().is_none());
             } else {
                 assert!(candidate.retained_bytes() < STATUS_PREPARATION_MAX_BYTES);
                 assert_eq!(Arc::ptr_eq(&first.context, &same.context), reuse_enabled());
@@ -1253,6 +1268,7 @@ fn status_preparation_tracks_viewport_changes_without_engine_revisions() {
         assert_left(&fitting, "0::");
         inner.client_mut(client).and_then(|c| c.size.take());
         inner
+            .panes
             .terminal_geometries
             .entry(context.pane.unwrap())
             .or_default()
@@ -1275,6 +1291,7 @@ fn status_preparation_tracks_viewport_changes_without_engine_revisions() {
         assert_eq!(first.pane_borders[0].style, "fg=green");
         let revision = inner.engine.format_cache_revision();
         inner
+            .panes
             .terminal_geometries
             .get_mut(&context.pane.unwrap())
             .unwrap()
