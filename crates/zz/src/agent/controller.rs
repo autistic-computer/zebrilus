@@ -1369,6 +1369,9 @@ fn split_inline_images(text: &str) -> (String, Vec<Arc<Image>>) {
 }
 
 #[cfg(test)]
+mod test_support;
+
+#[cfg(test)]
 mod tests {
     use agent_client_protocol::v1::schema::{
         AvailableCommand, AvailableCommandInput, AvailableCommandsUpdate, ContentBlock,
@@ -1377,16 +1380,12 @@ mod tests {
         ToolCallLocation, ToolCallStatus, ToolCallUpdateFields, ToolKind,
     };
     use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
-    use std::{cell::RefCell, rc::Rc};
     use zz_protocol::{MAX_AGENT_PERMISSION_OPTIONS, MAX_AGENT_TOOL_CONTENT_ITEMS};
 
-    use ala::{AppContext as _, TestAppContext};
+    use ala::TestAppContext;
 
+    use super::test_support::*;
     use super::*;
-
-    fn thread() -> AgentThread {
-        AgentThread::new(AgentProvider::Codex, PathBuf::from("/workspace"), None)
-    }
 
     #[test]
     fn the_model_menu_takes_picks_while_a_turn_runs() {
@@ -1779,18 +1778,6 @@ mod tests {
         ));
     }
 
-    const PNG_PIXEL: &[u8] = &[
-        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44,
-        0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1f,
-        0x15, 0xc4, 0x89, 0x00, 0x00, 0x00, 0x0a, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0x00,
-        0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00, 0x00, 0x00, 0x00, 0x49,
-        0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
-    ];
-
-    fn attachment() -> Arc<Image> {
-        Arc::new(Image::from_bytes(ImageFormat::Png, PNG_PIXEL.to_vec()))
-    }
-
     #[test]
     fn a_replayed_user_image_returns_to_the_transcript() {
         let mut thread = thread();
@@ -2037,50 +2024,6 @@ mod tests {
         ));
     }
 
-    fn proxy_controller(
-        cx: &mut TestAppContext,
-    ) -> (
-        Entity<AgentController>,
-        Rc<RefCell<Vec<(PaneId, AgentRequest)>>>,
-    ) {
-        cx.update(|cx| {
-            crate::config::set_fleet_hosts_for_test(Vec::new(), cx);
-            let mux = cx.new(|cx| {
-                MuxClient::new(
-                    Err(zz_daemon_client::DaemonError::Thread(
-                        "test client".to_owned(),
-                    )),
-                    zz_daemon_client::default_socket_path(),
-                    cx,
-                )
-            });
-            let sink = mux.update(cx, |mux, _| {
-                mux.set_agent_client_instance_id_for_test(zz_protocol::ClientInstanceId(1));
-                mux.record_agent_requests_for_test()
-            });
-            let controller = cx.new(|_| AgentController::new());
-            controller.update(cx, |controller, _| controller.attach_mux(mux));
-            (controller, sink)
-        })
-    }
-
-    fn ready_pane(controller: &mut AgentController, pane: PaneId) {
-        let mut thread = thread();
-        thread.connection = AgentConnectionState::Ready;
-        thread.session_capabilities.images = true;
-        controller.panes.insert(pane, thread);
-        controller.viewports.insert(pane, PaneViewport::default());
-        controller.retained_panes.insert(pane);
-    }
-
-    fn item(seq: u64, payload: AgentStreamPayload) -> AgentStreamItem {
-        AgentStreamItem { seq, payload }
-    }
-
-    fn json(value: &impl serde::Serialize) -> serde_json::Value {
-        serde_json::to_value(value).expect("the ACP schema encodes")
-    }
-
     fn unknown_update(tag: &str) -> AgentStreamPayload {
         AgentStreamPayload::Update {
             update: serde_json::json!({"sessionUpdate": tag, "payload": {"opaque": true}}),
@@ -2093,15 +2036,6 @@ mod tests {
                 ContentChunk::new(ContentBlock::Text(TextContent::new(text)))
                     .message_id(MessageId::new(message_id)),
             )),
-        }
-    }
-
-    fn turn_finished(reason: StopReason) -> AgentStreamPayload {
-        AgentStreamPayload::PromptFinished {
-            turn_id: 1,
-            outcome: AgentPromptOutcome::Finished {
-                stop_reason: json(&reason),
-            },
         }
     }
 
@@ -2821,13 +2755,6 @@ mod tests {
             multi_select,
             allow_other: true,
             ..AgentQuestion::default()
-        }
-    }
-
-    fn reply(id: &str, answers: &[&str]) -> AgentQuestionAnswer {
-        AgentQuestionAnswer {
-            id: id.to_owned(),
-            answers: answers.iter().map(|answer| (*answer).to_owned()).collect(),
         }
     }
 
