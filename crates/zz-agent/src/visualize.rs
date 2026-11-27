@@ -258,17 +258,20 @@ mod tests {
 
     #[test]
     fn a_missing_file_says_why_and_other_references_stay() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let page = directory.path().join("zz-visual.html");
         let mut visuals = Visuals::default();
-        let missing = reference(Path::new("/nonexistent/zz-visual.html"));
+        let missing = reference(&page);
         let other = format!("{OPEN}image{SPLIT}{{}}{CLOSE}");
         let out = visuals.pass(chunk("m1", &format!("{missing}{other}")));
-        let not_found = fs::File::open("/nonexistent/zz-visual.html")
+        let not_found = fs::File::open(&page)
             .expect_err("the page is missing")
             .to_string();
         assert_eq!(
             texts(&out),
             [format!(
-                "\n\n> Could not show /nonexistent/zz-visual.html: {not_found}\n\n{other}"
+                "\n\n> Could not show {}: {not_found}\n\n{other}",
+                page.display()
             )]
         );
     }
