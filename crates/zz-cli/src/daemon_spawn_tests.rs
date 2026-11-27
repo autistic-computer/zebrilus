@@ -220,4 +220,8 @@ fn a_spawned_daemon_that_exits_is_reaped_while_the_spawner_lives() {
         );
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
+    assert_eq!(
+        rustix::process::test_kill_process(pid),
+        Err(rustix::io::Errno::SRCH)
+    );
 }
