@@ -3,6 +3,7 @@ mod context_menu;
 mod dialogs;
 mod events;
 mod find;
+mod navigation;
 mod omnibox;
 mod page_input;
 mod page_tools;
@@ -1345,57 +1346,6 @@ impl BrowserView {
         true
     }
 
-    fn on_back(&mut self, cx: &mut Context<Self>) {
-        if self.can_go_back {
-            self.cancel_element_pick(cx);
-            self.pending_history_uses.remove(&self.active_tab);
-            self.controller.update(cx, |controller, cx| {
-                controller.go_back(self.pane, self.active_tab, cx);
-            });
-        }
-        cx.stop_propagation();
-    }
-
-    fn on_forward(&mut self, cx: &mut Context<Self>) {
-        if self.can_go_forward {
-            self.cancel_element_pick(cx);
-            self.pending_history_uses.remove(&self.active_tab);
-            self.controller.update(cx, |controller, cx| {
-                controller.go_forward(self.pane, self.active_tab, cx);
-            });
-        }
-        cx.stop_propagation();
-    }
-
-    fn on_reload(&mut self, cx: &mut Context<Self>) {
-        self.cancel_element_pick(cx);
-        self.pending_history_uses.remove(&self.active_tab);
-        self.error = None;
-        self.controller.update(cx, |controller, cx| {
-            controller.reload(self.pane, self.active_tab, cx);
-        });
-        cx.stop_propagation();
-        cx.notify();
-    }
-
-    fn on_hard_reload(&mut self, cx: &mut Context<Self>) {
-        self.cancel_element_pick(cx);
-        self.pending_history_uses.remove(&self.active_tab);
-        self.error = None;
-        self.controller.update(cx, |controller, cx| {
-            controller.reload_ignore_cache(self.pane, self.active_tab, cx);
-        });
-        cx.stop_propagation();
-        cx.notify();
-    }
-
-    fn on_retry(&mut self, cx: &mut Context<Self>) {
-        if self.recoverable {
-            self.recreate_session(cx);
-        }
-        cx.stop_propagation();
-    }
-
     fn reset_frame_state(&mut self) {
         if let Some(image) = self.image.take() {
             self.retired_images.push(image);
@@ -1415,22 +1365,6 @@ impl BrowserView {
         }
         self.frame_session = None;
         self.image_generation = 0;
-    }
-
-    fn on_go_back(&mut self, _: &GoBack, _: &mut Window, cx: &mut Context<Self>) {
-        self.on_back(cx);
-    }
-
-    fn on_go_forward(&mut self, _: &GoForward, _: &mut Window, cx: &mut Context<Self>) {
-        self.on_forward(cx);
-    }
-
-    fn on_reload_action(&mut self, _: &Reload, _: &mut Window, cx: &mut Context<Self>) {
-        self.on_reload(cx);
-    }
-
-    fn on_hard_reload_action(&mut self, _: &HardReload, _: &mut Window, cx: &mut Context<Self>) {
-        self.on_hard_reload(cx);
     }
 
     fn on_browser_edit(&mut self, action: &BrowserEdit, _: &mut Window, cx: &mut Context<Self>) {
