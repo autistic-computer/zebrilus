@@ -5112,6 +5112,9 @@ pub(crate) fn cursor_style(cursor: BrowserCursor) -> CursorStyle {
 }
 
 #[cfg(test)]
+mod test_support;
+
+#[cfg(test)]
 mod tests {
     use std::{
         any::TypeId,
@@ -5129,6 +5132,7 @@ mod tests {
     use penna::Root;
     use zz_daemon_client::DaemonError;
 
+    use super::test_support::*;
     use super::*;
 
     ala::actions!(
@@ -5165,25 +5169,6 @@ mod tests {
         assert_eq!(element_picker_appearance(&theme, 1.0).shadow, None);
     }
 
-    fn bindings_for_contexts(
-        keymap: &Keymap,
-        source: &str,
-        context_names: &[&str],
-    ) -> Vec<ala::KeyBinding> {
-        let keystroke = Keystroke::parse(source).expect("valid browser keystroke");
-        let contexts = context_names
-            .iter()
-            .map(|context| KeyContext::parse(context).expect("valid key context"))
-            .collect::<Vec<_>>();
-        let (bindings, pending) = keymap.bindings_for_input(&[keystroke], &contexts);
-        assert!(!pending);
-        bindings.into_vec()
-    }
-
-    fn browser_bindings_for(keymap: &Keymap, source: &str) -> Vec<ala::KeyBinding> {
-        bindings_for_contexts(keymap, source, &["Root", BROWSER_KEY_CONTEXT])
-    }
-
     fn assert_action_types(bindings: &[KeyBinding], expected: &[TypeId]) {
         let actual = bindings
             .iter()
@@ -5196,39 +5181,6 @@ mod tests {
         let bindings = browser_bindings_for(keymap, source);
         assert_eq!(bindings.len(), 1, "expected one binding for {source}");
         assert_eq!(bindings[0].action().as_any().type_id(), TypeId::of::<A>());
-    }
-
-    fn browser_key_bindings() -> Vec<KeyBinding> {
-        let mut bindings = raw_key_bindings().to_vec();
-        bindings.extend(browser_chrome_bindings(&crate::keymap::test_chords(
-            BROWSER_TABLE,
-        )));
-        bindings
-    }
-
-    fn edit_action_command(action: &dyn ala::Action) -> Option<EditCommand> {
-        if let Some(action) = action.as_any().downcast_ref::<BrowserEdit>() {
-            return Some(action.command);
-        }
-        if action.as_any().is::<crate::menus::Undo>() {
-            return Some(EditCommand::Undo);
-        }
-        if action.as_any().is::<crate::menus::Redo>() {
-            return Some(EditCommand::Redo);
-        }
-        if action.as_any().is::<crate::menus::Cut>() {
-            return Some(EditCommand::Cut);
-        }
-        if action.as_any().is::<crate::menus::Copy>() {
-            return Some(EditCommand::Copy);
-        }
-        if action.as_any().is::<crate::menus::Paste>() {
-            return Some(EditCommand::Paste);
-        }
-        if action.as_any().is::<crate::menus::SelectAll>() {
-            return Some(EditCommand::SelectAll);
-        }
-        None
     }
 
     fn edit_action_type(command: EditCommand) -> TypeId {
