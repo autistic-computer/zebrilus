@@ -391,8 +391,7 @@ fn copy_mode_tracks_a_native_cursor() {
     .expect("copy mode");
     let mode = copy_mode.as_mut().expect("mode");
     move_copy_cursor(mode, &CopyModeAction::Up, &WordSeparators::default(), false);
-    let point = mode.cursor;
-    assert!(point.y < u32::try_from(terminal.total_rows().expect("rows")).unwrap());
+    assert_eq!(mode.cursor, PointCoordinate { x: 3, y: 1 });
 }
 
 #[test]

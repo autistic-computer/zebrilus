@@ -438,9 +438,10 @@ fn an_idle_pane_opens_the_path_and_a_key_after_queued_text_follows_it() {
     }
     session.send_key_for_view(TerminalViewId(1), key('b', false, KeyAction::Press));
     session.send_text("y");
-    wait_for(&session, "key then text", |text| {
+    let capture = wait_for(&session, "key then text", |text| {
         text.contains("<78><61><62><79>")
     });
+    assert_eq!(capture, "READY<78><61><62><79>\n\n\n\n\n\n\n");
 }
 
 #[test]
@@ -598,10 +599,9 @@ fn a_key_after_a_bracketed_paste_follows_the_closing_wrapper() {
     let text = wait_for(&session, "the paste and the key", |text| {
         text.contains("<61>")
     });
-    let flat = text.replace('\n', "");
-    assert!(
-        flat.contains("<1b><5b><32><30><30><7e><70><1b><5b><32><30><31><7e><61>"),
-        "{flat:?}"
+    assert_eq!(
+        text,
+        "READY<1b><5b><32><30><30><7e><70><1b><5b><32><30><31><7e><61>\n\n\n\n\n\n\n"
     );
 }
 

@@ -619,8 +619,7 @@ fn engine_filter_rename_follows_the_pin_table() {
 #[test]
 fn engine_filter_hands_an_aborted_csi_to_the_engine() {
     let (text, _) = engine_filter_screen(EngineKnobs::default(), &[b"hello \x1b[2\x1b[2Jworld"]);
-    assert!(!text.contains("2J"), "the aborted CSI leaked: {text:?}");
-    assert!(text.contains("world"), "{text:?}");
+    assert_eq!(text, "hello\nworld\n\n\n");
 }
 
 #[test]

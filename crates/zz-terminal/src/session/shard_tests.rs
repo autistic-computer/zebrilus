@@ -184,6 +184,22 @@ fn coalesced_wakes_service_concurrent_view_and_input_bursts() {
                 }
                 pane.send_text("last burst\n");
                 wait(|| captured(pane, "last burst"));
+                let capture = pane
+                    .capture(CaptureOptions {
+                        start: CaptureBoundary::HistoryStart,
+                        ..CaptureOptions::default()
+                    })
+                    .expect("capture");
+                assert_eq!(
+                    capture
+                        .lines()
+                        .filter(|line| !line.is_empty())
+                        .collect::<Vec<_>>(),
+                    std::iter::once("ready".to_owned())
+                        .chain((0..32).map(|burst| format!("burst {burst}")))
+                        .chain(std::iter::once("last burst".to_owned()))
+                        .collect::<Vec<_>>()
+                );
             });
         }
     });

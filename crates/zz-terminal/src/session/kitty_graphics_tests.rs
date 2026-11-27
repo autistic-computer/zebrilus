@@ -206,11 +206,13 @@ fn kitty_storage_quota_admits_wire_cap_sized_images() {
         None,
     )
     .expect("Kitty snapshot");
-    assert!(
+    assert_eq!(
         viewport
             .kitty_placements
             .iter()
-            .any(|placement| placement.image_id == 91),
+            .map(|placement| placement.image_id)
+            .collect::<Vec<_>>(),
+        [91],
         "a 12 MB image should fit the raised Kitty storage quota"
     );
 }
@@ -254,23 +256,25 @@ fn live_session_decodes_and_places_a_png_transmission() {
     );
 
     let deadline = std::time::Instant::now() + Duration::from_secs(30);
-    loop {
+    let placed = loop {
         while session.events().try_recv().is_ok() {}
-        let placed = session.latest_viewport_for(view).is_some_and(|viewport| {
+        let placed = session.latest_viewport_for(view).map(|viewport| {
             viewport
                 .kitty_placements
                 .iter()
-                .any(|placement| placement.image_id == 78)
+                .map(|placement| placement.image_id)
+                .collect::<Vec<_>>()
         });
-        if placed {
-            break;
+        if let Some(placed) = placed.filter(|placed| !placed.is_empty()) {
+            break placed;
         }
         assert!(
             std::time::Instant::now() < deadline,
             "PNG transmission never produced a Kitty placement"
         );
         thread::sleep(Duration::from_millis(20));
-    }
+    };
+    assert_eq!(placed, [78]);
 }
 
 #[cfg(unix)]
@@ -287,23 +291,25 @@ fn live_session_publishes_kitty_placements() {
     session.send_text("printf '\\033_Ga=T,f=24,s=1,v=1,i=77;/wAA\\033\\\\'\n");
 
     let deadline = std::time::Instant::now() + Duration::from_secs(30);
-    loop {
+    let placed = loop {
         while session.events().try_recv().is_ok() {}
-        let placed = session.latest_viewport_for(view).is_some_and(|viewport| {
+        let placed = session.latest_viewport_for(view).map(|viewport| {
             viewport
                 .kitty_placements
                 .iter()
-                .any(|placement| placement.image_id == 77)
+                .map(|placement| placement.image_id)
+                .collect::<Vec<_>>()
         });
-        if placed {
-            break;
+        if let Some(placed) = placed.filter(|placed| !placed.is_empty()) {
+            break placed;
         }
         assert!(
             std::time::Instant::now() < deadline,
             "live session never published a Kitty placement"
         );
         thread::sleep(Duration::from_millis(20));
-    }
+    };
+    assert_eq!(placed, [77]);
 }
 
 #[cfg(unix)]
