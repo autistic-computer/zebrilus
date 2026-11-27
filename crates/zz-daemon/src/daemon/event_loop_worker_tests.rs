@@ -265,7 +265,39 @@ fn a_parked_chain_flushes_earlier_output_before_it_completes() {
             .iter()
             .any(|message| matches!(message, ProtocolMessage::ExecExit(_)))
     });
-    assert!(received.iter().any(|message| matches!(message, ProtocolMessage::CommandResponse(CommandResponse::Success { output, .. }) if output == "after")));
+    let responses = received
+        .into_iter()
+        .filter_map(|message| match message {
+            ProtocolMessage::CommandResponse(response) => Some(response),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        responses,
+        [
+            CommandResponse::Success {
+                request_id: 1,
+                output: RawText::from("before"),
+                exit_code: 0,
+                stderr: String::new(),
+                stdout_claim: zz_protocol::StdoutClaim::Print,
+            },
+            CommandResponse::Success {
+                request_id: 2,
+                output: RawText::default(),
+                exit_code: 0,
+                stderr: String::new(),
+                stdout_claim: zz_protocol::StdoutClaim::None,
+            },
+            CommandResponse::Success {
+                request_id: 3,
+                output: RawText::from("after"),
+                exit_code: 0,
+                stderr: String::new(),
+                stdout_claim: zz_protocol::StdoutClaim::Print,
+            },
+        ]
+    );
     event_loop.remove(token, &shared);
     until(&mut event_loop, &shared, || {
         shared.inner.lock().clients.is_empty()

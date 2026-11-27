@@ -1,5 +1,44 @@
 use super::*;
 
+fn detaches(
+    mailbox: &OutboundMailbox,
+) -> Vec<(
+    SessionId,
+    Option<String>,
+    String,
+    zz_protocol::ClientExitAction,
+)> {
+    take_reliable_messages(mailbox)
+        .into_iter()
+        .filter_map(|message| match message {
+            ProtocolMessage::Event(Event {
+                payload:
+                    EventPayload::Detached {
+                        session,
+                        by,
+                        reason,
+                        action,
+                    },
+                ..
+            }) => Some((session, by, format!("{reason:?}"), action)),
+            _ => None,
+        })
+        .collect()
+}
+
+fn attached_to(shared: &Shared, session: SessionId) -> Vec<ClientId> {
+    shared
+        .inner
+        .lock()
+        .attachment
+        .attached
+        .get(&session)
+        .into_iter()
+        .flatten()
+        .copied()
+        .collect()
+}
+
 #[test]
 fn multi_client_attach_uses_latest_active_geometry_and_keeps_independent_views() {
     let shared = Arc::new(Shared::new(1));
@@ -932,30 +971,16 @@ fn detach_client_command_notifies_its_issuer() {
         )
         .expect("detach through mux command");
 
-    assert!(take_reliable_messages(&mailbox).iter().any(|message| {
-        matches!(
-            message,
-            ProtocolMessage::Event(Event {
-                payload:
-                    EventPayload::Detached {
-                        session: detached,
-                        by: None,
-                        reason,
-                        ..
-                    },
-                ..
-            }) if *detached == session && reason.is_requested()
-        )
-    }));
-    assert!(
-        shared
-            .inner
-            .lock()
-            .attachment
-            .attached
-            .values()
-            .all(|clients| !clients.contains(&client))
+    assert_eq!(
+        detaches(&mailbox),
+        [(
+            session,
+            None,
+            "Requested".to_owned(),
+            zz_protocol::ClientExitAction::Exit
+        )]
     );
+    assert_eq!(attached_to(&shared, session), []);
 }
 
 #[test]
@@ -999,27 +1024,20 @@ fn detach_client_dash_a_kicks_every_peer_and_keeps_the_caller() {
         )
         .expect("detach every other client");
 
-    assert!(take_reliable_messages(&theirs).iter().any(|message| {
-        matches!(
-            message,
-            ProtocolMessage::Event(Event {
-                payload:
-                    EventPayload::Detached {
-                        session: detached,
-                        by: None,
-                        reason,
-                        ..
-                    },
-                ..
-            }) if *detached == session && reason.is_requested()
-        )
-    }));
-    let inner = shared.inner.lock();
-    assert!(
-        inner.attachment.attached[&session].contains(&caller),
-        "-a must never detach its own client"
+    assert_eq!(
+        detaches(&theirs),
+        [(
+            session,
+            None,
+            "Requested".to_owned(),
+            zz_protocol::ClientExitAction::Exit
+        )]
     );
-    assert!(!inner.attachment.attached[&session].contains(&peer));
+    assert_eq!(
+        attached_to(&shared, session),
+        [caller],
+        "-a detaches every peer and never its own client"
+    );
 }
 
 #[test]
@@ -1065,19 +1083,12 @@ fn detach_client_exec_leaves_control_victims_attached() {
         )
         .expect("exec every other client");
 
-    assert!(
-        !take_reliable_messages(&theirs).iter().any(|message| {
-            matches!(
-                message,
-                ProtocolMessage::Event(Event {
-                    payload: EventPayload::Detached { .. },
-                    ..
-                })
-            )
-        }),
+    assert_eq!(
+        detaches(&theirs),
+        [],
         "MSG_EXEC only acts in the pty client's attached dispatch"
     );
-    assert!(shared.inner.lock().attachment.attached[&session].contains(&control));
+    assert_eq!(attached_to(&shared, session), [caller, control]);
 
     shared
         .execute(
@@ -1087,7 +1098,7 @@ fn detach_client_exec_leaves_control_victims_attached() {
             &CommandInvocation::new("detach-client", ["-a"]),
         )
         .expect("plain detach still evicts the control victim");
-    assert!(!shared.inner.lock().attachment.attached[&session].contains(&control));
+    assert_eq!(attached_to(&shared, session), [caller]);
 }
 
 #[test]
@@ -1131,30 +1142,16 @@ fn detach_client_dash_s_clears_the_session_including_the_caller() {
         )
         .expect("detach the session");
 
-    assert!(take_reliable_messages(&mine).iter().any(|message| {
-        matches!(
-            message,
-            ProtocolMessage::Event(Event {
-                payload:
-                    EventPayload::Detached {
-                        session: detached,
-                        by: None,
-                        reason,
-                        ..
-                    },
-                ..
-            }) if *detached == session && reason.is_requested()
-        )
-    }));
-    let inner = shared.inner.lock();
-    assert!(
-        inner
-            .attachment
-            .attached
-            .get(&session)
-            .is_none_or(BTreeSet::is_empty),
-        "-s empties the session"
+    assert_eq!(
+        detaches(&mine),
+        [(
+            session,
+            None,
+            "Requested".to_owned(),
+            zz_protocol::ClientExitAction::Exit
+        )]
     );
+    assert_eq!(attached_to(&shared, session), [], "-s empties the session");
 }
 
 #[test]
@@ -1598,46 +1595,27 @@ fn killing_attached_session_notifies_and_detaches_every_client() {
         .expect("kill attached session");
 
     for mailbox in [&first_mailbox, &second_mailbox] {
-        assert!(
-            take_reliable_messages(mailbox)
-                .iter()
-                .any(|message| matches!(
-                    message,
-                    ProtocolMessage::Event(Event {
-                        payload:
-                            EventPayload::Detached {
-                                session: detached,
-                                by: None,
-                                ..
-                            },
-                        ..
-                    }) if *detached == session
-                )),
+        assert_eq!(
+            detaches(mailbox),
+            [(
+                session,
+                None,
+                "SessionDestroyed".to_owned(),
+                zz_protocol::ClientExitAction::Exit
+            )],
             "every attached client must learn that the session ended"
         );
     }
     let inner = shared.inner.lock();
     assert!(!inner.attachment.attached.contains_key(&session));
-    assert!(
-        inner
-            .client(first)
-            .is_none_or(|c| c.visible_terminals.is_none())
-    );
-    assert!(
-        inner
-            .client(second)
-            .is_none_or(|c| c.visible_terminals.is_none())
-    );
-    assert!(
-        inner
-            .client(first)
-            .is_none_or(|c| c.focused_window.is_none())
-    );
-    assert!(
-        inner
-            .client(second)
-            .is_none_or(|c| c.focused_window.is_none())
-    );
-    assert!(inner.client(first).is_some_and(|c| c.subscriber.is_some()));
-    assert!(inner.client(second).is_some_and(|c| c.subscriber.is_some()));
+    for client in [first, second] {
+        assert_eq!(
+            inner.client(client).map(|c| (
+                c.visible_terminals.is_none(),
+                c.focused_window,
+                c.subscriber.is_some()
+            )),
+            Some((true, None, true))
+        );
+    }
 }

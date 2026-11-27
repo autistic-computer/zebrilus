@@ -603,27 +603,23 @@ mod tests {
         )
         .expect("rules");
         let [_, codex_agent] = agents_in(home.path());
-        assert!(
-            codex_agent.install()[2]
-                .as_ref()
-                .expect("rule")
-                .contains("left alone")
+        let left_alone = format!(
+            "rule left alone at {}, zz did not write it",
+            rules.display()
         );
-        assert!(
-            codex_agent.remove()[2]
-                .as_ref()
-                .expect("rule")
-                .contains("left alone")
-        );
-        assert!(
-            fs::read_to_string(&rules)
-                .expect("rules")
-                .contains("prompt")
+        assert_eq!(codex_agent.install()[2].as_deref(), Ok(left_alone.as_str()));
+        assert_eq!(codex_agent.remove()[2].as_deref(), Ok(left_alone.as_str()));
+        assert_eq!(
+            fs::read_to_string(&rules).expect("rules"),
+            "prefix_rule(pattern = [\"zz\"], decision = \"prompt\")\n"
         );
         let [_, codex_agent] = agents_in(home.path());
         fs::remove_file(&rules).expect("remove");
         assert!(codex_agent.install().iter().all(Result::is_ok));
-        assert!(codex_agent.remove().iter().all(Result::is_ok));
+        assert_eq!(
+            codex_agent.remove()[2].as_deref(),
+            Ok(format!("rule removed from {}", rules.display()).as_str())
+        );
         assert!(!rules.exists());
     }
 

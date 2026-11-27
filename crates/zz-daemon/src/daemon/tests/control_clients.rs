@@ -29,28 +29,22 @@ fn control_output_fans_out_only_to_attached_control_clients() {
     take_reliable_messages(&interactive_mailbox);
 
     shared.publish_control_output_for_pane(pane, &Arc::from(b"bytes".as_slice()));
-    for mailbox in [&first_mailbox, &second_mailbox] {
-        assert!(take_reliable_messages(mailbox).iter().any(|message| {
-            matches!(
-                message,
+    let outputs = |mailbox: &OutboundMailbox| {
+        take_reliable_messages(mailbox)
+            .into_iter()
+            .filter_map(|message| match message {
                 ProtocolMessage::Event(Event {
-                    payload: EventPayload::PaneOutput { pane: target, bytes },
+                    payload: EventPayload::PaneOutput { pane, bytes },
                     ..
-                }) if *target == pane && bytes == b"bytes"
-            )
-        }));
-    }
-    let interactive_messages = take_reliable_messages(&interactive_mailbox);
-    assert!(
-        interactive_messages.iter().all(|message| !matches!(
-            message,
-            ProtocolMessage::Event(Event {
-                payload: EventPayload::PaneOutput { .. },
-                ..
+                }) => Some((pane, bytes)),
+                _ => None,
             })
-        )),
-        "interactive client received control output: {interactive_messages:#?}"
-    );
+            .collect::<Vec<_>>()
+    };
+    for mailbox in [&first_mailbox, &second_mailbox] {
+        assert_eq!(outputs(mailbox), [(pane, b"bytes".to_vec())]);
+    }
+    assert_eq!(outputs(&interactive_mailbox), []);
 }
 
 #[test]
@@ -440,12 +434,11 @@ fn a_control_command_leaves_other_clients_status_layouts_in_v2() {
             _ => None,
         })
         .collect::<Vec<_>>();
-    assert!(!rights.is_empty());
-    assert!(
-        rights
-            .iter()
-            .all(|right| right.contains(r#"{"V":2,"L":{"t":"v""#)),
-        "{rights:?}"
+    assert_eq!(
+        rights,
+        [
+            r#"#[bg=themegreen,fg=themeblack]#[default]#[push-default]{"V":2,"L":{"t":"v","w":80,"h":24,"x":0,"#
+        ]
     );
 }
 
@@ -572,11 +565,8 @@ fn a_control_command_leaves_another_clients_chooser_layouts_in_v2() {
         .flatten()
         .map(|item| item.text)
         .collect::<Vec<_>>();
-    assert!(rows.len() >= 2, "{rows:?}");
-    assert!(
-        rows.iter().all(|row| row.starts_with(r#"{"V":2,"L":"#)),
-        "{rows:?}"
-    );
+    let layout = r#"{"V":2,"L":{"t":"p","w":80,"h":24,"x":0,"y":0,"a":true,"i":0,"I":"%0"}}"#;
+    assert_eq!(rows, [layout, layout]);
 }
 
 #[test]
@@ -1336,29 +1326,42 @@ fn control_switch_publishes_the_new_attachment_before_its_live_layout_notice() {
             &CommandInvocation::new("switch-client", ["-t", "layout-second"]),
         )
         .unwrap();
-    let messages = take_reliable_messages(&mailbox);
-    let attachment = messages.iter().position(|message| matches!(
-        message,
-        ProtocolMessage::Attached { session, snapshot, .. }
-            if *session == second && snapshot.sessions.iter().flat_map(|session| &session.windows)
-                .any(|window| window.id == second_window && window.layout_dump.contains(r#""w":100,"h":30"#))
-    )).expect("new attachment carries resized layout");
-    let session_changed = messages
-        .iter()
-        .position(|message| {
-            matches!(
-                message,
-                ProtocolMessage::Event(Event { payload: EventPayload::HookEvent { name, .. }, .. })
-                    if name == "client-session-changed"
-            )
+    let notices = take_reliable_messages(&mailbox)
+        .into_iter()
+        .filter_map(|message| match message {
+            ProtocolMessage::Attached {
+                session, snapshot, ..
+            } => Some(format!(
+                "attached {session} {}",
+                snapshot
+                    .sessions
+                    .iter()
+                    .flat_map(|session| &session.windows)
+                    .find(|window| window.id == second_window)
+                    .map_or("", |window| window.layout_dump.as_str())
+            )),
+            ProtocolMessage::Event(Event {
+                payload: EventPayload::HookEvent { name, variables },
+                ..
+            }) if name == "client-session-changed" || name == "window-layout-changed" => {
+                Some(format!(
+                    "{name} {}",
+                    variables.get("hook_window").map_or("", String::as_str)
+                ))
+            }
+            _ => None,
         })
-        .expect("session change notification");
-    let layout_changed = messages.iter().position(|message| matches!(
-        message,
-        ProtocolMessage::Event(Event { payload: EventPayload::HookEvent { name, variables }, .. })
-            if name == "window-layout-changed" && variables.get("hook_window") == Some(&second_window.to_string())
-    )).expect("layout change notification");
-    assert!(attachment < session_changed && session_changed < layout_changed);
+        .collect::<Vec<_>>();
+    assert_eq!(
+        notices,
+        [
+            format!(
+                r#"attached {second} {{"V":2,"L":{{"t":"p","w":100,"h":30,"x":0,"y":0,"a":true,"i":0,"I":"{second_pane}"}}}}"#
+            ),
+            "client-session-changed ".to_owned(),
+            format!("window-layout-changed {second_window}"),
+        ]
+    );
 }
 
 #[test]

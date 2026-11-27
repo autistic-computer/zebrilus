@@ -967,8 +967,9 @@ fn a_request_full_on_a_live_pane_with_a_patch_queued_is_answered_with_a_full() {
         !messages.is_empty()
     });
     let names = written.iter().map(message_name).collect::<Vec<_>>();
-    assert!(
-        !fulls(&written).is_empty(),
+    assert_eq!(
+        fulls(&written),
+        vec![(pane, 90, 19)],
         "RequestFull answered with {names:?}"
     );
 }

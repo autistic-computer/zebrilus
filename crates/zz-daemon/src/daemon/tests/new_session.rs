@@ -188,26 +188,20 @@ fn new_session_name_formats_only_inherit_state_from_attached_clients() {
         .state
         .sessions
         .values()
-        .map(|session| session.name.as_str())
+        .map(|session| session.name.clone())
         .collect::<BTreeSet<_>>();
-    assert!(names.contains("-interactive-unattached"));
-    assert!(names.contains("-command-unattached"));
-    assert!(
-        names.contains(format!("origin-origin-window-{origin_pane}-interactive-attached").as_str())
+    assert_eq!(
+        names,
+        BTreeSet::from([
+            "origin".to_owned(),
+            "-interactive-unattached".to_owned(),
+            "-command-unattached".to_owned(),
+            format!("origin-origin-window-{origin_pane}-interactive-attached"),
+            format!("origin-origin-window-{origin_pane}-interactive-still-attached"),
+            format!("origin-origin-window-{origin_pane}-control-attached"),
+            format!("origin-origin-window-{origin_pane}-control-still-attached"),
+        ])
     );
-    assert!(names.contains(
-        format!("origin-origin-window-{origin_pane}-interactive-still-attached").as_str()
-    ));
-    assert!(
-        names.contains(format!("origin-origin-window-{origin_pane}-control-attached").as_str())
-    );
-    assert!(
-        names.contains(
-            format!("origin-origin-window-{origin_pane}-control-still-attached").as_str()
-        )
-    );
-    assert!(!names.contains("origin-interactive-unattached"));
-    assert!(!names.contains("origin-command-unattached"));
 }
 
 #[test]

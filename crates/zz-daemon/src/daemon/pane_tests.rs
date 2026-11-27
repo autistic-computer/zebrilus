@@ -95,8 +95,7 @@ fn a_hidden_pane_streams_nothing_until_its_window_is_shown() {
     {
         let inner = shared.inner.lock();
         let streamed = inner.clients[&client].streamed_terminals.as_ref().unwrap();
-        assert!(streamed.contains_key(&idle));
-        assert!(!streamed.contains_key(&printing));
+        assert_eq!(streamed.keys().copied().collect::<Vec<_>>(), [idle]);
     }
     let printer = terminal(&shared, printing);
     wait_until("the printer to run", || {

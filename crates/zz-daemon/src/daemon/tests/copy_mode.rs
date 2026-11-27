@@ -680,7 +680,7 @@ fn copy_pipe_timeout_kills_descendants() {
         Duration::from_secs(2),
     )
     .expect_err("copy pipe should time out");
-    assert!(error.contains("timed out"), "{error}");
+    assert_eq!(error, "process timed out after 2 seconds");
     let group = fs::read_to_string(group)
         .expect("copy-pipe process group never started")
         .parse()

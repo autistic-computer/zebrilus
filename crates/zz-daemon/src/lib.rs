@@ -167,14 +167,20 @@ mod tests {
         let directory = Path::new("private-tmux");
         let executable = Path::new("zz");
         let environment = tmux_shim_environment(Some(directory), Some(executable), None);
-        assert!(environment.contains(&(
-            TMUX_SHIM_DIRECTORY_ENVIRONMENT_VARIABLE.into(),
-            directory.as_os_str().to_owned(),
-        )));
-        assert!(environment.contains(&(
-            TMUX_SHIM_EXECUTABLE_ENVIRONMENT_VARIABLE.into(),
-            executable.as_os_str().to_owned(),
-        )));
+        assert_eq!(
+            environment,
+            [
+                ("PATH".into(), "private-tmux".into()),
+                (
+                    TMUX_SHIM_EXECUTABLE_ENVIRONMENT_VARIABLE.into(),
+                    "zz".into()
+                ),
+                (
+                    TMUX_SHIM_DIRECTORY_ENVIRONMENT_VARIABLE.into(),
+                    "private-tmux".into()
+                ),
+            ]
+        );
 
         let inherited = [
             (

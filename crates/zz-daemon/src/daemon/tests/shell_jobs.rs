@@ -1193,7 +1193,15 @@ fn shim_folders_of_dead_daemons_are_removed_and_live_ones_kept() {
         fs::write(root.path().join(name).join("zz"), b"").expect("write shim file");
     }
     remove_dead_tmux_shims(root.path());
-    assert!(!root.path().join(&names[0]).exists());
-    assert!(root.path().join(&names[1]).exists());
-    assert!(root.path().join(&names[2]).exists());
+    let left = fs::read_dir(root.path())
+        .expect("read shim root")
+        .map(|entry| {
+            entry
+                .expect("shim entry")
+                .file_name()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect::<BTreeSet<_>>();
+    assert_eq!(left, BTreeSet::from([names[1].clone(), names[2].clone()]));
 }

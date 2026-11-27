@@ -495,31 +495,26 @@ fn a_full_chooser_state_is_always_followed_by_its_presentation() {
         scene.open(command, &["-N"]);
         take_reliable_messages(&scene.outbound);
         scene.press(key('f', Modifiers::default()), buffer);
-        let mut cleared = false;
-        let mut full = false;
-        for message in take_reliable_messages(&scene.outbound) {
-            match message {
+        let sent = take_reliable_messages(&scene.outbound)
+            .into_iter()
+            .filter_map(|message| match message {
                 ProtocolMessage::Event(Event {
                     payload:
                         EventPayload::ChooseTree { state: Some(_) }
                         | EventPayload::ChooseBuffer { state: Some(_) },
                     ..
-                }) => {
-                    cleared = true;
-                    full = true;
-                }
+                }) => Some("state"),
                 ProtocolMessage::Event(Event {
                     payload:
                         EventPayload::ChooserPresentation {
                             presentation: Some(_),
                         },
                     ..
-                }) => cleared = false,
-                _ => {}
-            }
-        }
-        assert!(full, "{command} f sends the full state");
-        assert!(!cleared, "{command} f leaves the client a presentation");
+                }) => Some("presentation"),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(sent, ["state", "presentation"], "{command} f");
     }
 }
 

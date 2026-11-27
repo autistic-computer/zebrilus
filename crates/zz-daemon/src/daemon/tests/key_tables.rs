@@ -723,7 +723,7 @@ fn read_only_key_bindings_authorize_the_expanded_alias_once() {
 fn key_binding_commands_keep_construction_time_aliases() {
     let shared = Arc::new(Shared::new(1));
     let (a, _, pane) = switch_test_session(&shared, "A");
-    let (b, _, _) = switch_test_session(&shared, "B");
+    switch_test_session(&shared, "B");
     let (client, _) = shared.register_subscribed(
         ClientKind::Interactive,
         Some("writer".to_owned()),
@@ -769,7 +769,18 @@ fn key_binding_commands_keep_construction_time_aliases() {
             false,
         )
         .expect("frozen binding");
-    assert!(!shared.inner.lock().engine.state.sessions.contains_key(&b));
+    assert_eq!(
+        shared
+            .inner
+            .lock()
+            .engine
+            .state
+            .sessions
+            .keys()
+            .copied()
+            .collect::<Vec<_>>(),
+        [a]
+    );
 }
 
 #[test]
