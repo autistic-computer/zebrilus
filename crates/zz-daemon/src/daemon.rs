@@ -41,7 +41,19 @@ pub(crate) mod cmdq;
 mod connection;
 mod ctrl;
 #[cfg(test)]
-mod ctrl_tests;
+mod ctrl_attach_tests;
+#[cfg(test)]
+mod ctrl_exec_tests;
+#[cfg(test)]
+mod ctrl_frame_group_tests;
+#[cfg(test)]
+mod ctrl_quiet_tests;
+#[cfg(test)]
+mod ctrl_resize_tests;
+#[cfg(test)]
+mod ctrl_subscription_tests;
+#[cfg(test)]
+mod ctrl_test_support;
 #[cfg(unix)]
 mod event_loop;
 #[cfg(all(test, unix))]
