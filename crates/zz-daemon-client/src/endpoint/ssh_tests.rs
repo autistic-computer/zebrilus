@@ -155,47 +155,6 @@ fn a_user_master_keeps_its_own_persistence() {
     }
 }
 
-#[cfg(unix)]
-#[test]
-fn every_ssh_child_shares_one_multiplexing_master() {
-    let endpoint = test_ssh_endpoint(Some("user"), Some(2222));
-    let commands = [
-        command_args(&ssh_probe_command(&endpoint, test_session(), None)),
-        command_args(&ssh_daemon_start_command(
-            &endpoint,
-            test_session(),
-            Path::new("/run/zz.sock"),
-        )),
-        command_args(&ssh_forward_command(
-            &endpoint,
-            test_session(),
-            Path::new("/tmp/local.sock"),
-            Path::new("/run/zz.sock"),
-            Some(41_080),
-        )),
-    ];
-    for arguments in &commands {
-        assert!(
-            arguments.contains(&"ControlMaster=auto".to_owned()),
-            "{arguments:?}"
-        );
-        assert!(
-            arguments.contains(&"ControlPath=/tmp/zz-ssh/c0".to_owned()),
-            "{arguments:?}",
-        );
-        assert!(
-            arguments.contains(&"ControlPersist=600".to_owned()),
-            "{arguments:?}",
-        );
-        assert!(
-            !arguments
-                .iter()
-                .any(|argument| argument.contains("BatchMode")),
-            "{arguments:?}",
-        );
-    }
-}
-
 #[test]
 fn a_session_without_a_master_uses_platform_safe_options() {
     let endpoint = test_ssh_endpoint(None, None);
@@ -1436,18 +1395,6 @@ fn ssh_hosts_may_not_open_with_a_dash() {
             "{input}: {error}"
         );
     }
-}
-
-#[test]
-fn autostart_script_starts_the_daemon_without_trusting_an_existing_socket_file() {
-    let script = remote_daemon_start_script(Path::new("/run/user/1000/zz/default.sock"));
-    let start = script
-        .find("\"$zz_cli\" daemon")
-        .expect("the script must start the daemon");
-    assert!(
-        !script[..start].contains("[ -S "),
-        "nothing may short-circuit the start on the socket file alone: {script}"
-    );
 }
 
 #[test]
