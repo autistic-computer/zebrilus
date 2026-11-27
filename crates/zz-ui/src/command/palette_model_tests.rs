@@ -267,21 +267,32 @@ fn command_rows_hide_unavailable_pane_actions() {
         browser: false,
         editor: false,
     };
-    let rows = command_entries("", availability, &|_| None);
-    for hidden in [
-        "capture-browser",
-        "set-browser-url",
-        "set-browser-tabs",
-        "set-browser-profile",
-        "set-editor-path",
-        "select-pane-kind",
-    ] {
-        assert!(
-            !rows.iter().any(|entry| entry.row.label == hidden),
-            "{hidden}"
-        );
-    }
-    assert!(rows.iter().any(|entry| entry.row.label == "split-window"));
+    let shown = command_entries("", availability, &|_| None)
+        .into_iter()
+        .map(|entry| entry.row.label.to_string())
+        .collect::<Vec<_>>();
+    let mut hidden = command_entries(
+        "",
+        PaneKindAvailability {
+            browser: true,
+            editor: true,
+        },
+        &|_| None,
+    )
+    .into_iter()
+    .map(|entry| entry.row.label.to_string())
+    .filter(|label| !shown.contains(label))
+    .collect::<Vec<_>>();
+    hidden.sort();
+    assert_eq!(
+        hidden,
+        [
+            "capture-browser",
+            "html",
+            "set-browser-profile",
+            "set-browser-url"
+        ]
+    );
 }
 
 #[test]

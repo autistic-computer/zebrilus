@@ -44,8 +44,7 @@ fn an_opened_thought_scrolls_inside_a_capped_height(cx: &mut TestAppContext) {
     let thought = cx
         .debug_bounds("chat-thought")
         .expect("the opened thought should be painted");
-    assert!(thought.size.height <= px(super::THOUGHT_MAX_HEIGHT));
-    assert!(thought.size.height > px(40.0));
+    assert_eq!(thought.size.height, px(super::THOUGHT_MAX_HEIGHT));
 }
 
 #[ala::test]

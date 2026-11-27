@@ -362,8 +362,12 @@ mod tests {
              }",
         );
         assert!(shader.is_ok(), "{:?}", shader.err());
-        assert!(
-            TerminalShader::compile("void mainImage(out vec4 c, in vec2 p) { c = nope; }").is_err()
+        assert_eq!(
+            TerminalShader::compile("void mainImage(out vec4 c, in vec2 p) { c = nope; }")
+                .err()
+                .as_deref()
+                .and_then(|error| error.lines().next()),
+            Some("error: Unknown variable: nope")
         );
     }
 
