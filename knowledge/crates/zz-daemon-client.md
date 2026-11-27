@@ -4,13 +4,13 @@ title: zz-daemon-client crate
 description: Command and interactive connections, local and remote routes, host discovery, identity and process facts shared with the server.
 resource: crates/zz-daemon-client/src/lib.rs
 tags: [crate, client, ipc, transport, ssh, endpoint]
-timestamp: 2026-11-24T00:00:00-03:00
+timestamp: 2026-11-27T00:00:00-03:00
 ---
 
 # Connecting to a daemon
 
-`CommandClient` and `InteractiveClient` in `crates/zz-daemon-client/src/client.rs` write
-the [wire protocol](/protocol/wire-protocol.md), materialize hello state and expose replies or
+`CommandClient` and `InteractiveClient` (`crates/zz-daemon-client/src/client.rs` and the
+files under `client/`, listed below) write the [wire protocol](/protocol/wire-protocol.md), materialize hello state and expose replies or
 events to their callers. `ProtocolSender` checks the daemon's declared capabilities for gated
 messages. One-shot exec has a separate opening frame. Client-only consumers link this library
 without linking the server implementation.
@@ -19,15 +19,27 @@ without linking the server implementation.
 | --- | --- |
 | Local | `transport.rs` dials a Unix-domain socket or a Windows named pipe. `ZZ_SOCKET` selects the endpoint. |
 | SSH from macOS/Linux | `endpoint.rs` resolves the remote binary and socket, starts the daemon if needed, and uses OpenSSH local socket forwarding. CLI connections can reuse a kept forward. Interactive browser egress can get a SOCKS endpoint. |
-| SSH from Windows | OpenSSH runs the remote connect script and `zz proxy` through stdio. The client presents the route through a local pipe. |
+| SSH from Windows | OpenSSH runs the remote connect script and `zz proxy` through stdio. The client presents the route through a local pipe (`endpoint/windows_forward.rs`). |
 | SSH from iOS/Android | `russh_client.rs` runs the SSH channel in-process. `russh_prompt.rs` and `russh_socks.rs` handle prompts and browser forwarding. The Keychain integration in `ios_keychain.rs` is iOS-specific. |
-| Tailnet | Desktop `tailnet.rs` provides discovery, address resolution and `TailnetForward`. Mobile interactive clients dial TCP through `client.rs`. |
+| Tailnet | Desktop `tailnet.rs` provides discovery, address resolution and `TailnetForward`. Mobile interactive clients dial TCP through `client/interactive.rs`. |
 | WSL | A native Windows client opens a distro with `WslForward` in `wsl.rs`. The endpoint spelling is `wsl://DISTRO`. |
 
 `Endpoint` in `endpoint.rs` parses these forms. The desktop-only `DaemonRoute` in `route.rs`
 keeps a local endpoint available to callers that handle framing themselves, including the web
 gateway. `open_unattended` and `open_with_prompts` choose the login mode. See
 [fleet attach](/designs/fleet-attach.md).
+
+## Client and endpoint files
+
+| File under `crates/zz-daemon-client/src` | Holds |
+| --- | --- |
+| `client.rs` | The client types, the protocol sender and receiver, the hello handshake, environment and terminal facts, and the answers to the daemon's file and stdin requests |
+| `client/command.rs` | The `CommandClient` methods and its route and link: connecting, exec, command chains and kept-forward checks |
+| `client/interactive.rs` | The `InteractiveClient` methods: connecting over each route, attach, input, agent requests, sending and receiving |
+| `client/connection_tests.rs`, `ctrl_client_tests.rs` | Tests of the client connection: handshake, environment and terminal facts, file and stdin answers, frame reading |
+| `endpoint.rs` | `Endpoint` and its parsing, the ssh session options, remote scripts, probe, install and remote CLI, and the Unix forward with its control master and kept forward |
+| `endpoint/windows_forward.rs` | The Windows ssh forward: the named pipe bridge to `zz proxy`, its job object and the proxy handshake |
+| `endpoint/parse_tests.rs`, `endpoint/ssh_tests.rs` | Tests of endpoint parsing, and of the ssh arguments, remote scripts, probe, install and control paths |
 
 ## Remote connection and repair
 
