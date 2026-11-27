@@ -4,7 +4,7 @@ title: In-page element picker
 description: A token-guarded, single-use overlay that lets the user pick a DOM element in the page and returns a bounded, sanitized source-context string plus an optional screenshot of the picked area.
 resource: libs/ala-cef/src/element_picker.rs
 tags: [browser, element-picker, devtools, message-router]
-timestamp: 2026-10-29T21:41:05Z
+timestamp: 2026-11-27T00:00:00Z
 ---
 
 # Overview
@@ -167,6 +167,7 @@ Paths are relative to `libs/ala-cef` unless marked zz.
 | `src/element_picker.js` | Generated injected renderer bundle (~64 KB); rebuild it with `pnpm run build` in `picker/`, and `pnpm run check` fails when it is stale. |
 | `src/cef_runtime.rs` | Message-router setup, script injection, `ElementPickerQueryHandler`, start/cancel + auto-cancel. |
 | `crates/zz/src/browser/view.rs` (zz) | Resolves the active zz-ui theme into `ElementPickerAppearance` at activation time. |
+| `crates/zz/src/browser/view/page_tools.rs` (zz) | Starts, completes and cancels a pick. |
 
 # Related
 

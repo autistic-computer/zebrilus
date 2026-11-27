@@ -9,7 +9,7 @@ tags:
 - omnibox
 - autocomplete
 - profiles
-timestamp: 2026-11-24T00:00:00Z
+timestamp: 2026-11-27T00:00:00Z
 ---
 
 # Overview
@@ -155,7 +155,8 @@ without weakening locally learned use.
 | `crates/zz-client/src/recent_pages.rs` | Bounded storage, migration, matching, scoring, learning, deletion, the shared omnibox state (typing, preview, accept), and tests. |
 | `crates/zz/src/browser/recent_pages/store.rs` | The desktop history file: size guard, load, atomic owner-only save. |
 | `crates/zz/src/browser/recent_pages.rs` | Lazy desktop history loading, revision notifications, batched background saves, and shutdown flush. |
-| `crates/zz/src/browser/view.rs` | Input events, successful-use credit, keyboard selection, Escape stages, and result actions. |
+| `crates/zz/src/browser/view/omnibox.rs` | Input events, successful-use credit, keyboard selection, and result actions. |
+| `crates/zz/src/browser/view.rs` | Escape stages. |
 | `clients/app/src/app/browser_pane.rs` | The iPad and Android tablet address field and blank tab on the same store and omnibox state. |
 | `clients/app/src/app/browser_pane/history.rs` | Thin-client history, one file per host on the device, loaded on first use and saved half a second after a change. |
 | `crates/zz-ui/src/browser.rs` | Native result panel and title/URL rows under the compact toolbar. |
