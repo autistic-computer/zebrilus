@@ -165,12 +165,14 @@ fn double_dash_allows_a_positional_starting_with_dash() {
         .execute(&mut context, &command("rename-session", &["--", "-weird"]))
         .unwrap();
 
-    assert!(
+    assert_eq!(
         engine
             .state
             .sessions
             .values()
-            .any(|session| session.name == "-weird")
+            .map(|session| session.name.as_str())
+            .collect::<Vec<_>>(),
+        ["-weird"]
     );
 }
 

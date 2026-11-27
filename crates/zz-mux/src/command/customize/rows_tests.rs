@@ -123,7 +123,10 @@ fn customize_changed_only_compares_an_arrays_printed_values() {
     };
     let mut expand = customize_expand;
     let rows = engine.customize_rows(pane, &mode, &mut expand);
-    assert!(!rows.iter().any(|row| row.name == "update-environment"));
+    assert_eq!(
+        rows.iter().map(|row| row.name.as_str()).collect::<Vec<_>>(),
+        Vec::<&str>::new()
+    );
 }
 
 #[test]
@@ -324,16 +327,41 @@ fn customize_changed_only_keeps_changed_rows_and_drops_environment() {
     let mut expand = customize_expand;
     let rows = engine.customize_rows(pane, &mode, &mut expand);
     let names = rows.iter().map(|row| row.name.as_str()).collect::<Vec<_>>();
-    assert!(names.contains(&"status-left"));
-    assert!(!names.contains(&"status-right"));
-    assert!(names.contains(&"after-new-window"));
-    assert!(names.contains(&"after-new-window[0]"));
-    assert!(!names.contains(&"after-new-session"));
-    assert!(names.contains(&"F7"));
-    assert!(!names.contains(&"Global Environment"));
-    assert!(!names.contains(&"Session Environment"));
-    assert!(!names.contains(&"Server Options"));
+    assert_eq!(
+        names,
+        [
+            "Session Options",
+            "status-left",
+            "Session Hooks",
+            "after-new-window",
+            "after-new-window[0]",
+            "Key Table - prefix",
+            "F7",
+            "Command",
+            "Note",
+            "Repeat",
+        ]
+    );
     press(&mut engine, &mut context, pane, &mut mode, "C");
     let rows = engine.customize_rows(pane, &mode, &mut expand);
-    assert!(rows.iter().any(|row| row.name == "Global Environment"));
+    assert_eq!(
+        rows.iter()
+            .filter(|row| row.parent.is_none())
+            .map(|row| row.name.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "Server Options",
+            "Session Options",
+            "Window & Pane Options",
+            "Session Hooks",
+            "Window & Pane Hooks",
+            "Global Environment",
+            "Session Environment",
+            "Key Table - copy-mode",
+            "Key Table - copy-mode-vi",
+            "Key Table - move",
+            "Key Table - prefix",
+            "Key Table - root",
+        ]
+    );
 }

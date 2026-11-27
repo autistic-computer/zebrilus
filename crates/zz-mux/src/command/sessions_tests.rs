@@ -658,12 +658,22 @@ fn clientless_new_session_forces_detached_creation() {
     let execution = engine
         .execute(&mut context, &command("new-session", &["-s", "fromconfig"]))
         .expect("clientless new session");
+    let pane = context.pane.expect("new pane id");
 
-    assert!(
-        execution
-            .effects
-            .iter()
-            .all(|effect| !matches!(effect, MuxEffect::Attach { .. }))
+    assert_eq!(
+        execution.effects,
+        [
+            MuxEffect::PaneCreated {
+                pane,
+                kind: PaneKindSnapshot::Terminal,
+                inherit_cwd_from: None,
+                cwd: None,
+                command: None,
+                environment: Vec::new(),
+                empty: false,
+            },
+            MuxEffect::SnapshotChanged,
+        ]
     );
     assert!(session_named(&engine.state, "fromconfig").is_some());
 }

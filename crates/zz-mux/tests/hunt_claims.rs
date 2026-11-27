@@ -2515,24 +2515,22 @@ fn set_option_accepts_tmux_boolean_case_and_empty_toggle() {
     engine
         .execute(&mut context, &command("new-session", &["-s", "work"]))
         .unwrap();
-    engine
-        .execute(
-            &mut context,
-            &command("set-option", &["synchronize-panes", "ON"]),
-        )
-        .unwrap();
-    engine
-        .execute(
-            &mut context,
-            &command("set-option", &["synchronize-panes", "Off"]),
-        )
-        .unwrap();
-    engine
-        .execute(
-            &mut context,
-            &command("set-option", &["synchronize-panes", ""]),
-        )
-        .unwrap();
+    for (value, expected) in [("ON", "on"), ("Off", "off"), ("", "on")] {
+        engine
+            .execute(
+                &mut context,
+                &command("set-option", &["synchronize-panes", value]),
+            )
+            .unwrap();
+        let shown = engine
+            .execute(
+                &mut context,
+                &command("show-options", &["-wv", "synchronize-panes"]),
+            )
+            .unwrap()
+            .output;
+        assert_eq!(shown, expected, "{value:?}");
+    }
 }
 
 #[test]
