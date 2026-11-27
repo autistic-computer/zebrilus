@@ -63,6 +63,7 @@ use penna::blocks::chat::{
 };
 use penna::blocks::chat::{card_chip, card_glyph, card_header, card_title};
 
+mod hooks;
 mod pane;
 mod peek;
 mod peer;
@@ -235,43 +236,6 @@ impl ChatMarkdown {
     }
 }
 
-impl ChatHooks<'_> {
-    fn refs(&self) -> Option<&ChatRefs> {
-        self.markdown.map(|markdown| &*markdown.refs)
-    }
-
-    fn clickable<E: StatefulInteractiveElement + Styled>(
-        &self,
-        element: E,
-        target: ChatClick,
-    ) -> E {
-        match self.click.clone() {
-            Some(click) => element
-                .click_cursor()
-                .on_click(move |_, window, cx| click(&target, window, cx)),
-            None => element,
-        }
-    }
-
-    fn hold(&self, held: HeldMessage) -> Option<AnyElement> {
-        let click = self.click.clone().filter(|_| self.touch)?;
-        Some(
-            penna::blocks::compact::hold_listener(Rc::new(move |window, cx| {
-                click(&ChatClick::Hold(held.clone()), window, cx);
-            }))
-            .into_any_element(),
-        )
-    }
-
-    fn fork_from(&self, id: &ItemId) -> Option<(ChatClicks, ItemId)> {
-        self.click
-            .clone()
-            .filter(|_| self.fork)
-            .filter(|_| zz_client::agent_settings::source_message(id.as_str()).is_some())
-            .map(|click| (click, id.clone()))
-    }
-}
-
 const USER_FOLD_HEIGHT: f32 = 176.0;
 const USER_FOLD_SLACK: f32 = 48.0;
 const USER_FADE_HEIGHT: f32 = 64.0;
@@ -323,21 +287,6 @@ pub struct ChatFrame {
     pub ground: Option<penna::Ground>,
     pub touch: bool,
     pub children: Option<ChildChats>,
-}
-
-impl ChatFrame {
-    fn hooks(&self) -> ChatHooks<'_> {
-        ChatHooks {
-            click: self.click.clone(),
-            fork: self.fork,
-            markdown: self.markdown.as_deref(),
-            vendor: self.vendor,
-            owner: self.owner,
-            ground: self.ground,
-            touch: self.touch,
-            children: self.children.clone(),
-        }
-    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
