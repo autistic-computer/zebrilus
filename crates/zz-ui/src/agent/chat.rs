@@ -65,8 +65,10 @@ use penna::blocks::chat::{card_chip, card_glyph, card_header, card_title};
 
 mod pane;
 mod peek;
+mod peer;
 
 use peek::*;
+use peer::*;
 
 #[derive(Clone, Debug, Default)]
 pub struct ChatOpen {
@@ -1772,26 +1774,6 @@ const PEER_BODY_INDENT: f32 = 21.0;
 const PEER_RULE_LEFT: f32 = 6.0;
 const PEER_TAIL_YIELD: f32 = 1000.0;
 
-const fn sent_attention(state: PeerState) -> Attention {
-    match state {
-        PeerState::Working | PeerState::Asking | PeerState::Answered => Attention::Working,
-        PeerState::Replied => Attention::Done,
-        PeerState::Failed => Attention::Failed,
-        PeerState::Stopped | PeerState::Closed => Attention::None,
-    }
-}
-
-const fn note_attention(state: PeerState) -> Attention {
-    match state {
-        PeerState::Asking => Attention::NeedsYou,
-        PeerState::Replied => Attention::Done,
-        PeerState::Failed => Attention::Failed,
-        PeerState::Working | PeerState::Answered | PeerState::Stopped | PeerState::Closed => {
-            Attention::None
-        }
-    }
-}
-
 fn peer_line(id: impl Into<ala::ElementId>, touch: bool, cx: &App) -> Stateful<Div> {
     h_flex()
         .id(id)
@@ -1819,78 +1801,11 @@ fn peer_line(id: impl Into<ala::ElementId>, touch: bool, cx: &App) -> Stateful<D
 
 const TOUCH_PEER_LINE: f32 = 20.0;
 
-fn peer_glyph(glyph: Icon, touch: bool, cx: &App) -> Div {
-    peer_mark(
-        glyph,
-        penna::blocks::chat::ACTIVITY_ROW_FONT_SIZE,
-        touch,
-        cx,
-    )
-}
-
-fn peer_end(glyph: Icon, touch: bool, cx: &App) -> Div {
-    peer_mark(glyph, ACTIVITY_DISCLOSURE_SIZE, touch, cx)
-}
-
-fn peer_mark(glyph: Icon, desktop: f32, touch: bool, cx: &App) -> Div {
-    let (font, size) = if touch {
-        (
-            TextStyle::TouchSmall.design_px(),
-            penna::blocks::chat::TOUCH_ACTIVITY_GLYPH,
-        )
-    } else {
-        (penna::blocks::chat::ACTIVITY_ROW_FONT_SIZE, desktop)
-    };
-    div()
-        .flex_none()
-        .relative()
-        .top(crate::icon::cap_center_drop(px(font), px(size), cx))
-        .child(glyph.size(px(size)))
-}
-
-fn peer_text(text: &str, shrink: f32) -> Option<Div> {
-    (!text.is_empty()).then(|| {
-        div()
-            .min_w_0()
-            .flex_shrink(shrink)
-            .overflow_hidden()
-            .text_ellipsis()
-            .whitespace_nowrap()
-            .child(text.to_owned())
-    })
-}
-
 struct PeerFace {
     title: String,
     program: Option<&'static Program>,
     glyph: IconName,
     target: Option<crate::target::ResolvedTarget>,
-}
-
-fn note_face(note: &PeerNote, hooks: &ChatHooks<'_>) -> PeerFace {
-    let command = PeerFace {
-        title: "a command".to_owned(),
-        program: None,
-        glyph: IconName::Terminal,
-        target: None,
-    };
-    match (&note.peer, &note.message) {
-        (Some(peer), PeerMessage::Sent { .. }) if peer.agent.is_none() => PeerFace {
-            glyph: IconName::Terminal,
-            ..peer_face(peer, hooks)
-        },
-        (Some(peer), _) => peer_face(peer, hooks),
-        (
-            None,
-            PeerMessage::Sent {
-                host: Some(host), ..
-            },
-        ) => PeerFace {
-            title: format!("a command · {host}"),
-            ..command
-        },
-        (None, _) => command,
-    }
 }
 
 fn peer_face(peer: &Peer, hooks: &ChatHooks<'_>) -> PeerFace {
