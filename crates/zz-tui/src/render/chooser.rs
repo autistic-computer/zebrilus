@@ -11,7 +11,10 @@ use zz_terminal::{
     UnderlineStyle,
 };
 
-use super::{Renderer, write_cursor_position, write_sgr, write_tmux_sgr};
+use super::{
+    Renderer, clear_screen, padded_segment, write_colored_text, write_cursor_position, write_sgr,
+    write_tmux_sgr,
+};
 use crate::state::Model;
 
 const HELP_START: &[(&str, &str)] = &[
@@ -1515,4 +1518,241 @@ pub(super) fn customize_surface(
         cursor.0 = column.min(rect.width - 1);
     }
     (grid, cursor)
+}
+
+const CHOOSE_TREE_HELP: &[&str] = &[
+    "Up, k          Move up",
+    "Down, j        Move down",
+    "K, J           Swap the window row with its sibling",
+    "Left, h, -     Collapse",
+    "Right, l, +    Expand",
+    "M--, M-+       Collapse or expand every top-level item",
+    "t, T, C-t      Tag, untag all, tag all",
+    "x, X           Kill the row or every tagged row",
+    "m, M           Mark the row's pane, clear the mark",
+    "O, r           Change or reverse the sort order",
+    ":              Run a command on the tagged rows",
+    "/, ?, n, N     Search",
+    "Enter          Choose",
+    "q, Escape      Cancel",
+    "F1, C-h        This help",
+];
+
+const CHOOSE_BUFFER_HELP: &[&str] = &[
+    "Up, k          Move up",
+    "Down, j        Move down",
+    "t, T, C-t      Tag, untag all, tag all",
+    "d, D           Delete the buffer or every tagged buffer",
+    "p, P, Enter    Paste the buffer or every tagged buffer",
+    "O, r           Change or reverse the sort order",
+    "/, ?, n, N     Search",
+    "q, Escape      Cancel",
+    "F1, C-h        This help",
+];
+
+impl Renderer {
+    fn draw_chooser_help(&mut self, model: &Model, start_row: u16, lines: &[&str]) {
+        for (index, line) in lines.iter().enumerate() {
+            let row = start_row + u16::try_from(index).unwrap_or(u16::MAX);
+            if row >= model.size.rows.saturating_sub(1) {
+                break;
+            }
+            write_colored_text(
+                &mut self.output,
+                0,
+                row,
+                &padded_segment(line, model.size.columns, ' '),
+                model.appearance.foreground,
+                model.appearance.background,
+            );
+        }
+    }
+    pub(super) fn paint_chooser(&mut self, model: &Model) {
+        clear_screen(&mut self.output, model.appearance.background);
+        if let Some(state) = &model.choose_tree {
+            let title = match state.kind {
+                zz_protocol::ChooseTreeKind::Windows => "Choose window",
+                zz_protocol::ChooseTreeKind::Panes => "Choose pane",
+                zz_protocol::ChooseTreeKind::Clients => "Choose client",
+            };
+            write_colored_text(
+                &mut self.output,
+                0,
+                0,
+                &padded_segment(title, model.size.columns, ' '),
+                model.appearance.background,
+                model.appearance.link_color,
+            );
+            let mut start_row = 1;
+            if !state.prompt.is_empty() {
+                write_colored_text(
+                    &mut self.output,
+                    0,
+                    start_row,
+                    &padded_segment(&state.prompt, model.size.columns, ' '),
+                    model.appearance.background,
+                    model.appearance.link_color,
+                );
+                start_row += 1;
+            }
+            if state.filter_no_matches {
+                write_colored_text(
+                    &mut self.output,
+                    0,
+                    start_row,
+                    &padded_segment("filter: no matches", model.size.columns, ' '),
+                    model.appearance.foreground,
+                    model.appearance.background,
+                );
+                start_row += 1;
+            }
+            if let Some(search) = &state.search {
+                write_colored_text(
+                    &mut self.output,
+                    0,
+                    start_row,
+                    &padded_segment(&format!("/{}", search.query), model.size.columns, ' '),
+                    model.appearance.foreground,
+                    model.appearance.background,
+                );
+                start_row += 1;
+            }
+            if state.help {
+                self.draw_chooser_help(model, start_row, CHOOSE_TREE_HELP);
+                return;
+            }
+            let key_column = chooser_key_column(state.items.iter().map(|item| item.key.as_str()));
+            for (index, item) in state.items.iter().enumerate() {
+                let row = start_row + u16::try_from(index).unwrap_or(u16::MAX);
+                if row >= model.size.rows.saturating_sub(1) {
+                    break;
+                }
+                let marker = if u32::try_from(index).ok() == Some(state.selected) {
+                    ">"
+                } else if item.tagged() {
+                    "*"
+                } else {
+                    " "
+                };
+                let indent = "  ".repeat(usize::from(item.depth));
+                let key = chooser_key_cell(&item.key, key_column);
+                let row_text = if item.text.is_empty() {
+                    format!("{}  {}", item.label, item.detail)
+                } else {
+                    item.text.clone()
+                };
+                let text = format!("{marker} {key}{indent}{row_text}");
+                write_colored_text(
+                    &mut self.output,
+                    0,
+                    row,
+                    &padded_segment(&text, model.size.columns, ' '),
+                    model.appearance.foreground,
+                    model.appearance.background,
+                );
+            }
+        } else if let Some(state) = &model.choose_buffer {
+            write_colored_text(
+                &mut self.output,
+                0,
+                0,
+                &padded_segment("Choose buffer", model.size.columns, ' '),
+                model.appearance.background,
+                model.appearance.link_color,
+            );
+            let mut start_row = 1;
+            if state.filter_no_matches {
+                write_colored_text(
+                    &mut self.output,
+                    0,
+                    start_row,
+                    &padded_segment("filter: no matches", model.size.columns, ' '),
+                    model.appearance.foreground,
+                    model.appearance.background,
+                );
+                start_row += 1;
+            }
+            if let Some(search) = &state.search {
+                write_colored_text(
+                    &mut self.output,
+                    0,
+                    start_row,
+                    &padded_segment(&format!("/{}", search.query), model.size.columns, ' '),
+                    model.appearance.foreground,
+                    model.appearance.background,
+                );
+                start_row += 1;
+            }
+            if state.help {
+                self.draw_chooser_help(model, start_row, CHOOSE_BUFFER_HELP);
+                return;
+            }
+            let key_column = chooser_key_column(state.items.iter().map(|item| item.key.as_str()));
+            for (index, item) in state.items.iter().enumerate() {
+                let row = start_row + u16::try_from(index).unwrap_or(u16::MAX);
+                if row >= model.size.rows.saturating_sub(1) {
+                    break;
+                }
+                let marker = if u32::try_from(index).ok() == Some(state.selected) {
+                    ">"
+                } else if item.tagged {
+                    "*"
+                } else {
+                    " "
+                };
+                let key = chooser_key_cell(&item.key, key_column);
+                let row_text = if item.text.is_empty() {
+                    format!("{}  {} bytes  {}", item.name, item.size_bytes, item.preview)
+                } else {
+                    item.text.clone()
+                };
+                let text = format!("{marker} {key}{row_text}");
+                write_colored_text(
+                    &mut self.output,
+                    0,
+                    row,
+                    &padded_segment(&text, model.size.columns, ' '),
+                    model.appearance.foreground,
+                    model.appearance.background,
+                );
+            }
+        }
+        let help = padded_segment("Enter select  / search  Esc close", model.size.columns, ' ');
+        write_colored_text(
+            &mut self.output,
+            0,
+            model.size.rows.saturating_sub(1),
+            &help,
+            model.appearance.background,
+            model.appearance.foreground,
+        );
+        self.painted.clear();
+        self.headers.clear();
+        self.picker_cards.clear();
+        self.cards.clear();
+        self.sidebar_rows.clear();
+        self.status_rows.clear();
+        self.status_geometry = None;
+        self.status_source = None;
+    }
+}
+
+pub(super) fn chooser_key_column<'a>(keys: impl Iterator<Item = &'a str>) -> usize {
+    keys.filter(|key| !key.is_empty())
+        .map(|key| key.chars().count() + 3)
+        .max()
+        .unwrap_or(0)
+}
+
+pub(super) fn chooser_key_cell(key: &str, column: usize) -> String {
+    if column == 0 {
+        return String::new();
+    }
+    let cell = if key.is_empty() {
+        String::new()
+    } else {
+        format!("({key})")
+    };
+    let padding = column.saturating_sub(cell.chars().count());
+    format!("{cell}{}", " ".repeat(padding))
 }

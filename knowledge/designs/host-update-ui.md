@@ -284,6 +284,6 @@ version there. `zz fleet install NAME` updates it.
 - `crates/zz-cli/src/update.rs` `DAEMON_FACTS`, `Daemon`, `parse_daemon_facts`,
   `endpoint_daemon`, `ssh_install`, `tailnet_install`, `update_server`, `restart_server`,
   `daemon_behind`, `host_daemon`, `host_install`, `host_restart`, `HostUpdateError`
-- `crates/zz-daemon/src/status.rs` `zz_version`, `zz_revision`, `zz_owned_version`
+- `crates/zz-daemon/src/status/hooks.rs` `zz_version`, `zz_revision`, `zz_owned_version`
 - `crates/zz-protocol/src/message.rs` `REVISION`
 - [daemon update](/designs/daemon-update.md), [split updates](/designs/split-updates.md)

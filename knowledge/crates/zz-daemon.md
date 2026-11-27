@@ -4,7 +4,7 @@ title: zz-daemon crate
 description: Map of the daemon crate, from connection to command routing, effect application and publication, with the state layout and the file that owns each concern.
 resource: crates/zz-daemon/src/daemon.rs
 tags: [crate, daemon, ipc, fanout, transport, agent, map]
-timestamp: 2026-11-26T00:00:00-03:00
+timestamp: 2026-11-27T00:00:00-03:00
 ---
 
 # What the crate owns
@@ -27,7 +27,8 @@ Paths below are relative to `crates/zz-daemon/src`.
 | `lib.rs` | Crate exports, pane and shell job environment for the bundled `tmux` wrapper, `shell_process` |
 | `daemon.rs` | `Daemon` and `Daemon::serve`, `Shared`, `SharedServer`, `ServerState` and its group structs, `Client`, helpers several subjects share, the module list |
 | `daemon/*.rs` | One file per subject. Each adds an `impl Shared` block or free functions over `ServerState` |
-| `status.rs` | Status line rendering, format hooks and format facts (`StatusRenderer`, `DaemonFormatHooks`) |
+| `status.rs` | The status types whose fields several status files share (`StatusRenderer`, `StatusRequest`, `DaemonFormatHooks`, the completed status, status parts and shell job cache entries), the context format lists, cycle frame tracking and the status module list |
+| `status/*.rs` | One file per status subject, listed under [Status](#status) |
 | `keys.rs` | Key names and key actions for choosers, overlays and prompts |
 | `wake.rs` | `AcceptWake` and the loop thread wake |
 | `tailnet.rs` | The tailnet listener and `zz tailnet` command |
@@ -287,6 +288,21 @@ The [zz-agent crate](/crates/zz-agent.md) runs agents; the `agent` feature pulls
 | `status_refresh.rs` | Status refresh, control-mode subscriptions, format monitors, diagnostic snapshot |
 | `status_requests.rs` | Status requests per client and their caches |
 | `format_facts.rs` | Format facts borrowed from `ServerState` for hooks and format expansion |
+
+The status line itself is `status.rs` and the files under `status/`, outside `daemon/`:
+
+| File | Owns |
+| --- | --- |
+| `status/renderer.rs` | `StatusRenderer` methods, status contexts, and composing the rows, title and styles of a `StatusLine` |
+| `status/hooks.rs` | `DaemonFormatHooks`: the `StatusHooks` implementation, pane output and program status variables, buffer samples, content search |
+| `status/facts.rs` | `FormatHookFacts`, the `FormatFactSource` trait, buffer, client, viewport and message facts |
+| `status/parts.rs` | Status parts and the completed status cache, callbacks and their retained bytes |
+| `status/formats.rs` | Mode line formats, `expand_style`, theme colour slots and the status template inventory |
+| `status/terminfo.rs` | Terminfo entries read through `infocmp`, their warm cache and client terminal facts |
+| `status/shell_jobs.rs` | Polling `#()` shell job cache entries and storing their output, starting a job and choosing its working directory |
+
+Their tests are `status/<subject>_tests.rs` beside them, with shared fixtures in
+`status/test_support.rs`. `status/format_status_tests.rs` covers status expansion end to end.
 
 ## Tests
 

@@ -54,7 +54,7 @@ ZONES = {
     ],
     "config-parser": ["crates/zz-mux/src/parser.rs"],
     "daemon-core": ["crates/zz-daemon/src/daemon.rs", "crates/zz-daemon/src/daemon/"],
-    "daemon-status": ["crates/zz-daemon/src/status.rs"],
+    "daemon-status": ["crates/zz-daemon/src/status.rs", "crates/zz-daemon/src/status/"],
     "control-client": ["crates/zz-cli/src/control_mode.rs"],
     "client-core": ["crates/zz-client/src/"],
     "raw-tui": ["crates/zz-tui/src/"],
