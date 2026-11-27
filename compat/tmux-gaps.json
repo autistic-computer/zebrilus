@@ -44,7 +44,7 @@
         "semantic:capture-pane-line-flags-dead-extended"
       ],
       "evidence": [
-        "resource:crates/zz-terminal/src/session.rs",
+        "resource:crates/zz-terminal/src/session/capture.rs",
         "resource:crates/zz-terminal/src/session/capture_links_tests.rs",
         "scenario:compat/scenarios/smoke/capture-links.txt"
       ],
@@ -70,7 +70,7 @@
       ],
       "evidence": [
         "resource:compat/tmux-oracle.json",
-        "resource:crates/zz-terminal/src/session.rs"
+        "resource:crates/zz-terminal/src/session/capture.rs"
       ],
       "acceptance": [
         "capture-pane -I stays an unsupported flag until the terminal engine records when each line entered history."
@@ -95,9 +95,9 @@
         "semantic:capture-pane-saved-alternate"
       ],
       "evidence": [
-        "resource:crates/zz-daemon/src/daemon.rs",
+        "resource:crates/zz-daemon/src/daemon/capture.rs",
         "resource:crates/zz-protocol/src/catalog.rs",
-        "resource:crates/zz-terminal/src/session.rs",
+        "resource:crates/zz-terminal/src/session/capture.rs",
         "resource:crates/zz-terminal/src/session/capture_links_tests.rs",
         "resource:knowledge/tmux/divergences.md",
         "scenario:compat/scenarios/capture-pane.txt",
@@ -129,7 +129,7 @@
         "semantic:capture-pane-output-mark-line-moves"
       ],
       "evidence": [
-        "resource:crates/zz-terminal/src/session.rs",
+        "resource:crates/zz-terminal/src/session/capture.rs",
         "resource:crates/zz-terminal/src/session/capture_links_tests.rs",
         "scenario:compat/scenarios/smoke/capture-links.txt"
       ],
@@ -256,7 +256,7 @@
       ],
       "evidence": [
         "resource:crates/zz-protocol/src/catalog.rs",
-        "resource:crates/zz-mux/src/formats.rs",
+        "resource:crates/zz-mux/src/formats/status_values.rs",
         "resource:knowledge/tmux/commands.md"
       ],
       "acceptance": [
@@ -401,7 +401,7 @@
         "semantic:background-if-shell-racing-conditions-pick-different-branches"
       ],
       "evidence": [
-        "resource:crates/zz-daemon/src/daemon.rs",
+        "resource:crates/zz-daemon/src/daemon/command_routing.rs",
         "scenario:compat/scenarios/if-shell-background-order.txt",
         "scenario:compat/scenarios/smoke/plugin-runtime-oh-my-tmux.txt"
       ],
@@ -497,7 +497,7 @@
         "semantic:popup-style-refresh"
       ],
       "evidence": [
-        "resource:crates/zz-daemon/src/daemon.rs",
+        "resource:crates/zz-daemon/src/daemon/overlays.rs",
         "resource:knowledge/designs/floating-panes.md",
         "resource:knowledge/research/2026-10-09-tmux-compat-revisit.md",
         "scenario:compat/scenarios/known/known-display-popup-drag.txt",
@@ -530,7 +530,7 @@
         "semantic:format-expansion-time-budget"
       ],
       "evidence": [
-        "resource:crates/zz-mux/src/formats.rs",
+        "resource:crates/zz-mux/src/formats/compiled.rs",
         "resource:crates/zz-daemon/src/status.rs",
         "resource:crates/zz-protocol/src/message.rs",
         "scenario:compat/scenarios/format-expansion-output-clamp.txt",
@@ -542,7 +542,7 @@
         "The engine stays deterministic with no wall-clock abort, and the recursion depth guard keeps matching the pin at 100 on both sides."
       ],
       "depends_on": [],
-      "reason": "The output clamp is fixed and the wall clock is refused, each on its own evidence. zz used to clamp every finished expansion to MAX_STATUS_TEXT_BYTES, 4096, in truncate_output at all three entry points, so command-facing output lost everything past 4096 bytes while `#{n:}` of the same format already reported the full length. truncate_output is gone and the bound moved to where StatusLine enforces it: clamp_status_text bounds the status title, base style, and every status row as that message is built, beside the left and right sides wrap_status_style already bounded. The strict format-expansion-output-clamp differential now agrees with the pin at 9000 bytes for `#{p-9000:#{l:tail}}`, 10000 for `#{R:x,10000}`, and 6000 for a 6000-byte user option read back through `#{E:}`. The pin's FORMAT_TIME_LIMIT, 100 milliseconds of wall clock checked on entry to format_expand1, is deliberately not adopted. It was implemented and measured first: threading one FormatBudget from each entry point into every nested expander reproduced the pin's shape exactly, where after `#{n:#{Ogs:#{Ogs:#{l:x}}}}` burns the budget the trailing literal text still lands, `#{l:lit}` still expands because format_unescape only samples the clock every 10000 characters, and `#{?session_name,yes,no}` beside them expands empty. It also made zz's own command semantics load-sensitive, because zz expands option values and command arguments through the same engine and an emptied argument is a failure rather than a truncation: with the budget in place, daemon::tests::attached_client_extents_clamp_retained_and_default_dimensions failed 5 of 5 runs under eight spinning cores and passed 6 of 6 idle, while the same test on the same load passed 3 of 3 without it, and forcing the budget spent failed it deterministically inside a `set-option status off`. Trading a benign output difference for a load-dependent command failure is the wrong side of that bargain, so the divergence is accepted: a runaway expansion in zz runs to completion and answers the same string every time, where the pin returns a truncated result whose length moves run to run. FORMAT_LOOP_LIMIT was never part of this and did not change: measured on the pin, 200 sibling `#{l:x}` replacements all expand, 99 nested `#{s/x/x/:}` wrappers still reach their body, and the hundredth answers empty, which is a recursion depth of 100 on both sides rather than a running total. The 40,960,000-byte repeat ceiling stays the allocation guard it always was."
+      "reason": "The output clamp is fixed and the wall clock is refused, each on its own evidence. zz used to clamp every finished expansion to MAX_STATUS_TEXT_BYTES, 4096, in truncate_output at all three entry points, so command-facing output lost everything past 4096 bytes while `#{n:}` of the same format already reported the full length. truncate_output is gone and the bound moved to where StatusLine enforces it: clamp_status_text bounds the status title, base style, and every status row as that message is built, beside the left and right sides wrap_status_style already bounded. The strict format-expansion-output-clamp differential now agrees with the pin at 9000 bytes for `#{p-9000:#{l:tail}}`, 10000 for `#{R:x,10000}`, and 6000 for a 6000-byte user option read back through `#{E:}`. The pin's FORMAT_TIME_LIMIT, 100 milliseconds of wall clock checked on entry to format_expand1, is deliberately not adopted. It was implemented and measured first: threading one FormatBudget from each entry point into every nested expander reproduced the pin's shape exactly, where after `#{n:#{Ogs:#{Ogs:#{l:x}}}}` burns the budget the trailing literal text still lands, `#{l:lit}` still expands because format_unescape only samples the clock every 10000 characters, and `#{?session_name,yes,no}` beside them expands empty. It also made zz's own command semantics load-sensitive, because zz expands option values and command arguments through the same engine and an emptied argument is a failure rather than a truncation: with the budget in place, daemon::tests::window_sizing::attached_client_extents_clamp_retained_and_default_dimensions failed 5 of 5 runs under eight spinning cores and passed 6 of 6 idle, while the same test on the same load passed 3 of 3 without it, and forcing the budget spent failed it deterministically inside a `set-option status off`. Trading a benign output difference for a load-dependent command failure is the wrong side of that bargain, so the divergence is accepted: a runaway expansion in zz runs to completion and answers the same string every time, where the pin returns a truncated result whose length moves run to run. FORMAT_LOOP_LIMIT was never part of this and did not change: measured on the pin, 200 sibling `#{l:x}` replacements all expand, 99 nested `#{s/x/x/:}` wrappers still reach their body, and the hundredth answers empty, which is a recursion depth of 100 on both sides rather than a running total. The 40,960,000-byte repeat ceiling stays the allocation guard it always was."
     },
     {
       "id": "formats.history-counters",
@@ -562,7 +562,7 @@
       ],
       "evidence": [
         "resource:compat/tmux-oracle.json",
-        "resource:crates/zz-mux/src/formats.rs",
+        "resource:crates/zz-mux/src/formats/variables.rs",
         "resource:crates/zz-terminal/src/session.rs"
       ],
       "acceptance": [
@@ -588,7 +588,7 @@
         "format:mouse_status_range"
       ],
       "evidence": [
-        "resource:crates/zz-mux/src/formats.rs",
+        "resource:crates/zz-mux/src/formats/variables.rs",
         "resource:knowledge/tmux/divergences.md",
         "resource:knowledge/tmux/status-line.md"
       ],
@@ -697,8 +697,8 @@
         "format:pane_key_mode"
       ],
       "evidence": [
-        "resource:crates/zz-daemon/src/daemon.rs",
-        "resource:crates/zz-mux/src/formats.rs",
+        "resource:crates/zz-daemon/src/daemon/format_facts.rs",
+        "resource:crates/zz-mux/src/formats/variables.rs",
         "resource:knowledge/tmux/divergences.md",
         "resource:knowledge/tmux/status-line.md",
         "scenario:compat/scenarios/smoke/copy-mode-formats.txt"
@@ -725,7 +725,7 @@
       ],
       "evidence": [
         "resource:crates/zz-protocol/src/message.rs",
-        "resource:crates/zz-daemon/src/daemon.rs",
+        "resource:crates/zz-daemon/src/daemon/attach.rs",
         "resource:knowledge/tmux/status-line.md",
         "resource:knowledge/tmux/divergences.md"
       ],
@@ -754,7 +754,7 @@
         "format:pane_tabs"
       ],
       "evidence": [
-        "resource:crates/zz-mux/src/formats.rs",
+        "resource:crates/zz-mux/src/formats/variables.rs",
         "resource:crates/zz-terminal/src/session.rs",
         "resource:knowledge/tmux/divergences.md",
         "resource:knowledge/tmux/status-line.md"
@@ -801,7 +801,7 @@
         "format:wrap_flag"
       ],
       "evidence": [
-        "resource:crates/zz-mux/src/formats.rs",
+        "resource:crates/zz-mux/src/formats/variables.rs",
         "resource:knowledge/tmux/divergences.md",
         "resource:knowledge/tmux/status-line.md",
         "scenario:compat/scenarios/smoke/terminal-facts.txt",
@@ -831,7 +831,7 @@
       ],
       "evidence": [
         "resource:crates/zz-mux/src/model.rs",
-        "resource:crates/zz-daemon/src/daemon.rs",
+        "resource:crates/zz-daemon/src/daemon/shutdown.rs",
         "resource:third_party/tmux-reference/UPSTREAM.md",
         "resource:knowledge/tmux/divergences.md"
       ],
@@ -1166,7 +1166,7 @@
         "semantic:list-keys-deterministic-sort-ties"
       ],
       "evidence": [
-        "resource:crates/zz-mux/src/command.rs",
+        "resource:crates/zz-mux/src/command/key_bindings.rs",
         "resource:knowledge/tmux/divergences.md",
         "scenario:compat/scenarios/list-keys-padding.txt"
       ],
@@ -1252,7 +1252,7 @@
       ],
       "evidence": [
         "resource:crates/zz-mux/src/formats.rs",
-        "resource:crates/zz-mux/src/command.rs",
+        "resource:crates/zz-mux/src/command/callbacks.rs",
         "resource:crates/zz-daemon/src/daemon.rs",
         "scenario:compat/scenarios/option-bytes.txt",
         "file:compat/scenarios/fixtures/option-bytes.sh"
@@ -1291,7 +1291,7 @@
         "file:compat/scenarios/smoke/fixtures/format-listing.sh",
         "resource:crates/zz-daemon/src/daemon/attach_tests.rs",
         "resource:crates/zz-mux/src/honest_knobs.rs",
-        "resource:crates/zz-terminal/src/session.rs",
+        "resource:crates/zz-terminal/src/session/input_encoding.rs",
         "resource:crates/zz-tui/src/terminal_event.rs",
         "resource:crates/zz-tui/src/tty.rs",
         "resource:knowledge/tmux/divergences.md",
@@ -1323,7 +1323,7 @@
         "semantic:lock-program-execution"
       ],
       "evidence": [
-        "resource:crates/zz-daemon/src/daemon.rs",
+        "resource:crates/zz-daemon/src/daemon/clients.rs",
         "resource:crates/zz-mux/src/tmux_options.rs",
         "resource:knowledge/tmux/divergences.md"
       ],
@@ -4447,7 +4447,7 @@
         "resource:crates/zz-mux/src/command.rs",
         "resource:compat/tmux-oracle.json"
       ],
-      "resolution": "Registered 2026-09-06 by the proof-debt lane. The oracle lens counted names the registry tracks that no proof in this repo ever fires: 17 consumed options with no scenario, 39 of 68 hooks never triggered, and 33 formats plus the #H #h #F #P #T aliases and the e and p modifiers never expanded. compat/census.py is that count made repeatable: it reads compat/tmux-oracle.json (options, hooks, formats, format_modifiers) and the TMUX_OPTION_CONSUMERS roster, walks compat/scenarios/**, compat/attached-client.sh, compat/status-row.sh and compat/diff-scenario.sh with comment lines stripped, and prints the never-exercised list per family. The roster is in crates/zz-mux/src/command.rs:65, not tmux_options.rs as the cycle-16 brief said; tmux_options.rs holds the option TABLES, command.rs holds the consumed roster. compat/check.sh now prints the census as a non-failing report so the next cycle sees drift. Its output at this lane's tip: census: 456 corpus files under compat/scenarios, compat/attached-client.sh, compat/status-row.sh, compat/diff-scenario.sh; options: 0 of 118 never exercised; hooks: 8 of 68 never exercised; after-copy-mode; after-display-panes; after-refresh-client; alert-activity; alert-silence; client-dark-theme; client-light-theme; window-unlinked; formats: 12 of 198 never exercised; buffer_mode_format; client_mode_format; cursor_character; cursor_colour; history_limit; pane_bg; pane_fg; pane_key_mode; pane_path; pane_tabs; start_time; tree_mode_format; format_aliases: 1 of 9 never exercised; #T; format_modifiers: 0 of 2 never exercised. CLOSED. semantic:census-options: all 17 are set and read back in their own table by compat/scenarios/census-options.txt, and the three with a cheap deterministic observable also get one - buffer-limit 2 evicts the oldest automatically named buffer on both sides, which is what the pin trims: paste.c:170 reads buffer-limit inside paste_add and paste.c:267 paste_set reaches paste_add only at :280 on the name == NULL path, so three named buffers all survive the limit and the three unnamed set-buffer calls that follow leave buffer2 and buffer1 with buffer0 gone, identically on both binaries, synchronize-panes is read through #{pane_synchronized} off, on and off again, and default-command `exec sleep 600` shows up as the new window's #{pane_start_command}. semantic:census-hooks: 29 of the 37 fire identically on both binaries in compat/scenarios/census-hooks.txt, each pre-seeded to no through a global environment variable so the readback compares a value rather than an exit class. semantic:census-formats: 39 steps in compat/scenarios/census-formats.txt expand the remaining formats, the #H and #h aliases and both the e and p modifiers (#{e|+:2,3}, #{e|*|f|2:1.5,2}, #{p12:zz}, #{p-12:zz}), with a second window, a second pane, synchronize-panes on and a second session for the names that need them. WHAT THE CENSUS STILL LISTS, AND WHY. Eight hooks cannot be fired by a detached command client and are left for a fixture with a real pty: after-copy-mode and after-display-panes need a client at all on zz (semantic:copy-mode-headless-target, clients.interactive-refresh), after-refresh-client and the client-dark-theme / client-light-theme pair need an attached client's theme reply, alert-activity and alert-silence need monitor-activity plus a pane that writes and then goes quiet, and window-unlinked cannot fire on zz at all because link-window is an unsupported command there - measured 2026-09-06, `link-window -s w:linked -t w:9` answered exit 1 `unsupported command: link-window` on zz and exit 0 on the pin, which left zz with 2 windows and the pin with 3 including `9:linked`. That belongs to sessions.linked-groups and is not touched here. THE FORMAT REMAINDER, ONE OWNER PER NAME, settled 2026-09-07. The eleven names this group recorded without an owner now have one, and the twelfth was never a gap. #P was a census false positive: its only corpus occurrence was the literal prompt text in compat/scenarios/smoke/fixtures/keys-contract.py, which is printed and never expanded, so it is now expanded with the other aliases in compat/scenarios/census-formats.txt and both binaries answer 0 for the second pane of the scenario's split. start_time is the server's own epoch and differs by construction; it stays undiffable and is not a gap. cursor_character, cursor_colour, pane_bg, pane_fg and pane_tabs belong to formats.terminal-cells (accepted, terminal): measured zz first, pin second, `` vs ` ` (one space), `` vs `none`, `` vs `default`, `` vs `default` and `` vs `8,16,24,32,40,48,56,64,72`. pane_key_mode belongs to formats.pane-runtime (accepted): `` vs `VT10x`. buffer_mode_format, client_mode_format and tree_mode_format belong to formats.native-modes (accepted), which already carries their measured templates. history_limit belongs to presentation.native-status as semantic:history-limit-product-default: 10000 on zz against 2000 on the pin, zz's deliberate default and already the premise of smoke/sensible. #T, which is #{pane_title}, and pane_path belong to pane.runtime-facts, the daemon-owned group the orchestrator gave them before cycle 17; that group proves both in its own scenario, so no #T or pane_path step was added to compat/scenarios/census-formats.txt. Each accepted group's reason now carries the census measurement it received. Nothing in the format family is left without an owner, so semantic:census-formats is closed and this group closes with it. The census remains a non-failing report in compat/check.sh, and the eight hooks it still lists are the pre-existing attached-client and sessions.linked-groups holes named in the paragraph above, not new drift. CENSUS OUTPUT AT THIS TIP: census: 461 corpus files under compat/scenarios, compat/attached-client.sh, compat/status-row.sh, compat/diff-scenario.sh; options: 0 of 118 never exercised; hooks: 8 of 68 never exercised; after-copy-mode; after-display-panes; after-refresh-client; alert-activity; alert-silence; client-dark-theme; client-light-theme; window-unlinked; formats: 12 of 198 never exercised; buffer_mode_format; client_mode_format; cursor_character; cursor_colour; history_limit; pane_bg; pane_fg; pane_key_mode; pane_path; pane_tabs; start_time; tree_mode_format; format_aliases: 1 of 9 never exercised; #T; format_modifiers: 0 of 2 never exercised."
+      "resolution": "Registered 2026-09-06 by the proof-debt lane. The oracle lens counted names the registry tracks that no proof in this repo ever fires: 17 consumed options with no scenario, 39 of 68 hooks never triggered, and 33 formats plus the #H #h #F #P #T aliases and the e and p modifiers never expanded. compat/census.py is that count made repeatable: it reads compat/tmux-oracle.json (options, hooks, formats, format_modifiers) and the TMUX_OPTION_CONSUMERS roster, walks compat/scenarios/**, compat/attached-client.sh, compat/status-row.sh and compat/diff-scenario.sh with comment lines stripped, and prints the never-exercised list per family. The roster is in crates/zz-mux/src/command.rs, not tmux_options.rs as the cycle-16 brief said; tmux_options.rs holds the option TABLES, command.rs holds the consumed roster. compat/check.sh now prints the census as a non-failing report so the next cycle sees drift. Its output at this lane's tip: census: 456 corpus files under compat/scenarios, compat/attached-client.sh, compat/status-row.sh, compat/diff-scenario.sh; options: 0 of 118 never exercised; hooks: 8 of 68 never exercised; after-copy-mode; after-display-panes; after-refresh-client; alert-activity; alert-silence; client-dark-theme; client-light-theme; window-unlinked; formats: 12 of 198 never exercised; buffer_mode_format; client_mode_format; cursor_character; cursor_colour; history_limit; pane_bg; pane_fg; pane_key_mode; pane_path; pane_tabs; start_time; tree_mode_format; format_aliases: 1 of 9 never exercised; #T; format_modifiers: 0 of 2 never exercised. CLOSED. semantic:census-options: all 17 are set and read back in their own table by compat/scenarios/census-options.txt, and the three with a cheap deterministic observable also get one - buffer-limit 2 evicts the oldest automatically named buffer on both sides, which is what the pin trims: paste.c:170 reads buffer-limit inside paste_add and paste.c:267 paste_set reaches paste_add only at :280 on the name == NULL path, so three named buffers all survive the limit and the three unnamed set-buffer calls that follow leave buffer2 and buffer1 with buffer0 gone, identically on both binaries, synchronize-panes is read through #{pane_synchronized} off, on and off again, and default-command `exec sleep 600` shows up as the new window's #{pane_start_command}. semantic:census-hooks: 29 of the 37 fire identically on both binaries in compat/scenarios/census-hooks.txt, each pre-seeded to no through a global environment variable so the readback compares a value rather than an exit class. semantic:census-formats: 39 steps in compat/scenarios/census-formats.txt expand the remaining formats, the #H and #h aliases and both the e and p modifiers (#{e|+:2,3}, #{e|*|f|2:1.5,2}, #{p12:zz}, #{p-12:zz}), with a second window, a second pane, synchronize-panes on and a second session for the names that need them. WHAT THE CENSUS STILL LISTS, AND WHY. Eight hooks cannot be fired by a detached command client and are left for a fixture with a real pty: after-copy-mode and after-display-panes need a client at all on zz (semantic:copy-mode-headless-target, clients.interactive-refresh), after-refresh-client and the client-dark-theme / client-light-theme pair need an attached client's theme reply, alert-activity and alert-silence need monitor-activity plus a pane that writes and then goes quiet, and window-unlinked cannot fire on zz at all because link-window is an unsupported command there - measured 2026-09-06, `link-window -s w:linked -t w:9` answered exit 1 `unsupported command: link-window` on zz and exit 0 on the pin, which left zz with 2 windows and the pin with 3 including `9:linked`. That belongs to sessions.linked-groups and is not touched here. THE FORMAT REMAINDER, ONE OWNER PER NAME, settled 2026-09-07. The eleven names this group recorded without an owner now have one, and the twelfth was never a gap. #P was a census false positive: its only corpus occurrence was the literal prompt text in compat/scenarios/smoke/fixtures/keys-contract.py, which is printed and never expanded, so it is now expanded with the other aliases in compat/scenarios/census-formats.txt and both binaries answer 0 for the second pane of the scenario's split. start_time is the server's own epoch and differs by construction; it stays undiffable and is not a gap. cursor_character, cursor_colour, pane_bg, pane_fg and pane_tabs belong to formats.terminal-cells (accepted, terminal): measured zz first, pin second, `` vs ` ` (one space), `` vs `none`, `` vs `default`, `` vs `default` and `` vs `8,16,24,32,40,48,56,64,72`. pane_key_mode belongs to formats.pane-runtime (accepted): `` vs `VT10x`. buffer_mode_format, client_mode_format and tree_mode_format belong to formats.native-modes (accepted), which already carries their measured templates. history_limit belongs to presentation.native-status as semantic:history-limit-product-default: 10000 on zz against 2000 on the pin, zz's deliberate default and already the premise of smoke/sensible. #T, which is #{pane_title}, and pane_path belong to pane.runtime-facts, the daemon-owned group the orchestrator gave them before cycle 17; that group proves both in its own scenario, so no #T or pane_path step was added to compat/scenarios/census-formats.txt. Each accepted group's reason now carries the census measurement it received. Nothing in the format family is left without an owner, so semantic:census-formats is closed and this group closes with it. The census remains a non-failing report in compat/check.sh, and the eight hooks it still lists are the pre-existing attached-client and sessions.linked-groups holes named in the paragraph above, not new drift. CENSUS OUTPUT AT THIS TIP: census: 461 corpus files under compat/scenarios, compat/attached-client.sh, compat/status-row.sh, compat/diff-scenario.sh; options: 0 of 118 never exercised; hooks: 8 of 68 never exercised; after-copy-mode; after-display-panes; after-refresh-client; alert-activity; alert-silence; client-dark-theme; client-light-theme; window-unlinked; formats: 12 of 198 never exercised; buffer_mode_format; client_mode_format; cursor_character; cursor_colour; history_limit; pane_bg; pane_fg; pane_key_mode; pane_path; pane_tabs; start_time; tree_mode_format; format_aliases: 1 of 9 never exercised; #T; format_modifiers: 0 of 2 never exercised."
     },
     {
       "id": "protocol.binary-streams",

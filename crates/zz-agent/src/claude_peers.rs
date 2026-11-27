@@ -1026,5 +1026,5 @@ mod tests {
 }
 
 #[cfg(test)]
-#[path = "claude_peers_peerskip_tests.rs"]
-mod peerskip_tests;
+#[path = "claude_peers_registry_tests.rs"]
+mod registry_tests;

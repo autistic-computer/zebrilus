@@ -165,7 +165,7 @@ fn rollback_detach_reuses_owned_loop_values_and_keeps_them_frozen() {
 }
 
 #[test]
-fn borrowed_callbacks_match_w1_for_every_pinned_name() {
+fn borrowed_callbacks_match_the_legacy_context_for_every_pinned_name() {
     for (fixture, engine) in fixtures() {
         for client in clients(&engine) {
             for (session, window, pane) in targets(&engine) {
@@ -434,7 +434,7 @@ fn selective_detach_keeps_table_values_introduced_by_shell_output() {
 }
 
 #[test]
-fn selective_detached_loops_and_indirection_match_w1() {
+fn selective_detached_loops_and_indirection_match_the_legacy_expansion() {
     for (fixture, engine) in fixtures() {
         for client in clients(&engine) {
             for (session, window, pane) in targets(&engine) {

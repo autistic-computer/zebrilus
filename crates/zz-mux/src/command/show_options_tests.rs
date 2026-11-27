@@ -422,7 +422,7 @@ fn status_readback_uses_the_pin_defaults() {
 }
 
 #[test]
-fn bare_status_option_listings_include_the_full_wave_a_family() {
+fn bare_status_option_listings_include_every_status_and_window_status_option() {
     let mut engine = MuxEngine::default();
     let mut context = ExecutionContext::default();
 

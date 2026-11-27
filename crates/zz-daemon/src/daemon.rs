@@ -1368,8 +1368,8 @@ fn prepare_config_command(
 mod empty_pane_tests;
 
 #[cfg(all(test, unix))]
-#[path = "daemon/plain_key_echoin_tests.rs"]
-mod plain_key_echoin_tests;
+#[path = "daemon/plain_key_tests.rs"]
+mod plain_key_tests;
 
 #[cfg(test)]
 #[path = "daemon/source_hook_queue_tests.rs"]
@@ -2546,7 +2546,7 @@ mod shell_jobs_tests;
 mod pipe_jobs_tests;
 
 #[cfg(all(test, unix))]
-mod ptyleak_tests;
+mod pane_release_tests;
 
 fn is_agent_chat(inner: &ServerState, pane: PaneId) -> bool {
     matches!(
