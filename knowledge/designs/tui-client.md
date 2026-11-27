@@ -9,7 +9,7 @@ tags:
 - browser
 - kitty-graphics
 - remote
-timestamp: 2026-11-26T00:00:00-03:00
+timestamp: 2026-11-27T00:00:00-03:00
 last_updated: 2026-09-09
 ---
 
@@ -76,6 +76,23 @@ chrome tables, the client-only `zz-daemon` transport, `zz-protocol`, model-only
 tree doubles as compile-time enforcement of what the TUI must never grow: VT
 parsing, daemon option semantics, or pane key-table execution. Layout projection
 remains presentation work, and client chrome resolves through `ChromeKeymap`.
+
+The renderer is `crates/zz-tui/src/render.rs`: `Renderer`, its state and the frame, flush and
+terminal cursor plumbing. What it draws sits in subject files under `crates/zz-tui/src/render/`,
+each with a `<subject>_tests.rs` beside it and shared fixtures in `render/test_support.rs`:
+
+| File | Draws |
+| --- | --- |
+| `workspace.rs` | The workspace: tiled and floating entries, borders, dividers, empty windows and backgrounds |
+| `terminal_pane.rs` | A terminal pane's cells with damage tracking, kitty placements, line numbers and copy-mode chrome |
+| `status.rs` | The status block, pane prompts, client messages and the status text helpers |
+| `sidebar_paint.rs` | The sidebar rows and its status lines |
+| `menu.rs` | Pane cards and picker cards, menus and the floating border line tables |
+| `chooser.rs` | Chooser grids, help and the chooser key gutter |
+| `pane_mode.rs` | Clock, switch and panes mode surfaces |
+| `cursor.rs` | Where the cursor goes after a paint |
+| `sgr.rs` | SGR, colour and cell writers |
+| `colour.rs` | Colour downgrade for terminals with fewer colours and theme colour resolution |
 
 # Chrome direction (settled 2026-08-09, after rung 1)
 

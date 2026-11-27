@@ -4,7 +4,7 @@ title: Terminal painting on ala
 description: How zz maps immutable renderer-neutral frames and dirty-row patches onto ala text, cursor, and overlay painting.
 resource: crates/zz-ui/src/terminal.rs
 tags: [rendering, gpui, cursor, ime, contrast, box-drawing, block-elements, local-scroll]
-timestamp: 2026-10-07T00:00:00Z
+timestamp: 2026-11-27T00:00:00-03:00
 ---
 
 # Overview
@@ -24,6 +24,23 @@ remote pane feels local: local scroll sources rows from the pane's history ring.
 The [terminal frame](/concepts/terminal-frame.md) is renderer-neutral. Desktop and browser clients
 share the painter in `crates/zz-ui/src/terminal.rs`; the desktop adapter lives in
 `crates/zz/src/terminal/element.rs`.
+
+`terminal.rs` keeps the painter's types, `RowRenderCache` with its `prepaint` and `paint`, and the
+find bar. Its helpers sit in subject files under `crates/zz-ui/src/terminal/`, each with a
+`<subject>_tests.rs` beside it:
+
+| File | Holds |
+| --- | --- |
+| `look.rs` | Theme palette, the terminal look worn by the chrome, contrast correction and colour conversion |
+| `text_shaping.rs` | Shaping a row into cached lines and backgrounds, glyph render options, fonts and text runs |
+| `box_drawing.rs` | Light box connectors, rounded and diagonal paths, and solid block elements |
+| `selection.rs` | Overlay quads, selected text, selection corners and drag autoscroll |
+| `cursor.rs` | Cursor cell, glyph and quad |
+| `metrics.rs` | Cell measurement, grid size and bounds, device pixel snapping |
+| `scrollbar.rs` | Scrollbar hit testing, fade and quad |
+| `kitty_images.rs` | Collecting and painting kitty image placements |
+
+The row cache's own tests are `row_cache_tests.rs`.
 
 | Frame data | ala rendering |
 | --- | --- |
