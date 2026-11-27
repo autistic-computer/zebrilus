@@ -716,12 +716,31 @@ mod tests {
 
     #[test]
     fn protocol_frames_are_complete_and_bounded() {
-        assert!(validate_frame(&[4, 0, 0, 0, 0, 0, 0, 0]).is_ok());
-        assert!(validate_frame(&[4, 0, 0]).is_err());
-        assert!(validate_frame(&[4, 0, 0, 0, 0, 0, 0]).is_err());
-        assert!(validate_frame(&[4, 0, 0, 0, 0, 0, 0, 0, 0]).is_err());
-        assert!(frame_length(3_u32.to_le_bytes()).is_err());
-        assert!(frame_length((MAX_FRAME_BYTES as u32 + 1).to_le_bytes()).is_err());
+        let one_frame = "one WebSocket message must contain exactly one zz protocol frame";
+        let bad_length = "invalid zz protocol frame length";
+        for (frame, expected) in [
+            (&[4, 0, 0, 0, 0, 0, 0, 0][..], Ok(())),
+            (&[4, 0, 0][..], Err("truncated zz protocol frame")),
+            (&[4, 0, 0, 0, 0, 0, 0][..], Err(one_frame)),
+            (&[4, 0, 0, 0, 0, 0, 0, 0, 0][..], Err(one_frame)),
+        ] {
+            assert_eq!(
+                validate_frame(frame).map_err(|error| (error.kind(), error.to_string())),
+                expected.map_err(|message| (io::ErrorKind::InvalidData, message.to_owned())),
+                "{frame:?}"
+            );
+        }
+        for (length, expected) in [
+            (3_u32, Err(bad_length)),
+            (MAX_FRAME_BYTES as u32 + 1, Err(bad_length)),
+        ] {
+            assert_eq!(
+                frame_length(length.to_le_bytes())
+                    .map_err(|error| (error.kind(), error.to_string())),
+                expected.map_err(|message| (io::ErrorKind::InvalidData, message.to_owned())),
+                "{length}"
+            );
+        }
     }
 
     #[tokio::test]
