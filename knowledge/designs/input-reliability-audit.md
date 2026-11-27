@@ -130,7 +130,7 @@ keypress, and mouse-up does not reset the modality . so *any key pressed between
 mouse-down and its mouse-up disables every hitbox-gated mouse-up handler in the app*.
 Only `on_mouse_down_out`/`on_mouse_up_out` escape hitbox scope.
 The opposite direction . a motion or release arriving with a button whose press the pane never took .
-is now gated on the press-origin bitmask in both `terminal/view.rs` and `browser/view.rs`, so a chrome
+is now gated on the press-origin bitmask in both `terminal/view.rs` and `browser/view/page_input.rs`, so a chrome
 window drag cannot leak a drag into the panes its lagging positions sweep over.
 
 - **Terminal selection/scrollbar drag strands → runaway autoscroll**

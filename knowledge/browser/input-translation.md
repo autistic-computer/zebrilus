@@ -4,7 +4,7 @@ title: Input translation (ala → CEF)
 description: Browser-neutral pointer/wheel/keyboard/text/IME input, IME candidate placement, ordered GPUI-to-CEF dispatch, pane shortcuts, address resolution, history-backed omnibox interaction, and why page drag and drop is off.
 resource: libs/ala-cef/src/input.rs
 tags: [browser, input, ime, keyboard, url, history, omnibox]
-timestamp: 2026-11-24T00:00:00Z
+timestamp: 2026-11-27T00:00:00Z
 ---
 
 # Overview
@@ -251,7 +251,11 @@ assert_eq!(
 | `crates/zz-client/src/url_input.rs` | `resolve_address`, `SearchProvider`, `normalize_url`, `diagnostic_url`, `UrlInputError`. |
 | `src/cef_runtime.rs` | `BrowserSession`, main-thread `BrowserCommandSink`, CEF input/edit helpers, `event_flags`, coordinate scaling. |
 | `crates/zz/src/browser/controller.rs` | Ordered foreground CEF command queue and the ala re-entrancy boundary. |
-| `crates/zz/src/browser/view.rs` | Platform keybindings, nested omnibox key context, input events, selection and Escape stages, page edit actions, zoom actions, and menu controls. |
+| `crates/zz/src/browser/view.rs` | Platform keybindings, nested omnibox key context, Escape stages, and page edit actions. |
+| `crates/zz/src/browser/view/page_input.rs` | Page pointer, wheel and key events. |
+| `crates/zz/src/browser/view/omnibox.rs` | Omnibox input and suggestion selection. |
+| `crates/zz/src/browser/view/page_tools.rs` | Zoom actions. |
+| `crates/zz/src/browser/view/context_menu.rs` | The page context menu and its edit commands. |
 | `crates/zz-client/src/chrome.rs` | Browser chrome action names, platform profile defaults, extended chord grammar, and table resolution. |
 | `crates/zz/src/keymap.rs` | ala bridge for browser chrome defaults and `chrome-keybind`/`chrome-unbind` overrides. |
 | `crates/zz-client/src/recent_pages.rs` | Profile-scoped history queries, scoring, inline eligibility, learned selections, deletion, and the omnibox typing state. |

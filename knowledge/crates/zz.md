@@ -28,7 +28,7 @@ to the desktop process. See [session persistence](/concepts/session-persistence.
 | `workspace/view.rs`, `workspace/view/` | The workspace window: focus, overlays, drags and pane reconciliation. See [workspace view](#workspace-view). |
 | `mux/client.rs`, `mux/client/` | `MuxClient`: connections, per-host snapshots, attachment and reconnect. See [mux client](#mux-client). |
 | `terminal/view.rs`, `terminal/element.rs` | Bind pane input, history, selection and paint to the retained grid |
-| `browser/controller.rs`, `browser/view.rs`, `browser/element.rs` | Create sessions, route tab and browser input, present off-screen frames from [ala-cef](/crates/ala-cef.md) |
+| `browser/controller.rs`, `browser/view.rs`, `browser/view/`, `browser/element.rs` | Create sessions, route tab and browser input, present off-screen frames from [ala-cef](/crates/ala-cef.md). See [browser view](#browser-view). |
 | `agent/controller.rs`, `agent/view.rs` | Consume daemon agent events, show chat state and send prompts, answers or actions |
 | `workspace/sidebar.rs`, `workspace/sidebar/flat.rs` | Present host, session, window and pane data from the client model |
 | `mux/client/host_update.rs`, `workspace/host_update.rs`, `workspace/ssh_prompt.rs` | Host updates, the question before one, and interactive authentication dialogs |
@@ -82,6 +82,40 @@ viewport. Its methods live in subject files under `mux/client/`.
 | `client/messages.rs` | Protocol messages, core events, appearance adoption, open-uri routing, terminal viewports and patches, command output and bells |
 | `client/history.rs` | History backfill and prefetch requests and history chunks |
 | `client/*_tests.rs`, `client/test_support.rs` | Tests, one file per subject, and the helpers they share. The test-only kitty views stay in the inline `tests` module of `client.rs`. |
+
+## Browser view
+
+`BrowserView` in `browser/view.rs` is the browser pane. Its types, actions, constructor, frame
+handling and render stay there. Its other methods live in subject files under `browser/view/`.
+
+| Source under `crates/zz/src/browser` | Responsibility |
+| --- | --- |
+| `view.rs` | `BrowserView`, `BrowserTab`, `BrowserChromeView` and their state types, the actions and key bindings, `BrowserView::new`, mux commands, frames, viewport updates and the resize cover, loading and tab publishing, session recreation, profile switching, edit actions, Escape handling, the `Render`, `Focusable`, `EntityInputHandler` and `EventEmitter` impls, the free helpers and the `view/` module declarations |
+| `view/tabs.rs` | Activating, opening, adopting, closing and cycling tabs, the tab actions, the tab strip state and syncing tabs with the mux |
+| `view/navigation.rs` | Back, forward, reload, hard reload and retry |
+| `view/omnibox.rs` | Omnibox input, address submission, history-use credit, suggestion selection and deletion, the result list and the empty state |
+| `view/find.rs` | The find bar |
+| `view/events.rs` | Controller events for the active and inactive tabs, and cookie import, PDF print and site data results |
+| `view/page_input.rs` | Page pointer, hover, wheel and key events and their pane coordinates |
+| `view/page_tools.rs` | Page zoom, devtools and the element picker |
+| `view/context_menu.rs` | The page context menu, edit commands, inspect and spelling |
+| `view/dialogs.rs` | Cookie paste, PDF save, file and JavaScript dialogs, downloads and notifications |
+| `view/chrome_data.rs` | Chrome profile discovery, cookie and Chrome data import, and clearing site data |
+| `view/*_tests.rs`, `view/test_support.rs` | Tests, one file per subject, and the helpers they share. The tests that use the test-only actions stay in the inline `tests` module of `view.rs`. |
+
+## Test files
+
+These files keep their code and hold their tests in subject test files beside them.
+
+| Source under `crates/zz/src` | Tests |
+| --- | --- |
+| `config/mod.rs` | `config/parse_tests.rs`, `fleet_hosts_tests.rs`, `writer_tests.rs`, `import_tests.rs`, `look_tests.rs`, `paths_tests.rs` and `test_support.rs` |
+| `config/settings.rs` | `config/settings/field_tests.rs`, `section_tests.rs`, `config_editor_tests.rs` and `qr_tests.rs` |
+| `agent/controller.rs` | `agent/controller/reducer_tests.rs`, `image_tests.rs`, `composer_tests.rs`, `stream_tests.rs`, `pane_state_tests.rs`, `question_tests.rs`, `prompt_tests.rs` and `test_support.rs` |
+| `agent/view.rs` | `agent/view/completion_tests.rs`, which also holds the permission wizard and question card tests, and `chrome_tests.rs` |
+| `workspace/sidebar.rs` | `workspace/sidebar/view_tests.rs`, `badge_tests.rs`, `projection_tests.rs`, `host_tests.rs`, `command_tests.rs` and `test_support.rs`. The test-only probe views and the test that draws them stay in the inline `tests` module. |
+| `terminal/view.rs` | `terminal/view/key_tests.rs`, `indicator_tests.rs`, `font_tests.rs`, `mouse_tests.rs`, `surface_tests.rs`, `search_tests.rs` and `blink_tests.rs`. The test-only actions, the `HeadedTerminal` view and the tests that use them stay in the inline `tests` module. |
+| `browser/controller.rs` | `browser/controller/scheduling_tests.rs`, `frame_rate_tests.rs`, `adaptive_throttle_tests.rs`, `begin_frame_deadline_tests.rs`, `pump_fallback_tests.rs` and `session_tests.rs` |
 
 ## Running the desktop client
 
