@@ -10,7 +10,7 @@ tags:
 - protocol
 - daemon
 - design-plan
-timestamp: 2026-11-26T12:00:00-03:00
+timestamp: 2026-11-27T12:00:00-03:00
 ---
 
 # Overview
@@ -114,7 +114,7 @@ background fleet host bounces the local dock without switching hosts.
 
 Two small pieces, no client-held bell state:
 
-* `crates/zz/src/mux/client.rs`: accept `EventPayload::Bell` from attached and background hosts and
+* `crates/zz/src/mux/client/messages.rs`: accept `EventPayload::Bell` from attached and background hosts and
   advance the shared bell revision; `AppView` turns a new revision into `request_attention()` and
   the bell sound (`crates/zz/src/agent/sound.rs`, silenced by `ZZ_AGENT_SOUND=0`).
 * `clients/app/src/bell.rs`: the thin client rings on `CoreEvent::Bell`, playing the bell sound at

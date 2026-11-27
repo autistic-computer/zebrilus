@@ -1,5 +1,9 @@
 # Update Log
 
+## 2026-11-27
+
+* The desktop app's `workspace/view.rs` now holds `AppView`, its state types, `AppView::new` and its render; the key handling, palettes, focus, pane synchronization, agents, drags, pane content, layout, floating panes and overlays moved into subject files under `crates/zz/src/workspace/view/`. `mux/client.rs` now holds `MuxClient`, its types, constructors, accessors and event emitters; connections, daemon restarts, overlay state, input, commands, providers, attach, images, agent streams, messages and history moved into subject files under `crates/zz/src/mux/client/`. Both sets of tests moved into subject test files beside them. The [zz](/crates/zz.md) page lists the files, and pages that named either file for moved code point at the new files.
+
 ## 2026-11-26
 * **Creation**: Proposed the [English to command translator](/designs/english-command-translator.md): a small local model that turns an English sentence and the current session's state into zz commands and runs them with no preview. Nothing is built.
 

@@ -11,7 +11,7 @@ tags:
 - tmux-3.8
 - mux
 - design-plan
-timestamp: 2026-11-26T00:00:00-03:00
+timestamp: 2026-11-27T00:00:00-03:00
 ---
 
 # Decisions
@@ -238,7 +238,7 @@ one (`floating panes are not supported`), which is the branch that places them.
 
 # Clients
 
-**Desktop** (`crates/zz/src/workspace/view.rs`). `render` (`:3656`) draws visible floats back to
+**Desktop** (`crates/zz/src/workspace/view.rs`, floats in `view/floating.rs`). `render` draws visible floats back to
 front after `render_layout` and before `overlays`: an absolute `FloatingSurface`
 (`crates/zz-ui/src/pane.rs:279`) around the pane's normal surface (terminal or browser) at
 `xoff * cell_w, yoff * cell_h` from the canvas origin with this client's cell metrics, clipped,

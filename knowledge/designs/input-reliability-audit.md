@@ -9,7 +9,7 @@ tags:
 - daemon
 - focus
 - reliability
-timestamp: 2026-08-03T00:00:00Z
+timestamp: 2026-11-27T00:00:00Z
 ---
 
 # Why this document exists
@@ -91,7 +91,7 @@ creating windows).
 
 # Class 2, client side . every GUI command failure is invisible
 
-`MuxClient::execute_on_host` (`zz/src/mux/client.rs:1789-1820`) **drops the request id**
+`MuxClient::execute_on_host` (now in `zz/src/mux/client/commands.rs`) **drops the request id**
 returned by `InteractiveClient::execute`, so error responses (which carry a nonzero id)
 land in the catch-all (`client.rs:2696`) and set `self.error` . which is only ever
 *rendered* when no session is attached, as a full-screen connection banner. In normal use a
