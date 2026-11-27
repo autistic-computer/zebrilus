@@ -4,7 +4,7 @@ title: zz-terminal crate
 description: Terminal session actors, PTY and libghostty-vt ownership, and the renderer-independent viewport, input and appearance types.
 resource: crates/zz-terminal/src/terminal_core.rs
 tags: [terminal, libghostty, pty, actor, worker-thread, frames]
-timestamp: 2026-11-26T00:00:00-03:00
+timestamp: 2026-11-27T00:00:00-03:00
 ---
 
 # Terminal state and execution
@@ -42,6 +42,7 @@ immutable viewports to readers. See [the PTY worker](/concepts/pty-worker.md) an
 | `model.rs` | `TerminalViewport`, `PackedCell`, dictionaries, row spans and viewport diffs |
 | `input.rs`, `interaction.rs` | Key input and pane/view actions, including mouse, copy mode, search and scrolling |
 | `appearance.rs`, `shell_integration.rs` | Resolved terminal appearance and provenance, and startup integration for supported shells |
+| `appearance/*_tests.rs` | Appearance tests for the config file, defaults, overrides and themes |
 
 The [daemon](/crates/zz-daemon.md) fans the resulting views out to subscribers through the
 [packed terminal lane](/protocol/terminal-lanes.md). The

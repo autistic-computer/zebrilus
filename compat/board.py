@@ -41,6 +41,7 @@ ZONES = {
         "crates/zz-mux/src/model.rs",
         "crates/zz-mux/src/model/",
         "crates/zz-mux/src/layout.rs",
+        "crates/zz-mux/src/layout/",
         "crates/zz-mux/src/sort.rs",
     ],
     "mux-formats": [

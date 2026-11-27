@@ -4,7 +4,7 @@ title: Agent panes and the flip
 description: Native agent chats, switching to a provider's terminal UI, accounts, inter-pane messages and replay.
 resource: crates/zz-agent/src/host.rs
 tags: [agent, chat, terminal, replay]
-timestamp: 2026-11-26T00:00:00-03:00
+timestamp: 2026-11-27T00:00:00-03:00
 ---
 
 ## Agent panes
@@ -222,7 +222,25 @@ Scrolling back down to within 24 px of the end resumes it. Holding the left
 mouse button freezes the transcript for selection. Releasing after a drag of
 more than 4 px leaves following paused so the selection stays visible. A click
 preserves the prior follow state. See `ChatPane::update_hold` and `let_go` in
-`crates/zz-ui/src/agent/chat.rs` and `libs/ala/crates/ala/src/elements/list.rs`.
+`crates/zz-ui/src/agent/chat/pane.rs` and `libs/ala/crates/ala/src/elements/list.rs`.
+
+The chat view is `crates/zz-ui/src/agent/chat.rs`: its types, `chat_surface`, the
+thread drawing in `impl Draw` and every row that carries an element id. The rest sits
+under `chat/`:
+
+| File | Holds |
+| --- | --- |
+| `pane.rs` | The `ChatPane` methods: markdown cache, clicks, syncing with the view, image release, holds, scrolling and reveal |
+| `rows.rs` | `thread_rows`, `holds` and `Row::key` |
+| `hooks.rs` | The `ChatHooks` methods and `ChatFrame::hooks` |
+| `markdown.rs` | The `ChatMarkdown` methods and its markdown extensions |
+| `peek.rs` | The last lines of a child chat under its card |
+| `peer.rs` | Peer row glyphs, marks, text and note faces |
+| `tile.rs` | Agent titles, attention, status and tiles |
+| `thread_tests.rs`, `image_tests.rs`, `render_tests.rs` | Thread state, pasted image and drawn row tests, with the ready chat fixture in `test_support.rs` |
+
+The test-only views stay in the inline `tests` module of `chat.rs` so their type paths do
+not change.
 
 ### In the composer
 

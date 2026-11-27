@@ -4,7 +4,7 @@ title: zz-mux crate
 description: The mux model, cell layout, tmux command execution, target resolution, config parser, formats and change journal.
 resource: crates/zz-mux/src/lib.rs
 tags: [mux, tmux, state-machine, crate, layout]
-timestamp: 2026-11-26T12:00:00-03:00
+timestamp: 2026-11-27T00:00:00-03:00
 ---
 
 # From a command to a visible change
@@ -23,6 +23,8 @@ the daemon to act on an effect. Catalog entries and key table types are shared w
 | `model.rs` | `MuxState`, `Session`, `Window`, `Pane` and the other model types, the `Window` methods, ID allocation and `MuxState::validate` |
 | `model/*.rs` | One file per subject of the `MuxState` methods. The table below lists them |
 | `layout.rs` | `CellLayout`, cell dimensions and positions, dividing and moving panes, layout strings |
+| `layout/presets.rs` | The even, main and tiled arrangements, the spread and the option cell sizing |
+| `layout/*_tests.rs`, `layout/test_support.rs` | Layout string, preset, projection, resize and split tests, and the allocator, geometry and size helpers they share |
 | `journal.rs` | `open_change_window` and `changes_since` for recording mutations that feed publication |
 | `parser.rs` | tmux configuration syntax, expansions, command groups and diagnostics |
 | `formats.rs`, `status.rs` | Format expansion entry points, the format types (`StatusContext`, `FormatUniverse`, `FormatContext`, `Expander`), `StatusHooks`, status formats |
@@ -107,6 +109,18 @@ maps every command name to the file that runs it.
 
 Tests sit beside the code as `command/<subject>_tests.rs`, with shared helpers in
 `command/test_support.rs`.
+
+`customize.rs` keeps the customize mode types, the menu tables, cursor movement,
+`customize_mode` and building the tree. The rest sits under `command/customize/`:
+
+| File | Holds |
+| --- | --- |
+| `rows.rs` | Building the option, environment and key rows, their scopes and the search over them |
+| `draw.rs` | The chooser presentation, the preview writer and the option, key and environment previews |
+| `input.rs` | Key, mouse and menu handling |
+| `edit.rs` | Editing values, prompts and their answers |
+| `rows_tests.rs`, `input_tests.rs`, `edit_tests.rs` | Tests for those subjects |
+| `test_support.rs` | The engine, key press and output helpers the tests share |
 
 See [commands and effects](/tmux/commands.md), [config syntax](/tmux/conf-parser.md),
 [key tables](/tmux/key-tables.md), [status formats](/tmux/status-line.md),

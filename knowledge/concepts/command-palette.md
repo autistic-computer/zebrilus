@@ -71,7 +71,9 @@ A written address such as `@host:%7`, `@host:@41` or `@host:$7` identifies
 a pane, window or session. File references can name a host and line number.
 The chat composer's `@` menu also offers chats, providers and files. Enter inserts
 the friendly name with the underlying reference, and Alt-Enter copies that
-reference. See `crates/zz-ui/src/target.rs` and [agent mentions](/designs/agent-mentions.md).
+reference. See `crates/zz-ui/src/target.rs` for the picker view and its types,
+`crates/zz-ui/src/target/items.rs` for ranking and the items it offers, and
+[agent mentions](/designs/agent-mentions.md).
 
 ## Daemon prompts and choosers
 

@@ -13,7 +13,7 @@ tags:
 - agent-pane
 - artifacts
 - design-plan
-timestamp: 2026-11-26T00:00:00-03:00
+timestamp: 2026-11-27T00:00:00-03:00
 ---
 
 # Overview
@@ -37,7 +37,7 @@ zz html [--float] [--reply] [-t %N] [--] <path | ->
   pane, as `split-window -t` would, so a page never loads into a profile with the user's logins. `--float` opens it with `new-pane --kind browser`, which draws as a
   PiP; with `-t` it floats over that pane.
 * The opener is the calling pane: the client record's `origin`, which the CLI fills from
-  `ZZ_PANE` (`ExecRequest.origin`, `crates/zz-daemon-client/src/client.rs:362`). A relative path
+  `ZZ_PANE` (`ExecRequest.origin`, `exec_request` in `crates/zz-daemon-client/src/client/command.rs`). A relative path
   resolves against the client's working directory through `buffer_file_path`, because daemon
   verbs run before `ExecutionContext` gets one. `--reply` without a calling pane fails.
 * A pane keeps one page pane. The pane a page opens beside (`-t`, else the opener, else the

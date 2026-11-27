@@ -309,7 +309,10 @@ Their tests are `status/<subject>_tests.rs` beside them, with shared fixtures in
 Tests that drive a whole `Shared` are in `daemon/tests/`, one module per subject (`buffers.rs`,
 `prompts.rs`, `shell_jobs.rs`, `agent.rs` and so on), shared fixtures in `daemon/tests/mod.rs`.
 Tests of one module sit next to it as `daemon/<subject>_tests.rs`; those for the event loop are
-`daemon/event_loop_<subject>_tests.rs`. Process-level tests are in `crates/zz-daemon/tests/`.
+`daemon/event_loop_<subject>_tests.rs`. Those for `ctrl.rs` are `daemon/ctrl_<subject>_tests.rs`
+(attach, attach frames, config, exec, flags, frame groups, quiet queries, resize and
+subscriptions), with the compact client fixtures in `daemon/ctrl_test_support.rs`.
+Process-level tests are in `crates/zz-daemon/tests/`.
 
 # Platform and features
 
