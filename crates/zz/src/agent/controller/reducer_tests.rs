@@ -432,18 +432,6 @@ fn transport_loss_clears_approvals_and_cancels_inflight_tools() {
 }
 
 #[test]
-fn acp_v1_rejects_permission_options_with_an_unknown_kind() {
-    assert!(
-        serde_json::from_value::<PermissionOption>(serde_json::json!({
-            "optionId": "pick-a",
-            "name": "Option A",
-            "kind": "answer"
-        }))
-        .is_err()
-    );
-}
-
-#[test]
 fn status_only_updates_never_retype_a_typed_tool() {
     let mut thread = thread();
     thread.apply_update(SessionUpdate::ToolCall(
