@@ -77,13 +77,12 @@ fn forced_repaints_preserve_a_chooser_until_its_presentation_arrives() {
         )
         .unwrap()
     };
+    let painted = "\u{1b}[?2026h\u{1b}[?25l\u{1b}[1;1H\u{1b}[0m\u{1b}[38;2;179;179;179m\u{1b}[49m(0) \u{1b}[0m\u{1b}[39m\u{1b}[49malpha\u{1b}[0m\u{1b}[38;2;179;179;179m\u{1b}[49m:\u{1b}[0m\u{1b}[K\u{1b}[2;1H\u{1b}[0m\u{1b}[39m\u{1b}[49m(1) beta:\u{1b}[0m\u{1b}[K\u{1b}[3;1H\u{1b}[0m\u{1b}[K\u{1b}[4;1H\u{1b}[0m\u{1b}[K\u{1b}[5;1H\u{1b}[0m\u{1b}[K\u{1b}[6;1H\u{1b}[0m\u{1b}[K\u{1b}[7;1H\u{1b}[0m\u{1b}[K\u{1b}[8;1H\u{1b}[0m\u{1b}[K\u{1b}[9;1H\u{1b}[0m\u{1b}[K\u{1b}[10;1H\u{1b}[0m\u{1b}[K\u{1b}[11;1H\u{1b}[0m\u{1b}[K\u{1b}[12;1H\u{1b}[0m\u{1b}[39m\u{1b}[49mCHOOSER-STATUS                                              \u{1b}[0m\u{1b}[2;1H\u{1b}[?25l\u{1b}[?2026l";
+    let mut completes = Vec::new();
     for missing in [false, true] {
         model.chooser_presentation = Some(presentation.clone());
         renderer.paint(&model, true).unwrap();
-        let complete = read_paint();
-        assert!(complete.contains("alpha"), "{complete:?}");
-        assert!(complete.contains("beta"), "{complete:?}");
-        assert!(complete.contains("CHOOSER-STATUS"), "{complete:?}");
+        completes.push(read_paint());
 
         if missing {
             model.chooser_presentation = None;
@@ -91,20 +90,23 @@ fn forced_repaints_preserve_a_chooser_until_its_presentation_arrives() {
             model.chooser_presentation.as_mut().unwrap().selected = 0;
         }
         renderer.paint(&model, true).unwrap();
-        let pending = read_paint();
-        assert!(!pending.contains("\x1b[2J"), "{pending:?}");
-        assert!(pending.contains("\x1b[2;1H\x1b[?25l"), "{pending:?}");
+        assert_eq!(
+            read_paint(),
+            "\u{1b}[?2026h\u{1b}[?25l\u{1b}[2;1H\u{1b}[?25l\u{1b}[?2026l",
+            "missing presentation: {missing}"
+        );
     }
+    assert_eq!(completes, [painted, painted]);
     model.chooser_presentation = Some(presentation);
     renderer.paint(&model, true).unwrap();
-    let restored = read_paint();
-    assert!(restored.contains("alpha"), "{restored:?}");
-    assert!(restored.contains("beta"), "{restored:?}");
-    assert!(restored.contains("CHOOSER-STATUS"), "{restored:?}");
+    assert_eq!(read_paint(), painted);
     model.choose_tree = None;
     model.chooser_presentation = None;
     renderer.paint(&model, true).unwrap();
-    assert!(read_paint().contains("\x1b[2J"));
+    assert_eq!(
+        read_paint(),
+        "\u{1b}[?2026h\u{1b}[?25l\u{1b}[0m\u{1b}[2J\u{1b}[48;2;16;19;24m\u{1b}[1;1H\u{1b}[60X\u{1b}[2;1H\u{1b}[60X\u{1b}[3;1H\u{1b}[60X\u{1b}[4;1H\u{1b}[60X\u{1b}[5;1H\u{1b}[60X\u{1b}[6;1H\u{1b}[60X\u{1b}[7;1H\u{1b}[60X\u{1b}[8;1H\u{1b}[60X\u{1b}[9;1H\u{1b}[60X\u{1b}[10;1H\u{1b}[60X\u{1b}[11;1H\u{1b}[60X\u{1b}[0m\u{1b}[12;1H\u{1b}[0m\u{1b}[39m\u{1b}[49mCHOOSER-STATUS                                              \u{1b}[0m\u{1b}[?25l\u{1b}[?2026l"
+    );
 }
 
 #[test]
@@ -154,9 +156,10 @@ fn the_chooser_paints_every_row_key_in_its_gutter() {
     renderer.paint_chooser(&model);
     let output = String::from_utf8(renderer.output).unwrap();
 
-    assert!(output.contains("(0)   alpha"), "{output}");
-    assert!(output.contains("(M-a) beta"), "{output}");
-    assert!(output.contains("      gamma"), "{output}");
+    assert_eq!(
+        output,
+        "\u{1b}[0;48;2;16;19;24m\u{1b}[2J\u{1b}[1;1H\u{1b}[0;38;2;16;19;24;48;2;77;163;235mChoose window                                               \u{1b}[0m\u{1b}[2;1H\u{1b}[0;38;2;216;222;233;48;2;16;19;24m> (0)   alpha  1 window                                     \u{1b}[0m\u{1b}[3;1H\u{1b}[0;38;2;216;222;233;48;2;16;19;24m  (M-a) beta  1 window                                      \u{1b}[0m\u{1b}[4;1H\u{1b}[0;38;2;216;222;233;48;2;16;19;24m        gamma  1 window                                     \u{1b}[0m\u{1b}[12;1H\u{1b}[0;38;2;16;19;24;48;2;216;222;233mEnter select  / search  Esc close                           \u{1b}[0m"
+    );
 }
 
 #[test]

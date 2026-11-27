@@ -176,10 +176,11 @@ fn only_the_root_tables_mouse_names_are_collected() {
         },
     ];
     let names = mouse_binding_names(&tables);
-    assert!(names.contains("MouseDown1Pane"));
-    assert!(names.contains("M-MouseDrag1Border"));
-    assert!(names.contains("WheelUpStatus"));
-    assert!(!names.contains("C-b"));
-    assert!(!names.contains("F9"));
-    assert!(!names.contains("MouseDrag1Pane"));
+    assert_eq!(
+        names,
+        ["MouseDown1Pane", "M-MouseDrag1Border", "WheelUpStatus"]
+            .into_iter()
+            .map(str::to_owned)
+            .collect()
+    );
 }

@@ -12,8 +12,7 @@ fn a_terminal_pane_waiting_for_its_first_frame_paints_nothing() {
     let mut renderer = Renderer::new();
     renderer.paint_workspace(&model, true, false);
     let output = String::from_utf8(renderer.output).unwrap();
-    assert!(!output.contains("waiting for frame"), "{output:?}");
-    assert!(!output.contains('┌'), "{output:?}");
+    assert_eq!(output, "");
 }
 
 fn erases(output: &str) -> usize {

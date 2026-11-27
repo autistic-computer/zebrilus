@@ -38,7 +38,10 @@ fn the_overflow_dollar_is_drawn_after_the_position_indicator() {
     let mut renderer = Renderer::new();
     renderer.paint_copy_chrome(&mode, gutter, &viewport, rect, &model);
     let output = String::from_utf8(renderer.output).unwrap();
-    assert!(output.rfind('$').unwrap() > output.rfind("POS").unwrap());
+    assert_eq!(
+        output,
+        "\u{1b}[1;1H\u{1b}[0m\u{1b}[39m\u{1b}[49m  0 \u{1b}[0m\u{1b}[2;1H\u{1b}[0m\u{1b}[39m\u{1b}[49m  1 \u{1b}[0m\u{1b}[1;5H\u{1b}[0m\u{1b}[39m\u{1b}[49m    \u{1b}[1;6H\u{1b}[0m\u{1b}[39m\u{1b}[49mPOS\u{1b}[0m\u{1b}[1;8H\u{1b}[0m\u{1b}[39m\u{1b}[49m$\u{1b}[0m"
+    );
 }
 
 #[test]
@@ -253,21 +256,14 @@ fn incremental_rows_only_repaint_changed_columns_and_clear_shorter_text() {
         Some(&FrameDamage::Rows(vec![0])),
     );
     let output = String::from_utf8(renderer.output.clone()).unwrap();
-    assert!(output.starts_with("\x1b[4;8H"), "{output:?}");
-    assert!(output.contains('9'), "{output:?}");
-    assert!(
-        !output.contains("line") && !output.contains("padding"),
-        "{output:?}"
-    );
+    assert_eq!(output, "\u{1b}[4;8H\u{1b}[0m\u{1b}[39m\u{1b}[49m9");
 
     let mut shorter = after.clone();
     Arc::make_mut(&mut shorter.cells)[5..10].fill(PackedCell::EMPTY);
     renderer.output.clear();
     renderer.paint_terminal(PaneId(1), &shorter, rect, false, None);
     let output = String::from_utf8(renderer.output).unwrap();
-    assert!(output.starts_with("\x1b[4;8H"), "{output:?}");
-    assert!(output.contains("     "), "{output:?}");
-    assert!(!output.contains("padding"), "{output:?}");
+    assert_eq!(output, "\u{1b}[4;8H\u{1b}[0m\u{1b}[39m\u{1b}[49m     ");
 }
 
 #[test]

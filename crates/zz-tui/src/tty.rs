@@ -681,7 +681,7 @@ mod tests {
 
     #[test]
     fn the_startup_requests_carry_the_pin_three_attribute_queries() {
-        assert!(TERMINAL_REQUESTS.ends_with(b"\x1b[c\x1b[>c\x1b[>q\x1b[?2026$p"));
+        assert_eq!(TERMINAL_REQUESTS, b"\x1b[c\x1b[>c\x1b[>q\x1b[?2026$p");
     }
 
     #[test]
