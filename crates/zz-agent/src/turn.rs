@@ -878,12 +878,15 @@ mod tests {
             command: None,
         });
         let step = run.feed(&ended("zz-turn-1", End::Failed("busy".to_owned())));
-        assert!(
-            step.effects
-                .iter()
-                .any(|effect| matches!(effect, Effect::Settle { turn: Some(1), .. })),
-            "{:?}",
-            step.effects
+        assert_eq!(
+            step.effects,
+            settled(
+                Some(1),
+                Outcome::Failed {
+                    message: "busy".to_owned()
+                },
+                Effect::Reclaim
+            )
         );
     }
 

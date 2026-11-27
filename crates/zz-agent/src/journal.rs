@@ -1391,20 +1391,27 @@ mod tests {
         journal
             .append("sess-1", &chunk("msg-1", "seed"))
             .expect("the first chunk still fits");
-        let refused = (0..64).any(|_| {
-            matches!(
-                journal.append("sess-1", &chunk("msg-1", "0123456789")),
-                Err(JournalError::Full { .. })
-            )
-        });
+        let mut refused = None;
+        for merge in 0..64 {
+            match journal.append("sess-1", &chunk("msg-1", "0123456789")) {
+                Ok(_) => {}
+                Err(JournalError::Full { bytes, records }) => {
+                    refused = Some((merge, bytes, records));
+                    break;
+                }
+                Err(error) => panic!("merge {merge}: {error}"),
+            }
+        }
 
-        assert!(
+        assert_eq!(
             refused,
+            Some((13, MAX_JOURNAL_BYTES - 256, 1)),
             "a merge past the cap is refused before it is taken"
         );
         journal.replay("sess-1").expect("replay");
-        assert!(
-            fs::metadata(&path).expect("metadata").len() <= MAX_JOURNAL_BYTES,
+        assert_eq!(
+            fs::metadata(&path).expect("metadata").len(),
+            MAX_JOURNAL_BYTES - 6,
             "flushing a reserved record can never cross the cap"
         );
     }

@@ -303,9 +303,19 @@ fn an_unflushed_batch_stays_inside_its_byte_bound() {
     for seq in 1..=32 {
         lane.push(seq, item.clone());
     }
-    assert!(lane.batch_bytes <= MAX_AGENT_UPDATES_BYTES);
-    assert!(lane.ring_bytes <= MAX_REPLAY_RING_BYTES);
-    assert!(lane.batch.len() <= MAX_AGENT_UPDATES_BYTES / MAX_AGENT_RESULT_BYTES);
+    assert_eq!(
+        (lane.batch_first_seq, lane.batch.len(), lane.batch_bytes),
+        (28, 5, 5 * MAX_AGENT_RESULT_BYTES)
+    );
+    assert_eq!(
+        (
+            lane.ring.front().map(|(seq, _)| *seq),
+            lane.ring.len(),
+            lane.ring_bytes,
+            lane.evicted_seq
+        ),
+        (Some(15), 18, MAX_REPLAY_RING_BYTES, 14)
+    );
 }
 
 #[test]
