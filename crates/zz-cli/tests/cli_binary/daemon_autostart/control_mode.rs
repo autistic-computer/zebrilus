@@ -1,0 +1,2027 @@
+use super::*;
+
+#[derive(Debug)]
+struct Block {
+    time: u64,
+    number: u64,
+    flags: u8,
+    payload: Vec<String>,
+    error: bool,
+}
+
+#[derive(Debug)]
+struct Stream {
+    blocks: Vec<Block>,
+    outside: Vec<String>,
+}
+
+fn marker(line: &str, expected: &str) -> Option<(u64, u64, u8)> {
+    let mut fields = line.split(' ');
+    if fields.next()? != expected {
+        return None;
+    }
+    let time = fields.next()?.parse().ok()?;
+    let number = fields.next()?.parse().ok()?;
+    let flags = fields.next()?.parse().ok()?;
+    fields.next().is_none().then_some((time, number, flags))
+}
+
+fn parse_stream_impl(output: &[u8], double: bool, contiguous: bool) -> Stream {
+    let output = if double {
+        assert!(output.starts_with(b"\x1bP1000p"));
+        assert!(output.ends_with(b"\x1b\\"));
+        &output[b"\x1bP1000p".len()..output.len() - b"\x1b\\".len()]
+    } else {
+        assert!(!output.starts_with(b"\x1bP1000p"));
+        assert!(!output.ends_with(b"\x1b\\"));
+        output
+    };
+    let text = std::str::from_utf8(output).expect("UTF-8 control output");
+    let text = text.strip_suffix('\n').unwrap_or(text);
+    let lines = text.split('\n').collect::<Vec<_>>();
+    let mut blocks = Vec::new();
+    let mut outside = Vec::new();
+    let mut index = 0;
+    while index < lines.len() {
+        let Some((time, number, flags)) = marker(lines[index], "%begin") else {
+            outside.push(lines[index].to_owned());
+            index += 1;
+            continue;
+        };
+        index += 1;
+        let mut payload = Vec::new();
+        let error = loop {
+            assert!(index < lines.len(), "unterminated block {number}");
+            if let Some(end) = marker(lines[index], "%end") {
+                assert_eq!(end, (time, number, flags));
+                index += 1;
+                break false;
+            }
+            if let Some(end) = marker(lines[index], "%error") {
+                assert_eq!(end, (time, number, flags));
+                index += 1;
+                break true;
+            }
+            payload.push(lines[index].to_owned());
+            index += 1;
+        };
+        blocks.push(Block {
+            time,
+            number,
+            flags,
+            payload,
+            error,
+        });
+    }
+    for (index, block) in blocks.iter().enumerate() {
+        if contiguous {
+            assert_eq!(block.number, index as u64 + 1);
+        }
+        assert!(block.time > 0);
+    }
+    Stream { blocks, outside }
+}
+
+fn parse_stream(output: &[u8], double: bool) -> Stream {
+    parse_stream_impl(output, double, true)
+}
+
+fn parse_stream_allow_gaps(output: &[u8], double: bool) -> Stream {
+    parse_stream_impl(output, double, false)
+}
+
+fn os_error_text(error: &std::io::Error) -> String {
+    let message = error.to_string();
+    error.raw_os_error().map_or(message.clone(), |code| {
+        message
+            .strip_suffix(&format!(" (os error {code})"))
+            .unwrap_or(&message)
+            .to_owned()
+    })
+}
+
+fn assert_block(block: &Block, number: u64, flags: u8, payload: &[&str], error: bool) {
+    assert_eq!(block.number, number);
+    assert_eq!(block.flags, flags);
+    assert_eq!(
+        block.payload,
+        payload
+            .iter()
+            .map(|line| (*line).to_owned())
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(block.error, error);
+}
+
+fn next_block_guard<'a>(lines: impl Iterator<Item = &'a str>) -> &'a str {
+    for line in lines {
+        if line.starts_with("%begin ") || line.starts_with("%end ") || line.starts_with("%error ") {
+            return line;
+        }
+        assert!(
+            line.starts_with('%'),
+            "raw line {line:?} between the error and its guard"
+        );
+    }
+    panic!("no block guard next to the raw error");
+}
+
+fn assert_attached_startup(outside: &[String], name: &str) {
+    let settled = outside
+        .iter()
+        .filter(|line| !line.starts_with("%window-renamed @0 ") && !line.starts_with("%output %0 "))
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        settled,
+        [
+            "%window-add @0",
+            "%sessions-changed",
+            &format!("%session-changed $0 {name}"),
+            "%exit",
+        ]
+    );
+}
+
+fn wait_for_control_marker(path: &Path, child: &mut Child, label: &str) {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !path.exists() {
+        if let Some(status) = child.try_wait().expect("poll control marker process") {
+            panic!("control process exited before {label}: {status}");
+        }
+        if Instant::now() >= deadline {
+            child.kill().expect("kill stalled control marker process");
+            panic!("control process did not reach {label}");
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+}
+
+fn wait_for_control_output_marker(path: &Path, marker: &str, child: &mut Child, label: &str) {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let output = std::fs::read(path).expect("read live control output");
+        let mut marker_seen = false;
+        let completed = String::from_utf8_lossy(&output).lines().any(|line| {
+            if line == marker {
+                marker_seen = true;
+                false
+            } else {
+                marker_seen && line.starts_with("%end ")
+            }
+        });
+        if completed {
+            return;
+        }
+        if let Some(status) = child.try_wait().expect("poll control block process") {
+            panic!(
+                "control process exited before {label}: {status}: {}",
+                String::from_utf8_lossy(&output)
+            );
+        }
+        if Instant::now() >= deadline {
+            child.kill().expect("kill stalled control block process");
+            panic!(
+                "control process did not reach {label}: {}",
+                String::from_utf8_lossy(&output)
+            );
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+}
+
+fn wait_for_control_error_marker(path: &Path, marker: &str, child: &mut Child, label: &str) {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let output = std::fs::read(path).expect("read live control output");
+        let mut marker_seen = false;
+        let completed = String::from_utf8_lossy(&output).lines().any(|line| {
+            if line == marker {
+                marker_seen = true;
+                false
+            } else {
+                marker_seen && line.starts_with("%error ")
+            }
+        });
+        if completed {
+            return;
+        }
+        if let Some(status) = child.try_wait().expect("poll control error process") {
+            panic!("control process exited before {label}: {status}");
+        }
+        if Instant::now() >= deadline {
+            child.kill().expect("kill stalled control error process");
+            panic!("control process did not reach {label}");
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+}
+
+fn spawn_control_to_file(
+    fixture: &Fixture,
+    arguments: &[&str],
+    output_path: &Path,
+) -> (Child, ChildStdin) {
+    let output_file = File::create(output_path).expect("create live control output");
+    let mut child = fixture
+        .command()
+        .args(arguments)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::from(output_file))
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn control with live output");
+    let stdin = child.stdin.take().expect("piped control stdin");
+    (child, stdin)
+}
+
+fn wait_for_control_clients(fixture: &Fixture, expected: usize, label: &str) -> Vec<String> {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let listed = fixture.run(&[
+            "-u",
+            "list-clients",
+            "-F",
+            "#{client_name}\t#{client_flags}",
+        ]);
+        let names = String::from_utf8_lossy(&listed.stdout)
+            .lines()
+            .filter_map(|line| {
+                let (name, flags) = line.split_once('\t')?;
+                flags.contains("control-mode").then(|| name.to_owned())
+            })
+            .collect::<Vec<_>>();
+        if listed.status.success() && names.len() == expected {
+            return names;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "control clients did not settle for {label}: status={} stdout={} stderr={}",
+            listed.status,
+            String::from_utf8_lossy(&listed.stdout),
+            String::from_utf8_lossy(&listed.stderr)
+        );
+        thread::sleep(Duration::from_millis(10));
+    }
+}
+
+fn prime_control_return_code(
+    child: &mut Child,
+    stdin: &mut ChildStdin,
+    output_path: &Path,
+    marker: &str,
+    missing: &str,
+) {
+    writeln!(stdin, "kill-session -t {missing}").expect("write retval failure");
+    writeln!(stdin, "display-message -p {marker}").expect("write retval marker");
+    stdin.flush().expect("flush retval commands");
+    wait_for_control_output_marker(output_path, marker, child, marker);
+}
+
+fn collect_control_process(mut child: Child, stdin: Option<ChildStdin>, label: &str) -> Output {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let status = loop {
+        if let Some(status) = child.try_wait().expect("poll control process") {
+            break status;
+        }
+        if Instant::now() >= deadline {
+            child.kill().expect("kill stalled control process");
+            panic!("control process did not exit for {label}");
+        }
+        thread::sleep(Duration::from_millis(10));
+    };
+    drop(stdin);
+    let output = child.wait_with_output().expect("collect control output");
+    assert_eq!(output.status, status, "{label}");
+    output
+}
+
+fn terminate_control_process(mut child: Child, stdin: ChildStdin, label: &str) -> Output {
+    let pid = i32::try_from(child.id())
+        .ok()
+        .and_then(rustix::process::Pid::from_raw)
+        .expect("control process PID");
+    let started = Instant::now();
+    if let Err(error) = rustix::process::kill_process(pid, rustix::process::Signal::TERM) {
+        let _ = child.kill();
+        let _ = child.wait();
+        panic!("send SIGTERM for {label}: {error}");
+    }
+    let status = loop {
+        if let Some(status) = child.try_wait().expect("poll signalled control process") {
+            break status;
+        }
+        if started.elapsed() >= Duration::from_secs(2) {
+            let _ = child.kill();
+            let _ = child.wait();
+            panic!("control process did not exit promptly after SIGTERM for {label}");
+        }
+        thread::sleep(Duration::from_millis(10));
+    };
+    assert!(started.elapsed() < Duration::from_secs(2), "{label}");
+    drop(stdin);
+    let output = child
+        .wait_with_output()
+        .expect("collect signalled control output");
+    assert_eq!(output.status, status, "{label}");
+    output
+}
+
+fn run_control_until_return(
+    fixture: &Fixture,
+    arguments: &[&str],
+    input: &str,
+    marker: &Path,
+    label: &str,
+) -> Output {
+    let (mut child, mut stdin) = fixture.spawn_with_open_stdin(arguments);
+    stdin
+        .write_all(input.as_bytes())
+        .expect("write control commands");
+    if !input.ends_with('\n') {
+        writeln!(stdin).expect("terminate control command line");
+    }
+    writeln!(stdin, "run-shell 'touch \"{}\"'", marker.display())
+        .expect("write control completion marker");
+    stdin.flush().expect("flush control commands");
+    wait_for_control_marker(marker, &mut child, label);
+    writeln!(stdin).expect("write control return");
+    stdin.flush().expect("flush control return");
+    collect_control_process(child, Some(stdin), label)
+}
+
+#[test]
+fn control_read_only_connect_failure_has_no_framing_or_exit() {
+    let fixture = Fixture::new();
+    let output = fixture.run(&["-C", "ls"]);
+    assert_missing(&output, &fixture.missing_message());
+    fixture.assert_not_started();
+}
+
+#[test]
+fn control_list_commands_autostarts_and_frames_the_initial_command() {
+    let fixture = Fixture::new();
+    if !local_socket_bind_available(&fixture.socket) {
+        return;
+    }
+    let output = fixture.run(&["-C", "list-commands"]);
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stderr.is_empty());
+    let stream = parse_stream(&output.stdout, false);
+    assert_eq!(stream.blocks.len(), 1);
+    assert_eq!(stream.blocks[0].flags, 0);
+    assert!(!stream.blocks[0].payload.is_empty());
+    assert!(!stream.blocks[0].error);
+    assert_eq!(stream.outside, ["%exit"]);
+    assert!(fixture.socket.exists());
+}
+
+#[test]
+fn detached_control_new_session_exits_without_reading_stdin() {
+    let fixture = Fixture::new();
+    if !local_socket_bind_available(&fixture.socket) {
+        return;
+    }
+    let (mut child, stdin) = fixture.spawn_with_open_stdin(&["-C", "new-session", "-d", "-s", "x"]);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let status = loop {
+        if let Some(status) = child.try_wait().expect("poll control process") {
+            break status;
+        }
+        if Instant::now() >= deadline {
+            child.kill().expect("kill stalled control process");
+            panic!("detached control client read stdin");
+        }
+        thread::sleep(Duration::from_millis(10));
+    };
+    drop(stdin);
+    let output = child.wait_with_output().expect("collect control output");
+    assert_eq!(output.status, status);
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stderr.is_empty());
+    let stream = parse_stream(&output.stdout, false);
+    assert_eq!(stream.blocks.len(), 1);
+    assert_block(&stream.blocks[0], 1, 0, &[], false);
+    assert_eq!(stream.outside, ["%exit"]);
+}
+
+#[test]
+fn control_ls_with_a_daemon_frames_session_output() {
+    let fixture = Fixture::new();
+    if !local_socket_bind_available(&fixture.socket) {
+        return;
+    }
+    let created = fixture.run(&["new-session", "-d", "-s", "listed"]);
+    assert_eq!(created.status.code(), Some(0));
+    let output = fixture.run(&["-C", "ls"]);
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stderr.is_empty());
+    let stream = parse_stream(&output.stdout, false);
+    assert_eq!(stream.blocks.len(), 1);
+    assert_eq!(stream.blocks[0].flags, 0);
+    assert!(!stream.blocks[0].error);
+    assert!(stream.blocks[0].payload[0].starts_with("listed:"));
+    assert_eq!(stream.outside, ["%exit"]);
+}
+
+#[test]
+fn control_initial_command_uses_a_live_daemon_alias() {
+    let fixture = Fixture::new();
+    if !local_socket_bind_available(&fixture.socket) {
+        return;
+    }
+    assert!(
+        fixture
+            .run(&["new-session", "-d", "-s", "aliased"])
+            .status
+            .success()
+    );
+    assert!(
+        fixture
+            .run(&[
+                "set-option",
+                "-s",
+                "command-alias[40]",
+                "live=list-sessions -F 'alias-#{session_name}'",
+            ])
+            .status
+            .success()
+    );
+    let output = fixture.run(&["-C", "live"]);
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stderr.is_empty());
+    let stream = parse_stream(&output.stdout, false);
+    assert_eq!(stream.blocks.len(), 1);
+    assert_block(&stream.blocks[0], 1, 0, &["alias-aliased"], false);
+    assert_eq!(stream.outside, ["%exit"]);
+}
+
+#[test]
+fn control_stdin_prepares_each_complete_alias_chain_once() {
+    let fixture = Fixture::new();
+    if !local_socket_bind_available(&fixture.socket) {
+        return;
+    }
+    assert!(
+        fixture
+            .run(&["new-session", "-d", "-s", "alias-chain"])
+            .status
+            .success()
+    );
+    assert!(
+        fixture
+            .run(&[
+                "set-option",
+                "-s",
+                "command-alias[40]",
+                "live=display-message -p old",
+            ])
+            .status
+            .success()
+    );
+    let marker = fixture._directory.path().join("alias-chain.complete");
+    let output = run_control_until_return(
+        &fixture,
+        &["-C", "attach-session", "-t", "alias-chain"],
+        "set-option -s command-alias[40] 'live=display-message -p new' ; live\nlive\n",
+        &marker,
+        "alias chain completion",
+    );
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stderr.is_empty());
+    let stream = parse_stream(&output.stdout, false);
+    assert_eq!(stream.blocks.len(), 5);
+    assert_block(&stream.blocks[0], 1, 0, &[], false);
+    assert_block(&stream.blocks[1], 2, 1, &[], false);
+    assert_block(&stream.blocks[2], 3, 1, &["old"], false);
+    assert_block(&stream.blocks[3], 4, 1, &["new"], false);
+    assert_block(&stream.blocks[4], 5, 1, &[], false);
+    assert_eq!(stream.outside.last().map(String::as_str), Some("%exit"));
+}
+
+#[test]
+fn control_unknown_initial_command_is_bare_after_connect() {
+    let fixture = Fixture::new();
+    if !local_socket_bind_available(&fixture.socket) {
+        return;
+    }
+    let created = fixture.run(&["new-session", "-d"]);
+    assert_eq!(created.status.code(), Some(0));
+    let output = fixture.run(&["-C", "frobnicate"]);
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stderr.is_empty());
+    let stream = parse_stream(&output.stdout, false);
+    assert!(stream.blocks.is_empty());
+    assert_eq!(stream.outside, ["unknown command: frobnicate", "%exit"]);
+}
+
+#[test]
+fn control_command_error_uses_the_inner_server_message() {
+    let fixture = Fixture::new();
+    if !local_socket_bind_available(&fixture.socket) {
+        return;
+    }
+    let output = fixture.run(&["-C", "list-commands", "bogus-command"]);
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stderr.is_empty());
+    let stream = parse_stream(&output.stdout, false);
+    assert_eq!(stream.blocks.len(), 1);
+    assert_block(
+        &stream.blocks[0],
+        1,
+        0,
+        &["unknown command: bogus-command"],
+        true,
+    );
+    assert_eq!(stream.outside, ["%exit"]);
+}
+
+#[test]
+fn attached_control_executes_stdin_until_empty_line() {
+    let fixture = Fixture::new();
+    if !local_socket_bind_available(&fixture.socket) {
+        return;
+    }
+    let output = fixture.run_with_stdin(&["-C", "new-session", "-s", "attached"], b"ls\n\n");
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stderr.is_empty());
+    let stream = parse_stream(&output.stdout, false);
+    assert_eq!(stream.blocks.len(), 2);
+    assert_block(&stream.blocks[0], 1, 0, &[], false);
+    assert_eq!(stream.blocks[1].flags, 1);
+    assert!(!stream.blocks[1].error);
+    assert!(stream.blocks[1].payload[0].starts_with("attached:"));
+    assert!(stream.blocks[1].payload[0].ends_with(" (attached)"));
+    assert_attached_startup(&stream.outside, "attached");
+}
+
+#[test]
+fn control_chains_frame_each_command_and_abort_only_the_failing_line() {
+    let fixture = Fixture::new();
+    if !local_socket_bind_available(&fixture.socket) {
+        return;
+    }
+    let complete = fixture._directory.path().join("chain.complete");
+    let (mut child, mut stdin) =
+        fixture.spawn_with_open_stdin(&["-C", "new-session", "-s", "chain"]);
+    writeln!(stdin, "display-message -p one ; display-message -p two")
+        .expect("write successful chain");
+    writeln!(stdin, "kill-session -t nosuch ; display-message -p skipped")
+        .expect("write failing chain");
+    writeln!(stdin, "display-message -p fresh").expect("write fresh command");
+    writeln!(stdin, "run-shell 'touch \"{}\"'", complete.display())
+        .expect("write chain completion marker");
+    stdin.flush().expect("flush chain commands");
+    wait_for_control_marker(&complete, &mut child, "chain completion");
+    writeln!(stdin).expect("write chain return");
+    stdin.flush().expect("flush chain return");
+    let output = collect_control_process(child, Some(stdin), "chain return");
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stderr.is_empty());
+    let stream = parse_stream(&output.stdout, false);
+    assert_eq!(stream.blocks.len(), 6);
+    assert_block(&stream.blocks[0], 1, 0, &[], false);
+    assert_block(&stream.blocks[1], 2, 1, &["one"], false);
+    assert_block(&stream.blocks[2], 3, 1, &["two"], false);
+    assert_block(
+        &stream.blocks[3],
+        4,
+        1,
+        &["can't find session: nosuch"],
+        true,
+    );
+    assert_block(&stream.blocks[4], 5, 1, &["fresh"], false);
+    assert_block(&stream.blocks[5], 6, 1, &[], false);
+    assert_attached_startup(&stream.outside, "chain");
+}
+
+fn control_handoff_transcript(relay: Option<&str>) -> Option<(Vec<String>, Option<i32>)> {
+    let fixture = Fixture::new();
+    if !local_socket_bind_available(&fixture.socket) {
+        return None;
+    }
+    let mut command = fixture.command();
+    if let Some(relay) = relay {
+        command.env("ZZ_CONTROL_RELAY", relay);
+    }
+    let mut child = command
+        .args([
+            "-C",
+            "new-session",
+            "-s",
+            "handoff",
+            "-n",
+            "fixed",
+            "exec /bin/cat",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn control client");
+    let mut stdin = child.stdin.take().expect("piped stdin");
+    let stdout = child.stdout.take().expect("piped stdout");
+    let (lines, received) = mpsc::channel();
+    let reader = thread::spawn(move || {
+        for line in std::io::BufRead::lines(std::io::BufReader::new(stdout)) {
+            let Ok(line) = line else {
+                break;
+            };
+            if lines.send(line).is_err() {
+                break;
+            }
+        }
+    });
+    let mut transcript = Vec::new();
+    let mut read_until = |prefixes: &[&str]| loop {
+        let line = received
+            .recv_timeout(Duration::from_secs(10))
+            .expect("control output line");
+        let mut fields = line.split(' ').collect::<Vec<_>>();
+        if fields.len() == 4 && matches!(fields[0], "%begin" | "%end" | "%error") {
+            fields[1] = "T";
+        }
+        if !line.starts_with("%window-renamed ") && !line.starts_with("%output ") {
+            transcript.push(fields.join(" "));
+        }
+        if prefixes.iter().any(|prefix| line.starts_with(prefix)) {
+            break;
+        }
+    };
+    read_until(&["%session-changed "]);
+    for line in [
+        "display-message -p A",
+        "bogus-command",
+        "display-message -p B",
+        "list-windows -F '#{window_index}'",
+    ] {
+        writeln!(stdin, "{line}").expect("write control line");
+        stdin.flush().expect("flush control line");
+        read_until(&["%end ", "%error "]);
+    }
+    writeln!(stdin).expect("write control return");
+    stdin.flush().expect("flush control return");
+    read_until(&["%exit"]);
+    drop(stdin);
+    let status = child.wait().expect("wait for control client");
+    reader.join().expect("join control reader");
+    Some((transcript, status.code()))
+}
+
+#[test]
+fn control_stdio_handoff_frames_like_the_relay_rollback() {
+    let Some(handoff) = control_handoff_transcript(None) else {
+        return;
+    };
+    let Some(relay) = control_handoff_transcript(Some("1")) else {
+        return;
+    };
+    assert_eq!(handoff, relay);
+    assert!(handoff.0.iter().any(|line| line == "A"));
+    assert!(handoff.0.iter().any(|line| line == "B"));
+    assert!(
+        handoff
+            .0
+            .iter()
+            .any(|line| line.starts_with("%error T 3 1"))
+    );
+}
+
+#[test]
+fn control_parse_and_generic_nonzero_results_do_not_set_retval() {
+    let cases: &[(&str, &[u8], i32, &[&str], bool)] = &[
+        (
+            "parse-return-status",
+            b"wibble\n\n",
+            0,
+            &["parse error: unknown command: wibble"],
+            true,
+        ),
+        (
+            "flag-parse-return-status",
+            b"list-sessions -Z\n\n",
+            0,
+            &["command list-sessions: unknown flag -Z"],
+            true,
+        ),
+        (
+            "arity-parse-eof-status",
+            b"rename-session\n",
+            0,
+            &["command rename-session: too few arguments (need at least 1)"],
+            true,
+        ),
+    ];
+    for (session, input, expected_status, expected_payload, expected_error) in cases {
+        let fixture = Fixture::new();
+        if !local_socket_bind_available(&fixture.socket) {
+            return;
+        }
+        let output = fixture.run_with_stdin(
+            &["-C", "new-session", "-s", session, "exec /bin/cat"],
+            input,
+        );
+        assert_eq!(output.status.code(), Some(*expected_status), "{session}");
+        assert!(output.stderr.is_empty(), "{session}");
+        let stream = parse_stream(&output.stdout, false);
+        assert_eq!(stream.blocks.len(), 2, "{session}");
+        assert_block(&stream.blocks[0], 1, 0, &[], false);
+        assert_block(&stream.blocks[1], 2, 1, expected_payload, *expected_error);
+        assert_attached_startup(&stream.outside, session);
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn control_foreground_run_shell_closes_before_raw_output_and_continues() {
+    let fixture = Fixture::new();
+    if !local_socket_bind_available(&fixture.socket) {
+        return;
+    }
+    let marker_path = fixture._directory.path().join("run-shell-order-complete");
+    let output = run_control_until_return(
+        &fixture,
+        &[
+            "-C",
+            "new-session",
+            "-s",
+            "run-shell-order",
+            "exec /bin/cat",
+        ],
+        "run-shell 'printf foreground; exit 3' ; display-message -p AFTER_FOREGROUND\n\
+         run-shell 'kill -TERM $$'\n",
+        &marker_path,
+        "foreground run-shell completion",
+    );
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stderr.is_empty());
+    let text = String::from_utf8(output.stdout.clone()).expect("UTF-8 control output");
+    let lines = text.lines().collect::<Vec<_>>();
+    let index = |expected: &str| {
+        lines
+            .iter()
+            .position(|line| *line == expected)
+            .unwrap_or_else(|| panic!("missing {expected:?}: {text}"))
+    };
+    let frame = |marker_name: &str, number: u64| {
+        lines
+            .iter()
+            .position(|line| {
+                marker(line, marker_name).is_some_and(|(_, candidate, _)| candidate == number)
+            })
+            .unwrap_or_else(|| panic!("missing {marker_name} for {number}: {text}"))
+    };
+    assert!(frame("%end", 2) < index("foreground"));
+    assert!(index("foreground") < index("'printf foreground; exit 3' returned 3"));
+    assert!(index("'printf foreground; exit 3' returned 3") < frame("%begin", 3));
+    assert!(frame("%end", 4) < index("'kill -TERM $$' terminated by signal 15"));
+
+    let stream = parse_stream(&output.stdout, false);
+    assert_eq!(stream.blocks.len(), 5, "{stream:?}");
+    assert_block(&stream.blocks[0], 1, 0, &[], false);
+    assert_block(&stream.blocks[1], 2, 1, &[], false);
+    assert_block(&stream.blocks[2], 3, 1, &["AFTER_FOREGROUND"], false);
+    assert_block(&stream.blocks[3], 4, 1, &[], false);
+    assert_block(&stream.blocks[4], 5, 1, &[], false);
+    assert!(stream.outside.iter().any(|line| line == "foreground"));
+    assert!(
+        stream
+            .outside
+            .iter()
+            .any(|line| line == "'printf foreground; exit 3' returned 3")
+    );
+    assert!(
+        stream
+            .outside
+            .iter()
+            .any(|line| line == "'kill -TERM $$' terminated by signal 15")
+    );
+    assert_eq!(stream.outside.last().map(String::as_str), Some("%exit"));
+}
+
+#[test]
+fn control_alias_groups_inherit_flags_and_continue_after_shell_status() {
+    let fixture = Fixture::new();
+    if !local_socket_bind_available(&fixture.socket) {
+        return;
+    }
+    let created = fixture.run(&["new-session", "-d", "-s", "control-alias", "exec /bin/cat"]);
+    assert_eq!(created.status.code(), Some(0));
+    let configured = fixture.run(&[
+        "set-option",
+        "-s",
+        "command-alias[90]",
+        "auditmulti=display-message -p first ; display-message -p",
+    ]);
+    assert_eq!(configured.status.code(), Some(0));
+
+    let initial = fixture.run_with_stdin(&["-C", "auditmulti", "tail"], b"");
+    assert_eq!(initial.status.code(), Some(0));
+    assert!(initial.stderr.is_empty());
+    let stream = parse_stream(&initial.stdout, false);
+    assert_eq!(stream.blocks.len(), 2);
+    assert_block(&stream.blocks[0], 1, 0, &["first"], false);
+    assert_block(&stream.blocks[1], 2, 0, &["tail"], false);
+    assert_eq!(stream.outside.last().map(String::as_str), Some("%exit"));
+
+    let configured = fixture.run(&[
+        "set-option",
+        "-s",
+        "command-alias[91]",
+        "auditfail=display-message -p before ; run-shell 'exit 3' ; display-message -p after",
+    ]);
+    assert_eq!(configured.status.code(), Some(0));
+    let marker_path = fixture._directory.path().join("alias-shell-complete");
+    let output = run_control_until_return(
+        &fixture,
+        &["-C", "attach-session", "-t", "control-alias"],
+        "auditfail ; display-message -p same-line\n",
+        &marker_path,
+        "control alias shell completion",
+    );
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stderr.is_empty());
+    let stream = parse_stream(&output.stdout, false);
+    assert_eq!(stream.blocks.len(), 6, "{stream:?}");
+    assert_block(&stream.blocks[0], 1, 0, &[], false);
+    assert_block(&stream.blocks[1], 2, 1, &["before"], false);
+    assert_block(&stream.blocks[2], 3, 1, &[], false);
+    assert_block(&stream.blocks[3], 4, 1, &["after"], false);
+    assert_block(&stream.blocks[4], 5, 1, &["same-line"], false);
+    assert_block(&stream.blocks[5], 6, 1, &[], false);
+    assert!(
+        stream
+            .outside
+            .iter()
+            .any(|line| line == "'exit 3' returned 3")
+    );
+
+    let source = write_source(
+        fixture._directory.path(),
+        "alias-source.conf",
+        "display-message -p CHILD_ONE\ndisplay-message -p CHILD_TWO\n",
+    );
+    let configured = fixture.run(&[
+        "set-option",
+        "-s",
+        "command-alias[92]",
+        &format!("auditsource=source-file '{source}'"),
+    ]);
+    assert_eq!(configured.status.code(), Some(0));
+    let initial = fixture.run_with_stdin(&["-C", "auditsource"], b"");
+    assert_eq!(initial.status.code(), Some(0));
+    let stream = parse_stream(&initial.stdout, false);
+    assert_eq!(stream.blocks.len(), 3, "{stream:?}");
+    assert_block(&stream.blocks[0], 1, 0, &[], false);
+    assert_block(&stream.blocks[1], 2, 0, &["CHILD_ONE"], false);
+    assert_block(&stream.blocks[2], 3, 0, &["CHILD_TWO"], false);
+
+    let configured = fixture.run(&[
+        "set-option",
+        "-s",
+        "command-alias[94]",
+        &format!(
+            "auditmiddle=display-message -p BEFORE ; source-file '{source}' ; display-message -p OUTER"
+        ),
+    ]);
+    assert_eq!(configured.status.code(), Some(0));
+    let initial = fixture.run_with_stdin(&["-C", "auditmiddle"], b"");
+    assert_eq!(initial.status.code(), Some(0));
+    let stream = parse_stream_allow_gaps(&initial.stdout, false);
+    assert_eq!(stream.blocks.len(), 5, "{stream:?}");
+    assert_block(&stream.blocks[0], 1, 0, &["BEFORE"], false);
+    assert_block(&stream.blocks[1], 2, 0, &[], false);
+    assert_block(&stream.blocks[2], 3, 0, &["CHILD_ONE"], false);
+    assert_block(&stream.blocks[3], 4, 0, &["CHILD_TWO"], false);
+    assert_block(&stream.blocks[4], 6, 0, &["OUTER"], false);
+
+    let missing = fixture._directory.path().join("missing-alias-source.conf");
+    let configured = fixture.run(&[
+        "set-option",
+        "-s",
+        "command-alias[93]",
+        &format!(
+            "auditmissing=display-message -p before-missing ; source-file '{}' ; display-message -p after-missing",
+            missing.display()
+        ),
+    ]);
+    assert_eq!(configured.status.code(), Some(0));
+    let marker_path = fixture
+        ._directory
+        .path()
+        .join("alias-source-failure-complete");
+    let output = run_control_until_return(
+        &fixture,
+        &["-C", "attach-session", "-t", "control-alias"],
+        "auditmissing ; display-message -p same-line-missing\n",
+        &marker_path,
+        "control alias source failure",
+    );
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stderr.is_empty());
+    let stream = parse_stream_allow_gaps(&output.stdout, false);
+    assert!(
+        stream
+            .blocks
+            .iter()
+            .any(|block| block.payload == ["before-missing"])
+    );
+    assert!(stream.blocks.iter().any(|block| {
+        block.error
+            && block
+                .payload
+                .iter()
+                .any(|line| line.contains("missing-alias-source.conf"))
+    }));
+    assert!(
+        !stream.blocks.iter().any(|block| {
+            block
+                .payload
+                .iter()
+                .any(|line| matches!(line.as_str(), "after-missing" | "same-line-missing"))
+        }),
+        "{stream:?}"
+    );
+
+    let configured = fixture.run(&[
+        "set-option",
+        "-s",
+        "command-alias[95]",
+        &format!(
+            "auditpartial=display-message -p before-partial ; source-file '{}' '{source}' ; display-message -p after-partial",
+            missing.display()
+        ),
+    ]);
+    assert_eq!(configured.status.code(), Some(0));
+    let marker_path = fixture
+        ._directory
+        .path()
+        .join("alias-partial-source-complete");
+    let output = run_control_until_return(
+        &fixture,
+        &["-C", "attach-session", "-t", "control-alias"],
+        "auditpartial\n",
+        &marker_path,
+        "control alias partial source failure",
+    );
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stderr.is_empty());
+    let stream = parse_stream_allow_gaps(&output.stdout, false);
+    let payloads = stream
+        .blocks
+        .iter()
+        .flat_map(|block| block.payload.iter().map(String::as_str))
+        .collect::<Vec<_>>();
+    for expected in ["before-partial", "CHILD_ONE", "CHILD_TWO", "after-partial"] {
+        assert!(payloads.contains(&expected), "{stream:?}");
+    }
+    assert!(stream.blocks.iter().any(|block| {
+        !block.error
+            && block
+                .payload
+                .iter()
+                .any(|line| line.contains("missing-alias-source.conf"))
+    }));
+
+    let state_source = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../compat/scenarios/source-file-output-child.conf");
+    let configured = fixture.run(&[
+        "set-option",
+        "-s",
+        "command-alias[96]",
+        &format!(
+            "auditshutdown=kill-server ; source-file '{}' ; display-message -p OUTER",
+            state_source.display()
+        ),
+    ]);
+    assert_eq!(configured.status.code(), Some(0));
+    let output = fixture.run_with_stdin(&["-C", "auditshutdown"], b"");
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stderr.is_empty());
+    let lines = std::str::from_utf8(&output.stdout)
+        .expect("UTF-8 shutdown alias output")
+        .lines()
+        .collect::<Vec<_>>();
+    let exits = lines
+        .iter()
+        .enumerate()
+        .filter(|(_, line)| **line == "%exit")
+        .map(|(index, _)| index)
+        .collect::<Vec<_>>();
+    assert_eq!(exits.len(), 1, "{lines:?}");
+    let child = lines
+        .iter()
+        .position(|line| *line == "CHILD_ONE")
+        .expect("sourced child after shutdown");
+    assert!(exits[0] < child, "{lines:?}");
+    let stream = parse_stream_allow_gaps(&output.stdout, false);
+    let child = stream
+        .blocks
+        .iter()
+        .position(|block| block.payload == ["CHILD_ONE"])
+        .expect("sourced child guard after shutdown");
+    assert!(stream.blocks[child + 1].payload.is_empty(), "{stream:?}");
+    assert!(
+        !stream
+            .blocks
+            .iter()
+            .any(|block| block.payload == ["CHILD_TWO"])
+    );
+    assert!(
+        stream
+            .blocks
+            .iter()
+            .skip(child + 2)
+            .any(|block| block.payload == ["OUTER"])
+    );
+    fixture.assert_stopped();
+}
+
+#[test]
+fn shutdown_hook_source_yields_locally_without_replaying_the_after_hook() {
+    let fixture = Fixture::new();
+    if !local_socket_bind_available(&fixture.socket) {
+        return;
+    }
+    let created = fixture.run(&["new-session", "-d", "-s", "hookprobe", "exec /bin/cat"]);
+    assert_eq!(created.status.code(), Some(0));
+    let scenarios = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../compat/scenarios");
+    let root = scenarios.join("source-file-output-hook-root.conf");
+    let child = scenarios.join("source-file-output-child.conf");
+    let hook = format!("source-file '{}'", child.display());
+    let configured = fixture.run(&["set-hook", "-g", "after-display-message", hook.as_str()]);
+    assert_eq!(configured.status.code(), Some(0));
+    let callback = format!(
+        "kill-server ; source-file '{}' ; display-message -p OUTER",
+        root.display()
+    );
+    let output = fixture.run_with_stdin(&["-C", "run-shell", "-C", callback.as_str()], b"");
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stderr.is_empty());
+    let stream = parse_stream_allow_gaps(&output.stdout, false);
+    assert_eq!(stream.blocks.len(), 3, "{stream:?}");
+    let payloads = stream
+        .blocks
+        .iter()
+        .flat_map(|block| block.payload.iter().map(String::as_str))
+        .collect::<Vec<_>>();
+    assert_eq!(payloads, ["OUTER", "HOOK_TRIGGER"]);
+    assert_eq!(
+        stream
+            .blocks
+            .iter()
+            .filter(|block| block.payload.is_empty())
+            .count(),
+        1
+    );
+    for suppressed in ["HOOK_LATER", "CHILD_ONE", "CHILD_TWO"] {
+        assert!(!payloads.contains(&suppressed), "{stream:?}");
+    }
+    let lines = std::str::from_utf8(&output.stdout)
+        .expect("UTF-8 shutdown hook output")
+        .lines()
+        .collect::<Vec<_>>();
+    assert_eq!(lines.iter().filter(|line| **line == "%exit").count(), 1);
+    assert_eq!(lines.last().copied(), Some("%exit"));
+    fixture.assert_stopped();
+}
+
+#[test]
+fn foreground_callback_error_prevents_later_shutdown_without_losing_guards() {
+    let fixture = Fixture::new();
+    if !local_socket_bind_available(&fixture.socket) {
+        return;
+    }
+    let created = fixture.run(&["new-session", "-d", "-s", "callback-error"]);
+    assert_eq!(created.status.code(), Some(0));
+    let output = fixture.run_with_stdin(
+        &[
+            "-C",
+            "run-shell",
+            "-C",
+            "display-message -F MATCH one ; kill-server",
+        ],
+        b"",
+    );
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stderr.is_empty());
+    let stream = parse_stream(&output.stdout, false);
+    assert_eq!(stream.blocks.len(), 2);
+    assert_block(&stream.blocks[0], 1, 0, &[], false);
+    assert_block(
+        &stream.blocks[1],
+        2,
+        0,
+        &["only one of -F or argument must be given"],
+        true,
+    );
+    assert_eq!(stream.outside, ["%exit"]);
+
+    let listed = fixture.run(&["list-sessions"]);
+    assert_eq!(listed.status.code(), Some(0));
+    let stopped = fixture.run(&["kill-server"]);
+    assert_eq!(stopped.status.code(), Some(0));
+    fixture.assert_stopped();
+}
+
+#[test]
+fn draining_alias_shutdown_tears_down_panes_and_rejects_late_commands_cleanly() {
+    let fixture = Fixture::new();
+    if !local_socket_bind_available(&fixture.socket) {
+        return;
+    }
+    let ready = fixture._directory.path().join("shutdown-pane-ready");
+    let trigger = fixture._directory.path().join("shutdown-pane-trigger");
+    let marker = fixture._directory.path().join("shutdown-pane-marker");
+    let pane_command = format!(
+        "printf ready > '{}'; while [ ! -e '{}' ]; do sleep 0.01; done; sleep 0.2; printf pane > '{}'; sleep 5",
+        ready.display(),
+        trigger.display(),
+        marker.display()
+    );
+    let created = fixture.run(&[
+        "new-session",
+        "-d",
+        "-s",
+        "draining-shutdown",
+        &pane_command,
+    ]);
+    assert_eq!(created.status.code(), Some(0));
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while !ready.exists() && Instant::now() < deadline {
+        thread::sleep(Duration::from_millis(10));
+    }
+    assert!(ready.exists(), "pane process did not start");
+    let configured = fixture.run(&[
+        "set-option",
+        "-s",
+        "command-alias[97]",
+        "slowshutdown=kill-server ; run-shell 'sleep 0.8'",
+    ]);
+    assert_eq!(configured.status.code(), Some(0));
+
+    let shutdown = fixture.run(&["slowshutdown"]);
+    assert_eq!(shutdown.status.code(), Some(0));
+    assert!(shutdown.stdout.is_empty());
+    assert!(shutdown.stderr.is_empty());
+    let late = fixture.run(&["list-sessions"]);
+    assert_eq!(late.status.code(), Some(1));
+    assert!(late.stdout.is_empty());
+    assert_eq!(late.stderr, b"server exited unexpectedly\n");
+    std::fs::write(&trigger, b"go").expect("release pane process");
+    thread::sleep(Duration::from_millis(400));
+    assert!(!marker.exists());
+    fixture.assert_stopped();
+    assert!(!marker.exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn control_sourced_run_shell_closes_before_raw_output_and_same_line_continues() {
+    let fixture = Fixture::new();
+    if !local_socket_bind_available(&fixture.socket) {
+        return;
+    }
+    let directory = fixture._directory.path().join("sourced run-shell");
+    std::fs::create_dir(&directory).expect("create sourced run-shell directory");
+    let source = write_source(
+        &directory,
+        "run-shell.conf",
+        "run-shell 'printf CHILD; exit 3' ; display-message -p SAME\n",
+    );
+    let marker_path = directory.join("complete");
+    let output = run_control_until_return(
+        &fixture,
+        &[
+            "-C",
+            "new-session",
+            "-s",
+            "sourced-run-shell",
+            "exec /bin/cat",
+        ],
+        &format!("source-file '{source}'\n"),
+        &marker_path,
+        "sourced run-shell completion",
+    );
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stderr.is_empty());
+    let text = String::from_utf8(output.stdout.clone()).expect("UTF-8 control output");
+    let lines = text.lines().collect::<Vec<_>>();
+    let child = lines
+        .iter()
+        .position(|line| *line == "CHILD")
+        .unwrap_or_else(|| panic!("missing raw child output: {text}"));
+    assert_eq!(lines[child + 1], "'printf CHILD; exit 3' returned 3");
+    let before = next_block_guard(lines[..child].iter().rev().copied());
+    let end = marker(before, "%end").expect("guard before raw child output");
+    assert_eq!(end.2, 1);
+    let after = next_block_guard(lines[child + 2..].iter().copied());
+    let begin = marker(after, "%begin").expect("guard after raw diagnostic");
+    assert_eq!(begin.2, 1);
+
+    let stream = parse_stream_allow_gaps(&output.stdout, false);
+    let shell = stream
+        .blocks
+        .iter()
+        .find(|block| block.number == end.1)
+        .expect("sourced run-shell guard");
+    assert!(shell.payload.is_empty());
+    assert!(!shell.error);
+    let same = stream
+        .blocks
+        .iter()
+        .find(|block| block.number == begin.1)
+        .expect("same-line continuation guard");
+    assert_eq!(same.payload, ["SAME"]);
+    assert!(!same.error);
+    assert!(stream.outside.iter().any(|line| line == "CHILD"));
+    assert!(
+        stream
+            .outside
+            .iter()
+            .any(|line| line == "'printf CHILD; exit 3' returned 3")
+    );
+}
+
+#[test]
+fn bare_control_defaults_to_attached_new_session() {
+    let fixture = Fixture::new();
+    if !local_socket_bind_available(&fixture.socket) {
+        return;
+    }
+    let output = fixture.run_with_stdin(&["-C"], b"ls\n\n");
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stderr.is_empty());
+    let stream = parse_stream(&output.stdout, false);
+    assert_eq!(stream.blocks.len(), 2);
+    assert_block(&stream.blocks[0], 1, 0, &[], false);
+    assert_eq!(stream.blocks[1].flags, 1);
+    assert!(!stream.blocks[1].payload.is_empty());
+    assert!(!stream.blocks[1].error);
+    assert_attached_startup(&stream.outside, "0");
+}
+
+#[test]
+fn double_control_wraps_stdout_in_dcs_and_st() {
+    let fixture = Fixture::new();
+    if !local_socket_bind_available(&fixture.socket) {
+        return;
+    }
+    let output = fixture.run(&["-CC", "new-session", "-d"]);
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stderr.is_empty());
+    let stream = parse_stream(&output.stdout, true);
+    assert_eq!(stream.blocks.len(), 1);
+    assert_block(&stream.blocks[0], 1, 0, &[], false);
+    assert_eq!(stream.outside, ["%exit"]);
+}
+
+#[test]
+fn control_sigterm_exits_promptly_while_attached_and_idle() {
+    for double in [false, true] {
+        let fixture = Fixture::new();
+        if !local_socket_bind_available(&fixture.socket) {
+            return;
+        }
+        let session = "sigterm-idle";
+        assert!(
+            fixture
+                .run(&["new-session", "-d", "-s", session, "exec /bin/cat"])
+                .status
+                .success()
+        );
+        let output_path = fixture._directory.path().join("sigterm-idle.output");
+        let (mut child, mut stdin) = spawn_control_to_file(
+            &fixture,
+            &[
+                if double { "-CC" } else { "-C" },
+                "attach-session",
+                "-t",
+                session,
+            ],
+            &output_path,
+        );
+        writeln!(stdin, "display-message -p SIGTERM_IDLE_READY")
+            .expect("write idle signal readiness command");
+        stdin.flush().expect("flush idle signal readiness command");
+        wait_for_control_output_marker(
+            &output_path,
+            "SIGTERM_IDLE_READY",
+            &mut child,
+            "idle SIGTERM readiness",
+        );
+        let output = terminate_control_process(child, stdin, "idle attached control");
+        assert_eq!(output.status.code(), Some(0));
+        assert!(output.stderr.is_empty());
+        let stdout = std::fs::read(output_path).expect("read idle SIGTERM output");
+        let stream = parse_stream(&stdout, double);
+        assert_eq!(stream.blocks.len(), 2, "{stream:?}");
+        assert_block(&stream.blocks[0], 1, 0, &[], false);
+        assert_block(&stream.blocks[1], 2, 1, &["SIGTERM_IDLE_READY"], false);
+        assert_eq!(stream.outside.last().map(String::as_str), Some("%exit"));
+        assert_eq!(
+            stream
+                .outside
+                .iter()
+                .filter(|line| *line == "%exit")
+                .count(),
+            1
+        );
+    }
+}
+
+#[test]
+fn control_sigterm_closes_an_open_guard_while_waiting() {
+    for double in [false, true] {
+        let fixture = Fixture::new();
+        if !local_socket_bind_available(&fixture.socket) {
+            return;
+        }
+        let session = "sigterm-waiting";
+        assert!(
+            fixture
+                .run(&["new-session", "-d", "-s", session, "exec /bin/cat"])
+                .status
+                .success()
+        );
+        let output_path = fixture._directory.path().join("sigterm-waiting.output");
+        let (mut child, mut stdin) = spawn_control_to_file(
+            &fixture,
+            &[
+                if double { "-CC" } else { "-C" },
+                "attach-session",
+                "-t",
+                session,
+            ],
+            &output_path,
+        );
+        writeln!(stdin, "display-message -p SIGTERM_WAITING_READY")
+            .expect("write waiting signal readiness command");
+        stdin
+            .flush()
+            .expect("flush waiting signal readiness command");
+        wait_for_control_output_marker(
+            &output_path,
+            "SIGTERM_WAITING_READY",
+            &mut child,
+            "waiting SIGTERM readiness",
+        );
+        writeln!(stdin, "wait-for SIGTERM_GUARD_HOLD").expect("write waiting command");
+        stdin.flush().expect("flush waiting command");
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            let stdout = std::fs::read(&output_path).expect("read waiting control output");
+            let text = String::from_utf8_lossy(&stdout);
+            let started = text.lines().any(|line| {
+                marker(line, "%begin").is_some_and(|(_, number, flags)| number == 3 && flags == 1)
+            });
+            if started {
+                if text.lines().any(|line| {
+                    marker(line, "%end")
+                        .or_else(|| marker(line, "%error"))
+                        .is_some_and(|(_, number, _)| number == 3)
+                }) {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    panic!("waiting guard was already closed: {text}");
+                }
+                break;
+            }
+            if Instant::now() >= deadline
+                || child
+                    .try_wait()
+                    .expect("poll waiting control process")
+                    .is_some()
+            {
+                let _ = child.kill();
+                let _ = child.wait();
+                panic!("waiting command did not expose its open guard: {text}");
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        let output = terminate_control_process(child, stdin, "open waiting control guard");
+        assert_eq!(output.status.code(), Some(0));
+        assert!(output.stderr.is_empty());
+        let stdout = std::fs::read(output_path).expect("read waiting SIGTERM output");
+        let stream = parse_stream(&stdout, double);
+        assert_eq!(stream.blocks.len(), 3, "{stream:?}");
+        assert_block(&stream.blocks[0], 1, 0, &[], false);
+        assert_block(&stream.blocks[1], 2, 1, &["SIGTERM_WAITING_READY"], false);
+        assert_block(&stream.blocks[2], 3, 1, &[], false);
+        assert_eq!(stream.outside.last().map(String::as_str), Some("%exit"));
+        assert_eq!(
+            stream
+                .outside
+                .iter()
+                .filter(|line| *line == "%exit")
+                .count(),
+            1
+        );
+    }
+}
+
+#[test]
+fn control_stdin_parse_error_is_framed_and_the_loop_continues() {
+    let fixture = Fixture::new();
+    if !local_socket_bind_available(&fixture.socket) {
+        return;
+    }
+    let output = fixture.run_with_stdin(&["-C", "new-session", "-s", "parse-error"], b"wibble\n\n");
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stderr.is_empty());
+    let stream = parse_stream(&output.stdout, false);
+    assert_eq!(stream.blocks.len(), 2);
+    assert_block(&stream.blocks[0], 1, 0, &[], false);
+    assert_block(
+        &stream.blocks[1],
+        2,
+        1,
+        &["parse error: unknown command: wibble"],
+        true,
+    );
+    assert_attached_startup(&stream.outside, "parse-error");
+}
+
+#[test]
+fn control_stdin_preflight_errors_abort_the_whole_line() {
+    let fixture = Fixture::new();
+    if !local_socket_bind_available(&fixture.socket) {
+        return;
+    }
+    let marker = fixture._directory.path().join("preflight.complete");
+    let output = run_control_until_return(
+        &fixture,
+        &["-C", "new-session", "-s", "preflight-error"],
+        "set-option -g @should-not-run yes ; bogus-command\nshow-options -gqv @should-not-run\n",
+        &marker,
+        "preflight completion",
+    );
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stderr.is_empty());
+    let stream = parse_stream(&output.stdout, false);
+    assert_eq!(stream.blocks.len(), 4);
+    assert_block(&stream.blocks[0], 1, 0, &[], false);
+    assert_block(
+        &stream.blocks[1],
+        2,
+        1,
+        &["parse error: unknown command: bogus-command"],
+        true,
+    );
+    assert_block(&stream.blocks[2], 3, 1, &[], false);
+    assert_block(&stream.blocks[3], 4, 1, &[], false);
+    assert_attached_startup(&stream.outside, "preflight-error");
+}
+
+#[test]
+fn control_config_error_keeps_the_source_line_and_inner_message() {
+    let fixture = Fixture::new();
+    if !local_socket_bind_available(&fixture.socket) {
+        return;
+    }
+    let directory = fixture._directory.path().join("a: b");
+    std::fs::create_dir(&directory).expect("create config error directory");
+    let source = directory.join("mux.conf");
+    std::fs::write(&source, "wibble\ndisplay-message -p after-config-error\n")
+        .expect("write invalid config");
+    let input = format!("source-file '{}'\n\n", source.display());
+    let output = fixture.run_with_stdin(
+        &["-C", "new-session", "-s", "config-error"],
+        input.as_bytes(),
+    );
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stderr.is_empty());
+    let stream = parse_stream(&output.stdout, false);
+    assert_eq!(stream.blocks.len(), 2);
+    assert_block(&stream.blocks[0], 1, 0, &[], false);
+    assert_block(&stream.blocks[1], 2, 1, &[], false);
+    let diagnostic = format!(
+        "%config-error {}:1: unknown command: wibble",
+        source.display()
+    );
+    assert!(stream.outside.contains(&diagnostic));
+    let outside = stream
+        .outside
+        .into_iter()
+        .filter(|line| line != &diagnostic)
+        .collect::<Vec<_>>();
+    assert_attached_startup(&outside, "config-error");
+}
+
+#[test]
+fn control_first_sourced_construction_failure_uses_config_error() {
+    let fixture = Fixture::new();
+    if !local_socket_bind_available(&fixture.socket) {
+        return;
+    }
+    let source = fixture._directory.path().join("classification.conf");
+    std::fs::write(
+        &source,
+        "set-option -s command-alias[90] badalias=\n\
+         set-option -s command-alias[91] source=\n\
+         source ignored.conf\n\
+         wibble\n\
+         kill-s\n\
+         badalias\n\
+         set-environment -g\n\
+         new-pane\n\
+         display-message -p after-classification\n",
+    )
+    .expect("write sourced classification fixture");
+    let input = format!("source-file '{}'\n\n", source.display());
+    let output = fixture.run_with_stdin(
+        &["-C", "new-session", "-s", "source-classification"],
+        input.as_bytes(),
+    );
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stderr.is_empty());
+    let stream = parse_stream(&output.stdout, false);
+    assert_eq!(stream.blocks.len(), 2);
+    assert_block(&stream.blocks[0], 1, 0, &[], false);
+    assert_block(&stream.blocks[1], 2, 1, &[], false);
+    let diagnostics = [format!(
+        "%config-error {}:4: unknown command: wibble",
+        source.display()
+    )];
+    for diagnostic in &diagnostics {
+        assert!(stream.outside.contains(diagnostic), "{diagnostic}");
+    }
+    let outside = stream
+        .outside
+        .into_iter()
+        .filter(|line| !diagnostics.contains(line))
+        .collect::<Vec<_>>();
+    assert_attached_startup(&outside, "source-classification");
+}
+
+#[test]
+fn control_sourced_success_quiet_and_partial_guards_keep_fifo_status() {
+    let fixture = Fixture::new();
+    if !local_socket_bind_available(&fixture.socket) {
+        return;
+    }
+    let directory = fixture._directory.path().join("control sourced guards");
+    std::fs::create_dir(&directory).expect("create sourced guard directory");
+    let quiet = write_source(
+        &directory,
+        "quiet.conf",
+        "set-option -g @guard-success yes\nsource-file -q quiet-missing.conf\n",
+    );
+    let quiet_input = format!("source-file '{quiet}'\ndisplay-message -p quiet-fresh\n");
+    let quiet_marker = directory.join("quiet.complete");
+    let quiet_output = run_control_until_return(
+        &fixture,
+        &["-C", "new-session", "-s", "quiet-guards"],
+        &quiet_input,
+        &quiet_marker,
+        "quiet guard completion",
+    );
+    assert_eq!(quiet_output.status.code(), Some(0));
+    assert!(quiet_output.stderr.is_empty());
+    let quiet_stream = parse_stream_allow_gaps(&quiet_output.stdout, false);
+    assert_eq!(quiet_stream.blocks.len(), 6);
+    assert_block(&quiet_stream.blocks[0], 1, 0, &[], false);
+    assert_block(&quiet_stream.blocks[1], 2, 1, &[], false);
+    assert_block(&quiet_stream.blocks[2], 3, 1, &[], false);
+    assert_block(&quiet_stream.blocks[3], 4, 1, &[], false);
+    assert_block(&quiet_stream.blocks[4], 7, 1, &["quiet-fresh"], false);
+    assert_block(&quiet_stream.blocks[5], 8, 1, &[], false);
+    assert_attached_startup(&quiet_stream.outside, "quiet-guards");
+
+    let fixture = Fixture::new();
+    if !local_socket_bind_available(&fixture.socket) {
+        return;
+    }
+    let directory = fixture._directory.path().join("control partial guards");
+    std::fs::create_dir(&directory).expect("create partial guard directory");
+    let leaf = write_source(
+        &directory,
+        "leaf.conf",
+        "set-option -g @guard-partial yes\n",
+    );
+    let entry = write_source(
+        &directory,
+        "entry.conf",
+        &format!(
+            "source-file partial-missing.conf '{leaf}'\n\
+             display-message -p sourced-output\n"
+        ),
+    );
+    let partial_input = format!("source-file '{entry}'\ndisplay-message -p partial-fresh\n");
+    let partial_marker = directory.join("partial.complete");
+    let partial_output = run_control_until_return(
+        &fixture,
+        &["-C", "new-session", "-s", "partial-guards"],
+        &partial_input,
+        &partial_marker,
+        "partial guard completion",
+    );
+    assert_eq!(partial_output.status.code(), Some(1));
+    assert!(partial_output.stderr.is_empty());
+    let partial_stream = parse_stream_allow_gaps(&partial_output.stdout, false);
+    assert_eq!(partial_stream.blocks.len(), 7);
+    assert_block(&partial_stream.blocks[0], 1, 0, &[], false);
+    assert_block(&partial_stream.blocks[1], 2, 1, &[], false);
+    assert_block(
+        &partial_stream.blocks[2],
+        3,
+        1,
+        &["No such file or directory: partial-missing.conf"],
+        false,
+    );
+    assert_block(&partial_stream.blocks[3], 4, 1, &[], false);
+    assert_block(&partial_stream.blocks[4], 6, 1, &["sourced-output"], false);
+    assert_block(&partial_stream.blocks[5], 8, 1, &["partial-fresh"], false);
+    assert_block(&partial_stream.blocks[6], 9, 1, &[], false);
+    assert_attached_startup(&partial_stream.outside, "partial-guards");
+}
+
+#[test]
+fn config_file_bytes_load_like_the_pinned_signed_buffer() {
+    let fixture = Fixture::new();
+    if !local_socket_bind_available(&fixture.socket) {
+        return;
+    }
+    let directory = fixture._directory.path().join("config byte input");
+    std::fs::create_dir(&directory).expect("create byte config directory");
+    let isolated = directory.join("isolated-ff.conf");
+    std::fs::write(&isolated, b"\xff").expect("write isolated byte config");
+    let isolated_path = isolated.to_str().expect("UTF-8 byte config path");
+    let continued = directory.join("continued-ff.conf");
+    std::fs::write(
+        &continued,
+        b"\xffset-environment -g CONFIG_BYTE_INPUT continued\n",
+    )
+    .expect("write continued byte config");
+    let continued_path = continued.to_str().expect("UTF-8 continued config path");
+
+    assert_eq!(
+        fixture
+            .run(&["new-session", "-d", "-s", "byte-input"])
+            .status
+            .code(),
+        Some(0)
+    );
+    let sourced = fixture.run(&["source-file", "-v", isolated_path]);
+    assert_eq!(sourced.status.code(), Some(0));
+    assert!(sourced.stdout.is_empty());
+    assert!(sourced.stderr.is_empty());
+
+    let continued_run = fixture.run(&["source-file", "-v", continued_path]);
+    assert_eq!(continued_run.status.code(), Some(0));
+    assert!(continued_run.stderr.is_empty());
+    assert_eq!(
+        String::from_utf8_lossy(&continued_run.stdout),
+        format!("{continued_path}:1: set-environment -g CONFIG_BYTE_INPUT continued\n")
+    );
+    let shown = fixture.run(&["show-environment", "-g", "CONFIG_BYTE_INPUT"]);
+    assert_eq!(shown.status.code(), Some(0));
+    assert_eq!(shown.stdout, b"CONFIG_BYTE_INPUT=continued\n");
+    fixture.run(&["kill-server"]);
+    fixture.assert_stopped();
+}
+
+#[test]
+fn startup_config_bytes_keep_the_pinned_file_command_name() {
+    let fixture = Fixture::new();
+    if !local_socket_bind_available(&fixture.socket) {
+        return;
+    }
+    let startup = fixture._directory.path().join("startup-ff.conf");
+    std::fs::write(
+        &startup,
+        b"\xffset-environment -g CONFIG_BYTE_STARTUP set\n",
+    )
+    .expect("write startup byte config");
+
+    let started =
+        fixture.run_with_configs(&[&startup], &["new-session", "-d", "-s", "byte-startup"]);
+    assert_eq!(started.status.code(), Some(0));
+    assert!(started.stdout.is_empty());
+    assert!(started.stderr.is_empty());
+
+    let shown = fixture.run_with_configs(
+        &[&startup],
+        &["show-environment", "-g", "CONFIG_BYTE_STARTUP"],
+    );
+    assert_eq!(shown.status.code(), Some(1));
+    assert!(shown.stdout.is_empty());
+    assert_eq!(shown.stderr, b"unknown variable: CONFIG_BYTE_STARTUP\n");
+    fixture.run_with_configs(&[&startup], &["kill-server"]);
+    fixture.assert_stopped();
+}
+
+#[test]
+fn control_config_file_bytes_keep_the_pinned_hidden_item_numbering() {
+    let fixture = Fixture::new();
+    if !local_socket_bind_available(&fixture.socket) {
+        return;
+    }
+    let directory = fixture._directory.path().join("control byte input");
+    std::fs::create_dir(&directory).expect("create control byte directory");
+    let isolated = directory.join("isolated-ff.conf");
+    std::fs::write(&isolated, b"\xff").expect("write isolated byte config");
+    let isolated_path = isolated.to_str().expect("UTF-8 byte config path");
+    let empty = write_source(&directory, "empty.conf", "");
+
+    let input = format!(
+        "source-file '{empty}'\n\
+         display-message -p empty-fresh\n\
+         source-file '{isolated_path}'\n\
+         display-message -p byte-fresh\n"
+    );
+    let marker = directory.join("byte.complete");
+    let output = run_control_until_return(
+        &fixture,
+        &["-C", "new-session", "-s", "byte-frames"],
+        &input,
+        &marker,
+        "byte guard completion",
+    );
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stderr.is_empty());
+    let stream = parse_stream_allow_gaps(&output.stdout, false);
+    assert_eq!(stream.blocks.len(), 6);
+    assert_block(&stream.blocks[0], 1, 0, &[], false);
+    assert_block(&stream.blocks[1], 2, 1, &[], false);
+    assert_block(&stream.blocks[2], 4, 1, &["empty-fresh"], false);
+    assert_block(&stream.blocks[3], 5, 1, &[], false);
+    assert_block(&stream.blocks[4], 8, 1, &["byte-fresh"], false);
+    assert_block(&stream.blocks[5], 9, 1, &[], false);
+    assert_attached_startup(&stream.outside, "byte-frames");
+}
+
+#[test]
+fn control_if_shell_config_file_bytes_continue_the_root_file() {
+    let fixture = Fixture::new();
+    if !local_socket_bind_available(&fixture.socket) {
+        return;
+    }
+    let directory = fixture._directory.path().join("control byte if-shell");
+    std::fs::create_dir(&directory).expect("create byte if-shell directory");
+    let isolated = directory.join("isolated-ff.conf");
+    std::fs::write(&isolated, b"\xff").expect("write isolated byte config");
+    let root = write_source(
+        &directory,
+        "root.conf",
+        &format!(
+            "display-message -p root-before\n\
+             if-shell -F 1 \"source-file '{}'\"\n\
+             display-message -p root-after\n",
+            isolated.display()
+        ),
+    );
+
+    let input = format!("source-file '{root}'\ndisplay-message -p if-shell-fresh\n");
+    let marker = directory.join("if-shell.complete");
+    let output = run_control_until_return(
+        &fixture,
+        &["-C", "new-session", "-s", "byte-if-shell"],
+        &input,
+        &marker,
+        "byte if-shell completion",
+    );
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stderr.is_empty());
+    let stream = parse_stream_allow_gaps(&output.stdout, false);
+    assert_eq!(stream.blocks.len(), 8);
+    assert_block(&stream.blocks[0], 1, 0, &[], false);
+    assert_block(&stream.blocks[1], 2, 1, &[], false);
+    assert_block(&stream.blocks[2], 3, 1, &["root-before"], false);
+    assert_block(&stream.blocks[3], 4, 1, &[], false);
+    assert_block(&stream.blocks[4], 5, 1, &[], false);
+    assert_block(&stream.blocks[5], 8, 1, &["root-after"], false);
+    assert_block(&stream.blocks[6], 10, 1, &["if-shell-fresh"], false);
+    assert_block(&stream.blocks[7], 11, 1, &[], false);
+    assert_attached_startup(&stream.outside, "byte-if-shell");
+}
+
+#[test]
+fn control_source_read_error_follows_the_parent_guard_and_sets_retval() {
+    let fixture = Fixture::new();
+    if !local_socket_bind_available(&fixture.socket) {
+        return;
+    }
+    let unreadable = fixture._directory.path().join("source read directory");
+    std::fs::create_dir(&unreadable).expect("create unreadable source directory");
+    let entry = write_source(
+        fixture._directory.path(),
+        "read-entry.conf",
+        &format!("source-file '{}'\n", unreadable.display()),
+    );
+    let read_error =
+        std::fs::read_to_string(&unreadable).expect_err("reading the source directory must fail");
+    let expected = format!("{}: {}", os_error_text(&read_error), unreadable.display());
+    let input = format!("source-file '{entry}'\ndisplay-message -p after-read-error\n");
+    let marker = fixture._directory.path().join("source-read.complete");
+    let output = run_control_until_return(
+        &fixture,
+        &["-C", "new-session", "-s", "source-read-error"],
+        &input,
+        &marker,
+        "source read completion",
+    );
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stderr.is_empty());
+    let lines = std::str::from_utf8(&output.stdout)
+        .expect("UTF-8 source read output")
+        .lines()
+        .collect::<Vec<_>>();
+    let error_index = lines
+        .iter()
+        .position(|line| line == &expected)
+        .expect("raw source read error");
+    let before = next_block_guard(lines[..error_index].iter().rev().copied());
+    assert!(
+        before.starts_with("%end ") && before.ends_with(" 3 1"),
+        "{lines:?}"
+    );
+    let after = next_block_guard(lines[error_index + 1..].iter().copied());
+    assert!(
+        after.starts_with("%begin ") && after.ends_with(" 6 1"),
+        "{lines:?}"
+    );
+    let stream = parse_stream_allow_gaps(&output.stdout, false);
+    assert_eq!(stream.blocks.len(), 5);
+    assert_block(&stream.blocks[0], 1, 0, &[], false);
+    assert_block(&stream.blocks[1], 2, 1, &[], false);
+    assert_block(&stream.blocks[2], 3, 1, &[], false);
+    assert_block(&stream.blocks[3], 6, 1, &["after-read-error"], false);
+    assert_block(&stream.blocks[4], 7, 1, &[], false);
+    assert!(stream.outside.contains(&expected));
+    let outside = stream
+        .outside
+        .into_iter()
+        .filter(|line| line != &expected)
+        .collect::<Vec<_>>();
+    assert_attached_startup(&outside, "source-read-error");
+}
+
+#[test]
+fn control_source_diagnostics_keep_tmux_chain_semantics() {
+    let fixture = Fixture::new();
+    if !local_socket_bind_available(&fixture.socket) {
+        return;
+    }
+    let directory = fixture._directory.path().join("nested control");
+    std::fs::create_dir(&directory).expect("create nested source directory");
+    let loud = directory.join("loud entry.conf");
+    let quiet = directory.join("quiet entry.conf");
+    let invalid = directory.join("invalid entry.conf");
+    std::fs::write(&loud, "source-file nested-missing.conf\n").expect("write loud nested source");
+    std::fs::write(&quiet, "source-file -q nested-missing.conf\n")
+        .expect("write quiet nested source");
+    std::fs::write(&invalid, "wibble\n").expect("write invalid source");
+    let input = format!(
+        "source-file '{}' ; display-message -p same-nested\nsource-file top-missing.conf ; display-message -p same-top-missing\nsource-file '{}' ; display-message -p same-invalid\nsource-file '{}'\ndisplay-message -p fresh\n",
+        loud.display(),
+        invalid.display(),
+        quiet.display()
+    );
+    let marker = directory.join("source-diagnostics.complete");
+    let output = run_control_until_return(
+        &fixture,
+        &["-C", "new-session", "-s", "nested-source-error"],
+        &input,
+        &marker,
+        "source diagnostic completion",
+    );
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stderr.is_empty());
+    let stream = parse_stream_allow_gaps(&output.stdout, false);
+    assert_eq!(stream.blocks.len(), 11, "{stream:?}");
+    assert_block(&stream.blocks[0], 1, 0, &[], false);
+    assert_block(&stream.blocks[1], 2, 1, &[], false);
+    assert_block(
+        &stream.blocks[2],
+        3,
+        1,
+        &["No such file or directory: nested-missing.conf"],
+        true,
+    );
+    assert_block(&stream.blocks[3], 6, 1, &["same-nested"], false);
+    assert_block(
+        &stream.blocks[4],
+        7,
+        1,
+        &["No such file or directory: top-missing.conf"],
+        true,
+    );
+    assert_block(&stream.blocks[5], 9, 1, &[], false);
+    assert_block(&stream.blocks[6], 11, 1, &["same-invalid"], false);
+    assert_block(&stream.blocks[7], 12, 1, &[], false);
+    assert_block(&stream.blocks[8], 13, 1, &[], false);
+    assert_block(&stream.blocks[9], 16, 1, &["fresh"], false);
+    assert_block(&stream.blocks[10], 17, 1, &[], false);
+    let diagnostic = format!(
+        "%config-error {}:1: unknown command: wibble",
+        invalid.display()
+    );
+    assert!(stream.outside.contains(&diagnostic));
+    let outside = stream
+        .outside
+        .into_iter()
+        .filter(|line| line != &diagnostic)
+        .collect::<Vec<_>>();
+    assert_attached_startup(&outside, "nested-source-error");
+}
+
+#[test]
+fn control_replayed_runtime_errors_use_bare_error_blocks_and_continue() {
+    let fixture = Fixture::new();
+    if !local_socket_bind_available(&fixture.socket) {
+        return;
+    }
+    let directory = fixture._directory.path().join("control replay errors");
+    std::fs::create_dir(&directory).expect("create control replay directory");
+    let source = write_source(
+        &directory,
+        "runtime.conf",
+        "kill-session -t missing-runtime\n\
+         set-option -g nonexistent-option value\n\
+         set-environment -g \"\" value\n\
+         set-option -g @runtime-after yes\n",
+    );
+    let input = format!(
+        "source-file '{source}'\nshow-options -gqv @runtime-after\ndisplay-message -p fresh\n"
+    );
+    let marker = directory.join("runtime.complete");
+    let output = run_control_until_return(
+        &fixture,
+        &["-C", "new-session", "-s", "control-replay-errors"],
+        &input,
+        &marker,
+        "runtime replay completion",
+    );
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stderr.is_empty());
+    let stream = parse_stream_allow_gaps(&output.stdout, false);
+    assert_eq!(stream.blocks.len(), 9);
+    assert_block(&stream.blocks[0], 1, 0, &[], false);
+    assert_block(&stream.blocks[1], 2, 1, &[], false);
+    assert_block(
+        &stream.blocks[2],
+        3,
+        1,
+        &["can't find session: missing-runtime"],
+        true,
+    );
+    assert_block(
+        &stream.blocks[3],
+        4,
+        1,
+        &["invalid option: nonexistent-option"],
+        true,
+    );
+    assert_block(&stream.blocks[4], 5, 1, &["empty variable name"], true);
+    assert_block(&stream.blocks[5], 6, 1, &[], false);
+    assert_block(&stream.blocks[6], 8, 1, &["yes"], false);
+    assert_block(&stream.blocks[7], 9, 1, &["fresh"], false);
+    assert_block(&stream.blocks[8], 10, 1, &[], false);
+    assert_attached_startup(&stream.outside, "control-replay-errors");
+}
+
+#[test]
+fn control_nested_source_depth_limit_uses_sourced_command_guards() {
+    let fixture = Fixture::new();
+    if !local_socket_bind_available(&fixture.socket) {
+        return;
+    }
+    let directory = fixture._directory.path().join("control depth");
+    std::fs::create_dir(&directory).expect("create control depth directory");
+    let entry = write_source_chain(&directory, 50);
+    let input = format!("source-file '{entry}' ; display-message -p after-the-limit\n");
+    let marker = directory.join("depth.complete");
+    let output = run_control_until_return(
+        &fixture,
+        &["-C", "new-session", "-s", "control-depth", "exec /bin/cat"],
+        &input,
+        &marker,
+        "nested source depth completion",
+    );
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stderr.is_empty());
+    let stream = parse_stream_allow_gaps(&output.stdout, false);
+    assert_eq!(stream.blocks.len(), 155);
+    assert_block(&stream.blocks[0], 1, 0, &[], false);
+    assert_block(&stream.blocks[1], 2, 1, &[], false);
+    let errors = stream
+        .blocks
+        .iter()
+        .filter(|block| block.error)
+        .collect::<Vec<_>>();
+    assert_eq!(errors.len(), 2);
+    assert!(
+        errors
+            .iter()
+            .all(|block| block.payload == ["too many nested files"])
+    );
+    assert_block(&stream.blocks[153], 204, 1, &["after-the-limit"], false);
+    assert_block(&stream.blocks[154], 205, 1, &[], false);
+    assert_eq!(stream.blocks[154].number - stream.blocks.len() as u64, 50);
+    assert_attached_startup(&stream.outside, "control-depth");
+}
+
+mod exit_status;
+mod inserted_commands;
+mod notifications;
