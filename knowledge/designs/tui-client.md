@@ -94,6 +94,25 @@ each with a `<subject>_tests.rs` beside it and shared fixtures in `render/test_s
 | `sgr.rs` | SGR, colour and cell writers |
 | `colour.rs` | Colour downgrade for terminals with fewer colours and theme colour resolution |
 
+`app.rs` and `input.rs` keep all of their code. Their tests sit beside them, with shared
+fixtures in each folder's `test_support.rs`:
+
+| File | Tests |
+| --- | --- |
+| `app/attach_paint_tests.rs` | Painting after attach, snapshots and views |
+| `app/paint_tests.rs` | When a drained run of events or frames repaints |
+| `app/frame_inbox_tests.rs` | The latest viewport per pane and frame capacity |
+| `app/command_output_tests.rs` | Command output search, resize and frame dedupe |
+| `app/graphics_probe_tests.rs` | The kitty graphics probe |
+| `app/mouse_tests.rs` | Mouse modes and forwarding to tracking panes |
+| `app/lifecycle_tests.rs` | Suspend and resume, the escape timeout and exit codes |
+| `input/routing_tests.rs` | Routing keys to the pane, prefix and chrome |
+| `input/key_parse_tests.rs` | Parsing tty key sequences against the shared key contract |
+| `input/pointer_tests.rs` | Pointer events, gutters and browser mouse coordinates |
+| `input/menu_tests.rs` | Menu routing and pointer cells |
+| `input/confirm_tests.rs` | Confirm prompts |
+| `input/command_output_tests.rs` | Command output keys and search |
+
 # Chrome direction (settled 2026-08-09, after rung 1)
 
 The TUI mirrors the zz app's UI structure, not tmux's: a toggleable left
