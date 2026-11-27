@@ -110,9 +110,20 @@ mod tests {
 
     #[test]
     fn short_or_empty_frames_are_refused() {
-        assert!(Screenshot::from_bgra(0, 4, &[]).is_err());
-        assert!(Screenshot::from_bgra(4, 4, &[0; 8]).is_err());
-        assert!(Screenshot::from_bgra_rows(4, 1, 2, &[0; 16]).is_err());
+        assert_eq!(
+            Screenshot::from_bgra(0, 4, &[]).err().as_deref(),
+            Some("the browser pane has not rendered a frame yet")
+        );
+        assert_eq!(
+            Screenshot::from_bgra(4, 4, &[0; 8]).err().as_deref(),
+            Some("frame buffer is shorter than its dimensions")
+        );
+        assert_eq!(
+            Screenshot::from_bgra_rows(4, 1, 2, &[0; 16])
+                .err()
+                .as_deref(),
+            Some("frame stride is narrower than its width")
+        );
     }
 
     #[test]

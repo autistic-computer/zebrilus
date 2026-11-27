@@ -385,8 +385,9 @@ fn display_panes_labels_a_float_in_its_own_frame(cx: &mut TestAppContext) {
     let label = cx
         .debug_bounds("pane-indicator-1")
         .expect("the float carries its display-panes label");
-    assert!(
-        frame.contains(&label.origin) && frame.contains(&label.bottom_right()),
-        "the label {label:?} sits inside the float {frame:?}"
+    assert_eq!(
+        label.center(),
+        frame.center(),
+        "the label {label:?} sits in the middle of the float {frame:?}"
     );
 }

@@ -71,8 +71,6 @@ fn busy_chrome_follows_the_connection_and_not_a_tool_row() {
 #[test]
 fn rendered_errors_are_bounded_and_strip_control_bytes() {
     let rendered = rendered_error(&format!("bad\0{}", "x".repeat(4096)));
-    assert!(rendered.len() <= MAX_RENDERED_ERROR_BYTES);
-    assert!(rendered.starts_with("bad�"));
-    assert!(rendered.ends_with('…'));
-    assert!(!rendered.contains('\0'));
+    assert_eq!(rendered, format!("bad�{}…", "x".repeat(1015)));
+    assert_eq!(rendered.len(), MAX_RENDERED_ERROR_BYTES);
 }

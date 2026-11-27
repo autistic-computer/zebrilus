@@ -252,7 +252,7 @@ mod tests {
             now += u64::try_from(watchdog_check_interval(0).as_micros()).unwrap();
             checks += 1;
         }
-        assert!(checks <= 20);
+        assert_eq!(checks, 20);
     }
 
     #[test]
@@ -266,6 +266,6 @@ mod tests {
             now += u64::try_from(watchdog_check_interval(age).as_micros()).unwrap();
             checks += 1;
         }
-        assert!(checks <= 25);
+        assert_eq!(checks, 20);
     }
 }

@@ -323,8 +323,10 @@ mod tests {
             let _ = window.draw(cx);
         });
         let after = preview.read_with(cx, |preview, _| preview.painted_geometry.get().unwrap());
-        assert!(after.cell_width > before.cell_width * 1.5);
-        assert!(after.line_height > before.line_height * 1.5);
+        assert_eq!(
+            (after.cell_width, after.line_height),
+            (before.cell_width * 2.0, before.line_height * 2.0)
+        );
         assert!(after.grid.rows >= ROWS);
     }
 
