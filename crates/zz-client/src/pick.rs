@@ -631,9 +631,14 @@ mod tests {
 
     #[test]
     fn a_run_cannot_start_mid_word() {
-        assert!(
-            !ranked("cra", &everything())
-                .contains(&"codex · xpsFix daemon reattach race".to_owned())
+        assert_eq!(
+            ranked("cra", &everything()),
+            [
+                "mbp › zebrilus › 1nvim crates/zz-ui/src/target.rs",
+                "crates/zz-ui/src/target.rs",
+                "crates/zz-ui/src/palette.rs",
+                "crates/zz-term/Cargo.toml",
+            ]
         );
     }
 
