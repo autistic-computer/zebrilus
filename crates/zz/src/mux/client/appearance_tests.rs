@@ -1,7 +1,5 @@
-use std::time::Duration;
-
 #[cfg(unix)]
-use std::sync::atomic::Ordering;
+use std::{sync::atomic::Ordering, time::Duration};
 
 use ala::TestAppContext;
 #[cfg(unix)]

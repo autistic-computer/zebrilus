@@ -3,7 +3,9 @@ use std::cell::{Cell, RefCell};
 use super::test_support::*;
 use super::tests::*;
 use super::*;
-use ala::{Modifiers, TestAppContext};
+#[cfg(unix)]
+use ala::Modifiers;
+use ala::TestAppContext;
 
 #[cfg(unix)]
 #[ala::test]

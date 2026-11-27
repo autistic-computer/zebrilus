@@ -1,15 +1,15 @@
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 #[cfg(unix)]
 use std::{
     path::PathBuf,
     sync::{atomic::Ordering, mpsc},
+    time::Instant,
 };
 
 use ala::TestAppContext;
-use zz_protocol::{SessionSnapshot, WindowId};
 #[cfg(unix)]
-use zz_protocol::{read_protocol_message, write_protocol_message};
+use zz_protocol::{SessionSnapshot, WindowId, read_protocol_message, write_protocol_message};
 use zz_terminal::SessionStatus;
 
 use super::test_support::*;

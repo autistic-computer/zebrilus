@@ -1,7 +1,9 @@
-use std::time::{Duration, Instant};
-
 #[cfg(unix)]
-use std::{path::PathBuf, sync::atomic::Ordering};
+use std::{
+    path::PathBuf,
+    sync::atomic::Ordering,
+    time::{Duration, Instant},
+};
 
 use ala::TestAppContext;
 use zz_protocol::{SessionSnapshot, WindowId};
