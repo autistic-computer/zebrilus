@@ -1909,8 +1909,9 @@ mod tests {
             )
         };
         let (outer, inner) = (frame("loop"), frame("alt"));
-        assert!(
-            outer.0 < inner.0 && inner.2 < outer.2,
+        assert_eq!(
+            (inner.0, inner.2, outer.0, outer.2),
+            (-20.0, 228.0, -30.0, 238.0),
             "{outer:?} {inner:?}"
         );
         assert!(
@@ -1941,27 +1942,81 @@ mod tests {
 
     #[test]
     fn malformed_and_unimplemented_constructs_are_reported() {
-        for source in [
-            "sequenceDiagram\nA->>B",
-            "sequenceDiagram\nend",
-            "sequenceDiagram\nloop Missing\nA->>B: x",
-            "sequenceDiagram\ndeactivate A",
-            "sequenceDiagram\nelse unexpected",
-        ] {
-            assert!(parse(source, 100).is_err(), "{source}");
-        }
-        assert!(parse("sequenceDiagram\ncreate thing A", 100).is_err());
-        assert!(
-            parse(
+        for (source, limit, code, message) in [
+            (
+                "sequenceDiagram\nA->>B",
+                100,
+                crate::ErrorCode::Syntax,
+                "Unsupported sequence statement: A->>B",
+            ),
+            (
+                "sequenceDiagram\nend",
+                100,
+                crate::ErrorCode::Syntax,
+                "Unexpected end in sequence diagram",
+            ),
+            (
+                "sequenceDiagram\nloop Missing\nA->>B: x",
+                100,
+                crate::ErrorCode::Syntax,
+                "Unclosed sequence loop; expected end",
+            ),
+            (
+                "sequenceDiagram\ndeactivate A",
+                100,
+                crate::ErrorCode::Syntax,
+                "Trying to inactivate an inactive participant (A)",
+            ),
+            (
+                "sequenceDiagram\nelse unexpected",
+                100,
+                crate::ErrorCode::Syntax,
+                "Unexpected else outside alt",
+            ),
+            (
+                "sequenceDiagram\ncreate thing A",
+                100,
+                crate::ErrorCode::Syntax,
+                "Expected participant or actor after create",
+            ),
+            (
                 "sequenceDiagram\nA->>B: x\ncreate participant B\nA->>B: y",
-                100
-            )
-            .is_err()
-        );
-        assert!(parse("sequenceDiagram\ncreate participant C\nA->>B: x", 100).is_err());
-        assert!(parse("sequenceDiagram\nA->>B: x\ndestroy B\nA->>C: y", 100).is_err());
-        assert!(parse("sequenceDiagram\nparticipant A@{type: [}", 100).is_err());
-        assert!(parse("sequenceDiagram\nA->>B: one\nA->>B: two", 1).is_err());
+                100,
+                crate::ErrorCode::Semantic,
+                "It is not possible to have actors with the same id, even if one is destroyed before the next is created. Use 'AS' aliases to simulate the behavior",
+            ),
+            (
+                "sequenceDiagram\ncreate participant C\nA->>B: x",
+                100,
+                crate::ErrorCode::Semantic,
+                "The created participant C does not have an associated creating message after its declaration. Please check the sequence diagram.",
+            ),
+            (
+                "sequenceDiagram\nA->>B: x\ndestroy B\nA->>C: y",
+                100,
+                crate::ErrorCode::Semantic,
+                "The destroyed participant B does not have an associated destroying message after its declaration. Please check the sequence diagram.",
+            ),
+            (
+                "sequenceDiagram\nparticipant A@{type: [}",
+                100,
+                crate::ErrorCode::Syntax,
+                "Invalid participant metadata: did not find expected node content at line 1 column 9, while parsing a flow node",
+            ),
+            (
+                "sequenceDiagram\nA->>B: one\nA->>B: two",
+                1,
+                crate::ErrorCode::Limit,
+                "Sequence exceeds the limit of 1 messages",
+            ),
+        ] {
+            let error = parse(source, limit).unwrap_err();
+            assert_eq!(
+                (error.code, error.message.as_str()),
+                (code, message),
+                "{source}"
+            );
+        }
     }
 
     #[test]
@@ -1980,9 +2035,20 @@ mod tests {
 
     #[test]
     fn xml_text_is_escaped_and_self_messages_have_space() {
+        let texts = |svg: &str| {
+            roxmltree::Document::parse(svg)
+                .unwrap()
+                .descendants()
+                .filter(|node| node.has_tag_name("text"))
+                .filter_map(|node| node.text())
+                .map(str::to_owned)
+                .collect::<Vec<_>>()
+        };
         let result=render("sequenceDiagram\nparticipant A as <script> & \"name\"\nA->>A: <script>alert(1)</script> & test",&RenderOptions::default()).unwrap();
-        assert!(!result.svg.contains("<script>"));
-        assert!(result.svg.contains("&amp;"));
+        assert_eq!(
+            texts(&result.svg),
+            ["alert(1) & test", " & \"name\"", " & \"name\""]
+        );
         assert!(result.width > 100.0);
         let result = render("sequenceDiagram\nparticipant A as <script>alert(1)</script>\nA->>B: &quot; onload=&quot;alert(1)",&RenderOptions::default()).unwrap();
         let document = roxmltree::Document::parse(&result.svg).unwrap();
@@ -1991,7 +2057,10 @@ mod tests {
                 .descendants()
                 .any(|node| node.attributes().any(|a| a.name().starts_with("on")))
         );
-        assert!(result.svg.contains("onload="));
+        assert_eq!(
+            texts(&result.svg),
+            ["\" onload=\"alert(1)", "alert(1)", "alert(1)", "B", "B"]
+        );
     }
 
     #[test]
@@ -2048,8 +2117,14 @@ mod tests {
             ..RenderOptions::default()
         };
         let configured = render(source, &options).unwrap();
-        assert!(!configured.svg.contains("pele-actor-footer"));
-        assert!(configured.width > normal.width);
-        assert!(configured.height > normal.height);
+        assert_eq!(normal.svg.matches("pele-actor-footer").count(), 2);
+        assert_eq!(configured.svg.matches("pele-actor-footer").count(), 0);
+        assert_eq!(
+            (configured.width, configured.height),
+            (
+                normal.width + (120.0 - 40.0),
+                normal.height - 44.0 + 2.0 * (70.0 - 35.0)
+            )
+        );
     }
 }

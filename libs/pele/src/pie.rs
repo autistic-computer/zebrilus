@@ -583,15 +583,44 @@ mod tests {
 
     #[test]
     fn rejects_bad_numbers_and_unterminated_labels() {
-        for source in [
-            "pie\n\"a\": -1",
-            "pie\n\"a\": 1e2",
-            "pie\n\"a\": 00",
-            "pie\n\"a\": 1.",
-            "pie\n\"a: 1",
-            "pie\n\"a\": 1; \"b\": 2",
+        for (source, code, message) in [
+            (
+                "pie\n\"a\": -1",
+                crate::ErrorCode::Semantic,
+                "\"a\" has invalid value: -1. Negative values are not allowed in pie charts. All slice values must be >= 0.",
+            ),
+            (
+                "pie\n\"a\": 1e2",
+                crate::ErrorCode::Syntax,
+                "Expected a line break after pie section",
+            ),
+            (
+                "pie\n\"a\": 00",
+                crate::ErrorCode::Syntax,
+                "Leading zeros require a decimal fraction",
+            ),
+            (
+                "pie\n\"a\": 1.",
+                crate::ErrorCode::Syntax,
+                "Expected digits after pie decimal point",
+            ),
+            (
+                "pie\n\"a: 1",
+                crate::ErrorCode::Syntax,
+                "Unterminated pie section label",
+            ),
+            (
+                "pie\n\"a\": 1; \"b\": 2",
+                crate::ErrorCode::Syntax,
+                "Expected a line break after pie section",
+            ),
         ] {
-            assert!(parse(source).is_err(), "{source}");
+            let error = parse(source).unwrap_err();
+            assert_eq!(
+                (error.code, error.message.as_str()),
+                (code, message),
+                "{source}"
+            );
         }
     }
 
@@ -626,12 +655,36 @@ mod tests {
 
     #[test]
     fn escapes_labels_in_attributes_and_text() {
-        let rendered = render("pie\n'<script>&x': 1", &RenderOptions::default()).unwrap();
-        assert!(rendered.svg.contains("&lt;script&gt;&amp;x"));
-        assert!(!rendered.svg.contains("<script>"));
-        let entities = render("pie\n'A &amp; B': 1", &RenderOptions::default()).unwrap();
-        assert!(entities.svg.contains("data-id=\"A &amp; B\""));
-        assert!(!entities.svg.contains("data-id=\"A &amp;amp; B\""));
+        let legend = |source: &str| {
+            let svg = render(source, &RenderOptions::default()).unwrap().svg;
+            let document = roxmltree::Document::parse(&svg).unwrap();
+            let ids = document
+                .descendants()
+                .filter_map(|node| node.attribute("data-id"))
+                .map(str::to_owned)
+                .collect::<Vec<_>>();
+            let label = document
+                .descendants()
+                .find(|node| node.attribute("class") == Some("pele-legend-item"))
+                .and_then(|item| item.children().find(|node| node.has_tag_name("text")))
+                .and_then(|text| text.text())
+                .map(str::to_owned);
+            (ids, label)
+        };
+        assert_eq!(
+            legend("pie\n'<script>&x': 1"),
+            (
+                vec!["<script>&x".to_owned(), "<script>&x".to_owned()],
+                Some("&x".to_owned())
+            )
+        );
+        assert_eq!(
+            legend("pie\n'A &amp; B': 1"),
+            (
+                vec!["A & B".to_owned(), "A & B".to_owned()],
+                Some("A & B".to_owned())
+            )
+        );
     }
 
     #[test]
