@@ -31,13 +31,12 @@ mod startup;
 mod tailnet;
 pub mod update;
 use command_mode::*;
-pub use daemon_spawn::connect_interactive_client_with_config;
-pub use daemon_spawn::connect_interactive_client_with_config_and_terminal;
-pub use daemon_spawn::connect_or_spawn_daemon;
-pub use daemon_spawn::connect_or_spawn_daemon_with_provenance;
-pub use daemon_spawn::connect_terminal_surface_client_with_config;
-pub use daemon_spawn::daemon_executable;
 use daemon_spawn::*;
+pub use daemon_spawn::{
+    connect_interactive_client_with_config, connect_interactive_client_with_config_and_terminal,
+    connect_or_spawn_daemon, connect_or_spawn_daemon_with_provenance,
+    connect_terminal_surface_client_with_config, daemon_executable,
+};
 use help::*;
 use host_cli::*;
 use kill_server::*;
@@ -45,15 +44,14 @@ pub use launcher::launch_application;
 use launcher::*;
 use native_attach::*;
 use output::*;
-pub use startup::application_arguments;
 #[cfg(target_os = "windows")]
 pub use startup::attach_parent_console;
 #[cfg(any(unix, windows))]
 pub use startup::run_askpass_mode;
-pub use startup::run_startup;
 #[cfg(target_os = "macos")]
 pub use startup::tag_allocator_memory;
 use startup::*;
+pub use startup::{application_arguments, run_startup};
 
 #[cfg(test)]
 use std::borrow::Cow;
