@@ -3799,63 +3799,34 @@ fn record_rows(request: &RequestView, touch: bool, cx: &App) -> AnyElement {
 }
 
 #[cfg(test)]
+mod image_tests;
+
+#[cfg(test)]
+mod render_tests;
+
+#[cfg(test)]
+mod test_support;
+
+#[cfg(test)]
+mod thread_tests;
+
+#[cfg(test)]
 mod tests {
     use std::sync::Arc;
 
     use ala::{
-        Context, Entity, Image, IntoElement, Render, RenderImage, Subscription, TestAppContext,
-        VisualTestContext, Window, div, prelude::*, px,
-    };
-    use zz_protocol::agent_stream::{AgentImage, AgentQuestion};
-
-    use crate::agent::ui::{UiLook, UiSent};
-    use zz_protocol::chat::{
-        Answer, Ask, ChatEvent, ItemBody, ItemId, ItemKind, ItemStatus, QuestionAnswer,
-        RequestClose, RequestId, TurnBy, TurnId, TurnOutcome,
+        Context, Entity, Image, IntoElement, Render, Subscription, Window, div, prelude::*, px,
     };
 
-    use super::{ChatClick, ChatHooks, ChatOpen, ChatPane, ChatRefs, ChatView, chat_thread};
+    use zz_protocol::chat::ItemId;
 
-    const SHOT: &[u8] = include_bytes!("../fixtures/wide-screenshot.png");
+    use super::{ChatHooks, ChatOpen, ChatPane, ChatRefs, ChatView, chat_thread};
 
-    fn shot(tag: u8) -> Vec<u8> {
-        let mut data = SHOT.to_vec();
-        data.push(tag);
-        data
-    }
+    pub(super) const SHOT: &[u8] = include_bytes!("../fixtures/wide-screenshot.png");
 
-    fn pasted(view: &mut ChatView, id: &str, text: &str) {
-        pasted_shot(view, id, text, SHOT.to_vec());
-    }
-
-    fn pasted_shot(view: &mut ChatView, id: &str, text: &str, data: Vec<u8>) {
-        view.apply(&ChatEvent::ItemStarted {
-            item: ItemId::new(id),
-            turn: Some(TurnId(1)),
-            parent: None,
-            kind: ItemKind::User,
-            body: ItemBody {
-                text: text.to_owned(),
-                images: vec![AgentImage {
-                    format: "image/png".to_owned(),
-                    data,
-                }],
-                ..ItemBody::default()
-            },
-            at: 2,
-        })
-        .expect("prompt");
-        view.apply(&ChatEvent::ItemEnded {
-            item: ItemId::new(id),
-            status: ItemStatus::Completed,
-            at: 2,
-        })
-        .expect("prompt ends");
-    }
-
-    struct ThreadTest {
-        view: ChatView,
-        open: ChatOpen,
+    pub(super) struct ThreadTest {
+        pub(super) view: ChatView,
+        pub(super) open: ChatOpen,
     }
 
     impl Render for ThreadTest {
@@ -3871,122 +3842,14 @@ mod tests {
         }
     }
 
-    #[test]
-    fn pasted_images_are_decoded_once_per_item() {
-        let mut pane = ChatPane::default();
-        let mut view = ready("s1");
-        pasted(&mut view, "u1", "what is this?");
-        pane.sync(&view);
-        let first = pane.open.images.get(&ItemId::new("u1")).cloned();
-        assert_eq!(first.as_ref().map(|images| images.len()), Some(1));
-        pane.sync(&view);
-        assert!(std::sync::Arc::ptr_eq(
-            first.as_ref().expect("cached"),
-            pane.open
-                .images
-                .get(&ItemId::new("u1"))
-                .expect("still cached")
-        ));
-        pane.sync(&ready("s2"));
-        assert!(pane.open.images.is_empty());
-    }
-
-    #[ala::test]
-    fn a_pasted_image_shows_as_a_tile_in_the_bubble(cx: &mut TestAppContext) {
-        cx.update(crate::init);
-        let mut view = ready("s1");
-        pasted(&mut view, "u1", "");
-        let (_, cx) = cx.add_window_view(|window, cx| {
-            let view = cx.new(|_| ThreadTest {
-                view,
-                open: ChatOpen::default(),
-            });
-            penna::Root::new(view, window, cx)
-        });
-        let cx: &mut VisualTestContext = cx;
-        cx.run_until_parked();
-        cx.update(|window, cx| {
-            _ = window.draw(cx);
-        });
-        let tile = cx
-            .debug_bounds("chat-user-attachment")
-            .expect("the pasted image should be painted");
-        assert_eq!(tile.size.width, super::TRANSCRIPT_ATTACHMENT);
-        assert_eq!(tile.size.width, tile.size.height);
-    }
-
-    fn ready(session: &str) -> ChatView {
-        let mut view = ChatView::default();
-        view.apply(&ChatEvent::SessionReady {
-            session: session.to_owned(),
-        })
-        .expect("ready");
-        view.apply(&ChatEvent::TurnStarted {
-            turn: TurnId(1),
-            by: TurnBy::Agent,
-            at: 1,
-        })
-        .expect("turn");
-        view.apply(&ChatEvent::ItemStarted {
-            item: ItemId::new("a"),
-            turn: Some(TurnId(1)),
-            parent: None,
-            kind: ItemKind::Subagent,
-            body: ItemBody::titled("Explore"),
-            at: 2,
-        })
-        .expect("item");
-        view
-    }
-
-    #[ala::test]
-    fn an_evicted_image_drops_its_decoded_pixels(cx: &mut TestAppContext) {
-        cx.update(crate::init);
-        let mut view = ready("s1");
-        pasted(&mut view, "u1", "");
-        let mut pane = ChatPane::default();
-        pane.sync(&view);
-        let image = pane.open.images[&ItemId::new("u1")][0].clone();
-        let open = pane.open.clone();
-        let (_, cx) = cx.add_window_view(|window, cx| {
-            let view = cx.new(|_| ThreadTest { view, open });
-            penna::Root::new(view, window, cx)
-        });
-        let cx: &mut VisualTestContext = cx;
-        cx.run_until_parked();
-        cx.update(|window, cx| {
-            _ = window.draw(cx);
-        });
-        let render = cx
-            .update(|window, cx| image.clone().get_render_image(window, cx))
-            .expect("the pasted image should be decoded");
-        cx.update(|window, cx| {
-            assert!(image.is_asset_cached(cx));
-            assert!(window.has_image_atlas_entry(&render));
-            let mut again = ready("s2");
-            pasted(&mut again, "u1", "");
-            pane.sync(&again);
-            pane.release(window, cx);
-            assert!(
-                image.is_asset_cached(cx),
-                "the same image shown again stays"
-            );
-            assert!(window.has_image_atlas_entry(&render));
-            pane.sync(&ready("s3"));
-            pane.release(window, cx);
-            assert!(!image.is_asset_cached(cx));
-            assert!(!window.has_image_atlas_entry(&render));
-        });
-    }
-
-    struct Owner {
-        view: ChatView,
-        chat: ChatPane,
+    pub(super) struct Owner {
+        pub(super) view: ChatView,
+        pub(super) chat: ChatPane,
         _release: Subscription,
     }
 
     impl Owner {
-        fn new(view: ChatView, window: &Window, cx: &mut Context<Self>) -> Self {
+        pub(super) fn new(view: ChatView, window: &Window, cx: &mut Context<Self>) -> Self {
             Self {
                 view,
                 chat: ChatPane::default(),
@@ -3996,7 +3859,7 @@ mod tests {
             }
         }
 
-        fn image(&self, id: &str) -> Arc<Image> {
+        pub(super) fn image(&self, id: &str) -> Arc<Image> {
             self.chat.open.images[&ItemId::new(id)][0].clone()
         }
     }
@@ -4016,9 +3879,9 @@ mod tests {
         }
     }
 
-    struct Owners {
-        first: Option<Entity<Owner>>,
-        second: Entity<Owner>,
+    pub(super) struct Owners {
+        pub(super) first: Option<Entity<Owner>>,
+        pub(super) second: Entity<Owner>,
     }
 
     impl Render for Owners {
@@ -4029,467 +3892,10 @@ mod tests {
         }
     }
 
-    fn painted(cx: &mut VisualTestContext) {
-        cx.run_until_parked();
-        cx.update(|window, cx| {
-            _ = window.draw(cx);
-        });
-        cx.run_until_parked();
-    }
-
-    fn decoded(cx: &mut VisualTestContext, image: &Arc<Image>) -> Arc<RenderImage> {
-        cx.update(|window, cx| image.clone().get_render_image(window, cx))
-            .expect("the pasted image should be decoded")
-    }
-
-    fn held(cx: &mut VisualTestContext, image: &Arc<Image>, render: &RenderImage) -> (bool, bool) {
-        cx.update(|window, cx| {
-            (
-                image.is_asset_cached(cx),
-                window.has_image_atlas_entry(render),
-            )
-        })
-    }
-
-    #[ala::test]
-    fn a_ninth_pasted_image_frees_the_oldest_ones_pixels(cx: &mut TestAppContext) {
-        cx.update(crate::init);
-        let mut view = ready("s1");
-        pasted_shot(&mut view, "u0", "", shot(0));
-        let slot = std::rc::Rc::new(std::cell::RefCell::new(None));
-        let captured = slot.clone();
-        let (_, cx) = cx.add_window_view(move |window, cx| {
-            let owner = cx.new(|cx| Owner::new(view, window, cx));
-            captured.replace(Some(owner.clone()));
-            penna::Root::new(owner, window, cx)
-        });
-        let cx: &mut VisualTestContext = cx;
-        let owner = slot.borrow_mut().take().expect("owner");
-        painted(cx);
-        let oldest = cx.update(|_, cx| owner.read(cx).image("u0"));
-        let oldest_pixels = decoded(cx, &oldest);
-        assert_eq!(held(cx, &oldest, &oldest_pixels), (true, true));
-        for index in 1..9 {
-            cx.update(|_, cx| {
-                owner.update(cx, |owner, cx| {
-                    pasted_shot(&mut owner.view, &format!("u{index}"), "", shot(index));
-                    cx.notify();
-                });
-            });
-            painted(cx);
-        }
-        let newest = cx.update(|_, cx| owner.read(cx).image("u8"));
-        let newest_pixels = decoded(cx, &newest);
-        let items = cx.update(|_, cx| {
-            let mut items = owner
-                .read(cx)
-                .chat
-                .open
-                .images
-                .keys()
-                .map(|id| id.as_str().to_owned())
-                .collect::<Vec<_>>();
-            items.sort();
-            items
-        });
-        assert_eq!(
-            items,
-            (1..9).map(|index| format!("u{index}")).collect::<Vec<_>>()
-        );
-        assert_eq!(
-            held(cx, &oldest, &oldest_pixels),
-            (false, false),
-            "the ninth image frees the first one's pixels"
-        );
-        assert_eq!(held(cx, &newest, &newest_pixels), (true, true));
-    }
-
-    #[ala::test]
-    fn closing_a_chat_frees_its_images_but_not_one_another_chat_shows(cx: &mut TestAppContext) {
-        cx.update(crate::init);
-        let mut first = ready("s1");
-        pasted_shot(&mut first, "both", "", shot(1));
-        pasted_shot(&mut first, "own", "", shot(2));
-        let mut second = ready("s2");
-        pasted_shot(&mut second, "both", "", shot(1));
-        let slot = std::rc::Rc::new(std::cell::RefCell::new(None));
-        let captured = slot.clone();
-        let (_, cx) = cx.add_window_view(move |window, cx| {
-            let owners = cx.new(|cx| Owners {
-                first: Some(cx.new(|cx| Owner::new(first, window, cx))),
-                second: cx.new(|cx| Owner::new(second, window, cx)),
-            });
-            captured.replace(Some(owners.clone()));
-            penna::Root::new(owners, window, cx)
-        });
-        let cx: &mut VisualTestContext = cx;
-        let owners = slot.borrow_mut().take().expect("owners");
-        painted(cx);
-        let (shared, own) = cx.update(|_, cx| {
-            let first = owners.read(cx).first.clone().expect("first chat");
-            let first = first.read(cx);
-            (first.image("both"), first.image("own"))
-        });
-        let shared_pixels = decoded(cx, &shared);
-        let own_pixels = decoded(cx, &own);
-        assert_eq!(held(cx, &shared, &shared_pixels), (true, true));
-        assert_eq!(held(cx, &own, &own_pixels), (true, true));
-        cx.update(|_, cx| {
-            owners.update(cx, |owners, cx| {
-                owners.first = None;
-                cx.notify();
-            });
-        });
-        painted(cx);
-        assert_eq!(
-            held(cx, &own, &own_pixels),
-            (false, false),
-            "the closed chat's own image is freed"
-        );
-        assert_eq!(
-            held(cx, &shared, &shared_pixels),
-            (true, true),
-            "the other chat still shows the shared image"
-        );
-    }
-
-    #[ala::test]
-    fn closing_the_window_frees_its_chats_images(cx: &mut TestAppContext) {
-        cx.update(crate::init);
-        let mut view = ready("s1");
-        pasted_shot(&mut view, "own", "", shot(3));
-        let slot = std::rc::Rc::new(std::cell::RefCell::new(None));
-        let captured = slot.clone();
-        let (_, window_cx) = cx.add_window_view(move |window, cx| {
-            let owner = cx.new(|cx| Owner::new(view, window, cx));
-            captured.replace(Some(owner.downgrade()));
-            penna::Root::new(owner, window, cx)
-        });
-        let window_cx: &mut VisualTestContext = window_cx;
-        let owner = slot.borrow_mut().take().expect("owner");
-        painted(window_cx);
-        let image = window_cx.update(|_, cx| owner.upgrade().expect("owner").read(cx).image("own"));
-        window_cx.update(|window, cx| {
-            assert!(image.is_asset_cached(cx));
-            window.remove_window();
-        });
-        cx.run_until_parked();
-        assert!(owner.upgrade().is_none(), "the window took its chat along");
-        cx.update(|cx| assert!(!image.is_asset_cached(cx)));
-    }
-
-    #[ala::test]
-    fn an_opened_thought_scrolls_inside_a_capped_height(cx: &mut TestAppContext) {
-        cx.update(crate::init);
-        let mut view = ready("s1");
-        let long = (0..200)
-            .map(|line| format!("Line {line} of a long thought."))
-            .collect::<Vec<_>>()
-            .join("\n\n");
-        view.apply(&ChatEvent::ItemStarted {
-            item: ItemId::new("t1"),
-            turn: Some(TurnId(1)),
-            parent: None,
-            kind: ItemKind::Reasoning,
-            body: ItemBody::text(long),
-            at: 3,
-        })
-        .expect("thought");
-        let open = ChatOpen {
-            runs: vec![ItemId::new("t1")],
-            ..ChatOpen::default()
-        };
-        let (_, cx) = cx.add_window_view(|window, cx| {
-            let view = cx.new(|_| ThreadTest { view, open });
-            penna::Root::new(view, window, cx)
-        });
-        let cx: &mut VisualTestContext = cx;
-        cx.run_until_parked();
-        cx.update(|window, cx| {
-            _ = window.draw(cx);
-        });
-        let thought = cx
-            .debug_bounds("chat-thought")
-            .expect("the opened thought should be painted");
-        assert!(thought.size.height <= px(super::THOUGHT_MAX_HEIGHT));
-        assert!(thought.size.height > px(40.0));
-    }
-
-    #[ala::test]
-    fn the_answer_to_a_long_question_stays_on_its_row(cx: &mut TestAppContext) {
-        cx.update(crate::init);
-        let mut view = ChatView::default();
-        let events = [
-            ChatEvent::SessionReady {
-                session: "s1".to_owned(),
-            },
-            ChatEvent::TurnStarted {
-                turn: TurnId(1),
-                by: TurnBy::Agent,
-                at: 1,
-            },
-            ChatEvent::RequestOpened {
-                request: RequestId(4),
-                turn: Some(TurnId(1)),
-                item: None,
-                ask: Ask::Questions {
-                    questions: vec![AgentQuestion {
-                        id: "q0".to_owned(),
-                        question: "Can you have Feb submit a bug report from the affected tab and share the ticket ID? There's no report from that session yet.".to_owned(),
-                        ..AgentQuestion::default()
-                    }],
-                },
-                blocking: false,
-                at: 2,
-            },
-            ChatEvent::RequestClosed {
-                request: RequestId(4),
-                close: RequestClose::Answered {
-                    answer: Answer::Questions {
-                        answers: vec![QuestionAnswer {
-                            question: "q0".to_owned(),
-                            answers: vec!["Ticket 4821".to_owned()],
-                        }],
-                    },
-                },
-                at: 3,
-            },
-        ];
-        for event in &events {
-            view.apply(event).expect("event");
-        }
-        let (_, cx) = cx.add_window_view(|window, cx| {
-            let view = cx.new(|_| ThreadTest {
-                view,
-                open: ChatOpen::default(),
-            });
-            penna::Root::new(view, window, cx)
-        });
-        let cx: &mut VisualTestContext = cx;
-        cx.run_until_parked();
-        cx.update(|window, cx| {
-            _ = window.draw(cx);
-        });
-        let answer = cx
-            .debug_bounds("chat-activity-detail")
-            .expect("the answer should be painted");
-        assert!(answer.size.width > px(40.0), "{answer:?}");
-    }
-
-    #[test]
-    fn the_same_item_in_two_panes_keeps_separate_block_scopes() {
-        assert_ne!(
-            super::block_scope(Some(7), "chat-text-a1"),
-            super::block_scope(Some(8), "chat-text-a1")
-        );
-        assert_eq!(
-            super::block_scope(Some(7), "chat-text-a1"),
-            super::block_scope(Some(7), "chat-text-a1")
-        );
-    }
-
-    #[test]
-    fn opened_rows_close_when_the_session_changes() {
-        let mut pane = ChatPane::default();
-        let first = ready("s1");
-        pane.sync(&first);
-        pane.click(&ChatClick::Agent(ItemId::new("a")));
-        pane.click(&ChatClick::Turn(TurnId(1)));
-        pane.sync(&first);
-        assert_eq!(pane.open.agent, Some(ItemId::new("a")));
-        assert!(!pane.away());
-        assert!(
-            pane.list.follow_hold().is_some(),
-            "an expand holds the view in place"
-        );
-        pane.sync(&ready("s2"));
-        assert_eq!(pane.open.agent, None);
-        assert!(pane.open.turns.is_empty());
-        assert!(!pane.away(), "a new session lands on its latest message");
-        assert_eq!(pane.list.follow_hold(), None);
-    }
-
-    #[test]
-    fn an_agent_pip_closes_on_a_second_click_or_close() {
-        let mut pane = ChatPane::default();
-        let view = ready("s1");
-        pane.sync(&view);
-        pane.click(&ChatClick::Agent(ItemId::new("a")));
-        pane.click(&ChatClick::Agent(ItemId::new("a")));
-        assert_eq!(pane.open.agent, None);
-        pane.click(&ChatClick::Agent(ItemId::new("a")));
-        pane.click(&ChatClick::CloseAgent);
-        assert_eq!(pane.open.agent, None);
-        assert!(!pane.away());
-    }
-
-    #[test]
-    fn opened_rows_drop_items_the_view_no_longer_has() {
-        let mut pane = ChatPane::default();
-        let view = ready("s1");
-        pane.sync(&view);
-        pane.click(&ChatClick::Agent(ItemId::new("gone")));
-        pane.sync(&view);
-        assert_eq!(pane.open.agent, None);
-    }
-
-    fn finished(view: &mut ChatView, item: &str, parent: Option<&str>, kind: ItemKind, at: u64) {
-        let body = if kind == ItemKind::Agent {
-            ItemBody::text("done")
-        } else {
-            ItemBody::titled(item)
-        };
-        view.apply(&ChatEvent::ItemStarted {
-            item: ItemId::new(item),
-            turn: Some(TurnId(1)),
-            parent: parent.map(ItemId::new),
-            kind,
-            body,
-            at,
-        })
-        .expect("start");
-        view.apply(&ChatEvent::ItemEnded {
-            item: ItemId::new(item),
-            status: ItemStatus::Completed,
-            at,
-        })
-        .expect("end");
-    }
-
-    fn said(view: &mut ChatView, id: &str, kind: ItemKind, text: &str, ended: bool) {
-        view.apply(&ChatEvent::ItemStarted {
-            item: ItemId::new(id),
-            turn: Some(TurnId(1)),
-            parent: None,
-            kind,
-            body: ItemBody::text(text),
-            at: 3,
-        })
-        .expect("start");
-        if ended {
-            view.apply(&ChatEvent::ItemEnded {
-                item: ItemId::new(id),
-                status: ItemStatus::Completed,
-                at: 3,
-            })
-            .expect("end");
-        }
-    }
-
-    #[test]
-    fn a_ui_block_is_held_by_what_the_user_sends_after_it() {
-        let mut view = ready("s1");
-        let block = "Name it.\n\n```ui\nroot = Button(\"Create\", Event(\"create\", {name: $/name}))\n$/name = \"fix\"\n```\n";
-        said(&mut view, "reply", ItemKind::Agent, block, true);
-        let mut pane = ChatPane::default();
-        pane.sync(&view);
-        assert_eq!(pane.open.ui[&ItemId::new("reply")], UiLook::default());
-        assert!(pane.open.sent.is_empty());
-
-        said(
-            &mut view,
-            "press",
-            ItemKind::User,
-            "ui action create {\"name\":\"fix\"}",
-            true,
-        );
-        said(
-            &mut view,
-            "next",
-            ItemKind::Agent,
-            "Again:\n\n```ui\nroot = Te",
-            false,
-        );
-        pane.sync(&view);
-        assert_eq!(
-            pane.open.ui[&ItemId::new("reply")],
-            UiLook {
-                held: true,
-                pressed: Some("create".to_owned()),
-                open: false,
-            }
-        );
-        assert_eq!(
-            pane.open.ui[&ItemId::new("next")],
-            UiLook {
-                held: false,
-                pressed: None,
-                open: true,
-            }
-        );
-        assert_eq!(
-            pane.open.sent[&ItemId::new("press")],
-            UiSent {
-                label: "Create".into(),
-                values: vec!["fix".into()],
-                event: Some("create".to_owned()),
-            }
-        );
-    }
-
-    #[test]
-    fn a_long_reply_previews_its_first_64_lines() {
-        let mut view = ready("s1");
-        let long = format!("```\n{}```\n", "line\n".repeat(600));
-        view.apply(&ChatEvent::ItemStarted {
-            item: ItemId::new("long"),
-            turn: Some(TurnId(1)),
-            parent: None,
-            kind: ItemKind::Agent,
-            body: ItemBody::text(long.clone()),
-            at: 3,
-        })
-        .expect("reply");
-        finished(&mut view, "short", None, ItemKind::Agent, 4);
-        let mut pane = ChatPane::default();
-        pane.sync(&view);
-        assert_eq!(
-            pane.open.previews[&ItemId::new("long")].as_ref(),
-            format!("```\n{}", "line\n".repeat(63))
-        );
-        assert_eq!(pane.open.texts[&ItemId::new("long")].as_ref(), long);
-        assert!(!pane.open.previews.contains_key(&ItemId::new("short")));
-    }
-
-    #[test]
-    fn revealing_a_folded_tool_opens_its_turn_and_run_or_its_agent() {
-        let mut view = ready("s1");
-        finished(&mut view, "step", Some("a"), ItemKind::Read, 3);
-        view.apply(&ChatEvent::ItemEnded {
-            item: ItemId::new("a"),
-            status: ItemStatus::Completed,
-            at: 3,
-        })
-        .expect("agent ends");
-        finished(&mut view, "read", None, ItemKind::Read, 4);
-        finished(&mut view, "reply", None, ItemKind::Agent, 5);
-        view.apply(&ChatEvent::TurnEnded {
-            turn: TurnId(1),
-            outcome: zz_protocol::chat::TurnOutcome::Completed {
-                stop_reason: "end_turn".to_owned(),
-            },
-            at: 6,
-        })
-        .expect("turn ends");
-        let mut pane = ChatPane::default();
-        pane.sync(&view);
-        assert!(!pane.away());
-
-        pane.reveal(&view, &ItemId::new("read"));
-        assert_eq!(pane.open.turns, [TurnId(1)]);
-        assert_eq!(pane.open.runs, [ItemId::new("read")]);
-        assert_eq!(pane.open.agent, None);
-        assert!(pane.away(), "a revealed row stays put");
-
-        pane.reveal(&view, &ItemId::new("step"));
-        assert_eq!(pane.open.turns, [TurnId(1)]);
-        assert_eq!(pane.open.agent, Some(ItemId::new("a")));
-    }
-
-    struct InsetHost {
-        pane: ChatPane,
-        view: ChatView,
-        refs: Option<ChatRefs>,
+    pub(super) struct InsetHost {
+        pub(super) pane: ChatPane,
+        pub(super) view: ChatView,
+        pub(super) refs: Option<ChatRefs>,
     }
 
     impl super::ChatHost for InsetHost {
@@ -4530,97 +3936,5 @@ mod tests {
                 .h(px(600.0))
                 .child(super::chat_surface(self, look, window, cx))
         }
-    }
-
-    #[ala::test]
-    fn the_first_chat_row_rests_below_the_floating_header(cx: &mut TestAppContext) {
-        cx.update(crate::init);
-        let (host, cx) = cx.add_window_view(|_, _| InsetHost {
-            pane: ChatPane::default(),
-            view: ready("s1"),
-            refs: None,
-        });
-        cx.run_until_parked();
-        cx.update(|window, cx| {
-            _ = window.draw(cx);
-        });
-        let top = host.read_with(cx, |host, _| {
-            host.pane.list.bounds_for_item(0).map(|bounds| bounds.top())
-        });
-        assert_eq!(top, Some(px(46.0)));
-    }
-    #[ala::test]
-    fn a_click_on_a_page_row_opens_the_file_under_the_chats_folder(cx: &mut TestAppContext) {
-        use std::sync::Mutex;
-
-        cx.update(crate::init);
-        let mut view = ChatView::default();
-        let item = |id: &str, kind, body, at| ChatEvent::ItemStarted {
-            item: ItemId::new(id),
-            turn: Some(TurnId(1)),
-            parent: None,
-            kind,
-            body,
-            at,
-        };
-        let done = |id: &str, at| ChatEvent::ItemEnded {
-            item: ItemId::new(id),
-            status: ItemStatus::Completed,
-            at,
-        };
-        let page = ItemBody {
-            target: Some("site/landing.html".to_owned()),
-            ..ItemBody::default()
-        };
-        let answer = ItemBody {
-            text: "Dark hero, green button.".to_owned(),
-            ..ItemBody::default()
-        };
-        for event in [
-            ChatEvent::SessionReady {
-                session: "s1".to_owned(),
-            },
-            ChatEvent::TurnStarted {
-                turn: TurnId(1),
-                by: TurnBy::Agent,
-                at: 1,
-            },
-            item("e1", ItemKind::Edit, page, 2),
-            done("e1", 3),
-            item("a1", ItemKind::Agent, answer, 4),
-            done("a1", 5),
-            ChatEvent::TurnEnded {
-                turn: TurnId(1),
-                outcome: TurnOutcome::Completed {
-                    stop_reason: "end_turn".to_owned(),
-                },
-                at: 6,
-            },
-        ] {
-            view.apply(&event).expect("event");
-        }
-        let opened = Arc::new(Mutex::new(Vec::new()));
-        let seen = Arc::clone(&opened);
-        let refs = ChatRefs {
-            hosts: Vec::new(),
-            cwd: Some("/work".to_owned()),
-            open: Arc::new(|_, _, _| {}),
-            view: None,
-            page: Some(Arc::new(move |path, _, _| {
-                seen.lock().unwrap().push(path.to_owned());
-            })),
-        };
-        let (_host, cx) = cx.add_window_view(|_, _| InsetHost {
-            pane: ChatPane::default(),
-            view,
-            refs: Some(refs),
-        });
-        cx.run_until_parked();
-        cx.update(|window, cx| {
-            _ = window.draw(cx);
-        });
-        let row = cx.debug_bounds("chat-page").expect("the page row is drawn");
-        cx.simulate_click(row.center(), ala::Modifiers::none());
-        assert_eq!(*opened.lock().unwrap(), ["/work/site/landing.html"]);
     }
 }
