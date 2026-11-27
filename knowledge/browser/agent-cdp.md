@@ -8,7 +8,7 @@ tags:
 - cef
 - cdp
 - agents
-timestamp: 2026-11-26T00:00:00-03:00
+timestamp: 2026-11-27T00:00:00-03:00
 ---
 
 # Enable the endpoint
@@ -79,7 +79,7 @@ tabs while the pane format reports only the active tab.
 
 You can use the same variable in status formats and `refresh-client -B` subscriptions.
 `MuxEngine::format_facts` in `crates/zz-mux/src/command/runtime_facts.rs` reads `BrowserDescriptor::url()`;
-`DaemonFormatHooks::variable` in `crates/zz-daemon/src/status.rs` exposes the value.
+`DaemonFormatHooks::variable` in `crates/zz-daemon/src/status/hooks.rs` exposes the value.
 
 # Off-screen screenshots
 

@@ -4,7 +4,7 @@ title: tmux status rows and format expansion
 description: Where tmux status formats get their values, how the raw TUI draws the rows, and which settings control the desktop bar.
 resource: crates/zz-mux/src/formats.rs
 tags: [tmux, status-line, formats, gui, tui, options]
-timestamp: 2026-11-24T00:00:00-03:00
+timestamp: 2026-11-27T00:00:00-03:00
 ---
 
 # Who expands the format
@@ -15,7 +15,7 @@ Use `zz display-message -p '#{session_name}:#{window_index}.#{pane_index}'` for 
 
 # TUI rows
 
-`StatusRenderer` in `crates/zz-daemon/src/status.rs` builds a `StatusLine` for each client. The initial state and subsequent `StatusChanged` events carry the expanded rows, style, placement and selected message row. `compose_status_row` in `crates/zz-client/src/status.rs` lays out style runs, alignment, truncation and mouse hit ranges. The raw TUI reserves those cells and draws prompts or messages on the configured row.
+`StatusRenderer` (`crates/zz-daemon/src/status.rs`, its methods in `status/renderer.rs`) builds a `StatusLine` for each client. The initial state and subsequent `StatusChanged` events carry the expanded rows, style, placement and selected message row. `compose_status_row` in `crates/zz-client/src/status.rs` lays out style runs, alignment, truncation and mouse hit ranges. The raw TUI reserves those cells and draws prompts or messages on the configured row.
 
 | Option | Visible result in the TUI |
 | --- | --- |
@@ -25,7 +25,7 @@ Use `zz display-message -p '#{session_name}:#{window_index}.#{pane_index}'` for 
 | `status-style`, `message-line` | Supply the base appearance and where to place a prompt or message. |
 | `status-interval` | Sets periodic expansion. Zero disables that timer. State changes and job output can still trigger updates. |
 
-A `#(command)` job runs on the daemon's host. The renderer can use cached output while it runs. An initial expansion can be empty, and later output wakes the status path. For this code follow `DaemonFormatHooks` in `crates/zz-daemon/src/status.rs` and `crates/zz-daemon/src/daemon/status_jobs.rs`. For visible proof use `compat/status-row.sh`, which reads the rendered row of an attached client.
+A `#(command)` job runs on the daemon's host. The renderer can use cached output while it runs. An initial expansion can be empty, and later output wakes the status path. For this code follow `DaemonFormatHooks` in `crates/zz-daemon/src/status/hooks.rs`, the job cache in `status/shell_jobs.rs` and `crates/zz-daemon/src/daemon/status_jobs.rs`. For visible proof use `compat/status-row.sh`, which reads the rendered row of an attached client.
 
 # Desktop status bar
 
