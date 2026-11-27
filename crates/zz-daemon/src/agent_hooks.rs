@@ -595,7 +595,7 @@ mod tests {
     #[test]
     fn codex_rules_zz_did_not_write_are_left_alone() {
         let home = tempfile::tempdir().expect("home");
-        let rules = home.path().join(".codex/rules/zz.rules");
+        let rules = home.path().join(".codex").join("rules").join("zz.rules");
         fs::create_dir_all(rules.parent().expect("parent")).expect("rules dir");
         fs::write(
             &rules,
