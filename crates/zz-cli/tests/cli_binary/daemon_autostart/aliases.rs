@@ -398,59 +398,41 @@ fn failing_kill_server_alias_does_not_enter_recovery() {
 
 #[test]
 fn prepared_kill_server_stops_the_daemon_without_recovery() {
-    let fixture = Fixture::new();
-    if !local_socket_bind_available(&fixture.socket) {
-        return;
+    for (shadowing_alias, kill) in [
+        (None, "kill-server"),
+        (
+            Some("kill-server=display-message -p shadow"),
+            "--kill-server",
+        ),
+    ] {
+        let fixture = Fixture::new();
+        if !local_socket_bind_available(&fixture.socket) {
+            return;
+        }
+        assert!(
+            fixture
+                .run(&["new-session", "-d", "-s", "alive"])
+                .status
+                .success()
+        );
+        if let Some(alias) = shadowing_alias {
+            assert!(
+                fixture
+                    .run(&["set-option", "-s", "command-alias[40]", alias])
+                    .status
+                    .success()
+            );
+        }
+        let killed = fixture.run(&[kill]);
+        assert_eq!(killed.status.code(), Some(0), "{kill}");
+        assert!(killed.stdout.is_empty(), "{kill}");
+        assert!(killed.stderr.is_empty(), "{kill}");
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while fixture.socket.exists() && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(10));
+        }
+        assert!(!fixture.socket.exists(), "{kill}");
     }
-    assert!(
-        fixture
-            .run(&["new-session", "-d", "-s", "alive"])
-            .status
-            .success()
-    );
-    let killed = fixture.run(&["kill-server"]);
-    assert_eq!(killed.status.code(), Some(0));
-    assert!(killed.stdout.is_empty());
-    assert!(killed.stderr.is_empty());
-    let deadline = Instant::now() + Duration::from_secs(2);
-    while fixture.socket.exists() && Instant::now() < deadline {
-        thread::sleep(Duration::from_millis(10));
-    }
-    assert!(!fixture.socket.exists());
-}
-
-#[test]
-fn raw_kill_server_flag_ignores_the_live_alias_table() {
-    let fixture = Fixture::new();
-    if !local_socket_bind_available(&fixture.socket) {
-        return;
-    }
-    assert!(
-        fixture
-            .run(&["new-session", "-d", "-s", "alive"])
-            .status
-            .success()
-    );
-    assert!(
-        fixture
-            .run(&[
-                "set-option",
-                "-s",
-                "command-alias[40]",
-                "kill-server=display-message -p shadow",
-            ])
-            .status
-            .success()
-    );
-    let killed = fixture.run(&["--kill-server"]);
-    assert_eq!(killed.status.code(), Some(0));
-    assert!(killed.stdout.is_empty());
-    assert!(killed.stderr.is_empty());
-    let deadline = Instant::now() + Duration::from_secs(2);
-    while fixture.socket.exists() && Instant::now() < deadline {
-        thread::sleep(Duration::from_millis(10));
-    }
-    assert!(!fixture.socket.exists());
 }
 
 #[test]
