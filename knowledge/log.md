@@ -2,6 +2,7 @@
 
 ## 2026-11-27
 
+* The CLI crate's `lib.rs` now holds the crate root types, shared constants and the module declarations; startup and application arguments, command mode, help, native attach, output, kill-server, daemon spawn, launcher defaults and host targeting moved into subject files beside it, re-exported so every public path still resolves. Its tests and those of `control_mode.rs` moved into subject test files, and the `cli_binary` integration test became the `tests/cli_binary/` directory, still one binary, with one file per module. The [zz-cli](/crates/zz-cli.md) page lists the files, and pages that named `lib.rs` for moved code point at the new files.
 * The desktop app's `workspace/view.rs` now holds `AppView`, its state types, `AppView::new` and its render; the key handling, palettes, focus, pane synchronization, agents, drags, pane content, layout, floating panes and overlays moved into subject files under `crates/zz/src/workspace/view/`. `mux/client.rs` now holds `MuxClient`, its types, constructors, accessors and event emitters; connections, daemon restarts, overlay state, input, commands, providers, attach, images, agent streams, messages and history moved into subject files under `crates/zz/src/mux/client/`. Both sets of tests moved into subject test files beside them. The [zz](/crates/zz.md) page lists the files, and pages that named either file for moved code point at the new files.
 
 ## 2026-11-26

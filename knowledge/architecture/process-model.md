@@ -4,7 +4,7 @@ title: Process and threading model
 description: Which process owns mux state, terminal actors, native chats and browser runtimes.
 resource: crates/zz-daemon/src/daemon.rs
 tags: [architecture, daemon, threading, ipc]
-timestamp: 2026-11-24T00:00:00Z
+timestamp: 2026-11-27T00:00:00Z
 ---
 
 ## Processes
@@ -23,7 +23,7 @@ daemon on demand. On Unix the spawned daemon creates its own session so closing
 the launching terminal leaves it running. The daemon accepts connections during
 startup, but ordinary clients wait for startup configuration. Daemon-owned
 startup jobs can re-enter through the startup token. See `spawn_daemon` in
-`crates/zz-cli/src/lib.rs` and `Daemon::run_foreground` in `crates/zz-daemon/src/daemon.rs`.
+`crates/zz-cli/src/daemon_spawn.rs` and `Daemon::run_foreground` in `crates/zz-daemon/src/daemon.rs`.
 
 ## Terminal and chat workers
 

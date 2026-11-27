@@ -4,7 +4,7 @@ title: Building and running zz
 description: Launch an isolated desktop or thin client, exercise a native browser pane and collect logs and profiles.
 resource: scripts/run.sh
 tags: [running, cargo, cef-download, daemon, browser-fixture, profiling, instruments]
-timestamp: 2026-11-24T00:00:00Z
+timestamp: 2026-11-27T00:00:00Z
 ---
 
 ## Launch
@@ -170,7 +170,7 @@ The desktop and CLI enable mimalloc's `no_thp` feature. The Linux CLI also calls
 `PR_SET_THP_DISABLE`, which child programs inherit. The GNU/Linux GUI schedules
 `malloc_trim(0)` on its background executor every ten seconds. The daemon defaults its
 mimalloc purge delay to zero unless `MIMALLOC_PURGE_DELAY` is set. See `start_heap_trim`
-in `crates/zz/src/lib.rs` and `purge_freed_memory_promptly` in `crates/zz-cli/src/lib.rs`.
+in `crates/zz/src/lib.rs` and `purge_freed_memory_promptly` in `crates/zz-cli/src/startup.rs`.
 
 Reproduce the retention check by closing 63 of 64 terminals, then measure idle footprint
 and churn CPU separately. The recorded comparison was 199.9 versus 76.7 MiB with a zero
