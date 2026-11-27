@@ -4,7 +4,7 @@ title: Unified palette and tmux command completions
 description: Searching places and commands, filling arguments, picking files, and editing daemon prompts.
 resource: crates/zz-ui/src/command/palette_view.rs
 tags: [command-prompt, tmux, completions, ui]
-timestamp: 2026-11-24T00:00:00Z
+timestamp: 2026-11-27T00:00:00Z
 ---
 
 ## Words, places and verbs
@@ -85,5 +85,5 @@ cancels. The daemon expands the template and executes it.
 `choose-tree -s` and `-w` use the daemon's rows, selection and expansion.
 The desktop handles a windows tree with `CommandPaletteView`. Client and other
 chooser kinds use their dedicated surfaces. See the chooser dispatch in
-`crates/zz/src/workspace/view.rs`, `crates/zz-client/src/completion.rs`,
+`crates/zz/src/workspace/view/synchronize.rs`, `crates/zz-client/src/completion.rs`,
 `crates/zz-protocol/src/catalog.rs` and [choose-tree](/tmux/choose-tree.md).

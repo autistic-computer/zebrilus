@@ -8,7 +8,7 @@ tags:
 - ui
 - floating-panes
 - design-plan
-timestamp: 2026-11-10T00:00:00-03:00
+timestamp: 2026-11-27T00:00:00-03:00
 ---
 
 # Rulings (fabrico, 2026-10-18)
@@ -239,7 +239,7 @@ same window: `new-pane -t %N -c <dir> -x 46% -y 72%`, then `select-pane-kind --r
 --fork --at <message> ... agent <cli>` on the new float (`fork_chat_command` in
 `zz_client::agent_settings`). The desktop and the thin clients send the same line.
 
-- **Desktop** (`crates/zz/src/workspace/view.rs`): a `PipGrab` move starts the drag
+- **Desktop** (`crates/zz/src/workspace/view/drag.rs`): a `PipGrab` move starts the drag
   (`on_pip_grab_move`), `FloatDragState.pip` carries the `PipDrag`, and `throw_pip` sends the
   command, flings `pane_motion` and keeps the landing until the command settles. `pip_stage` follows
   the window each render.

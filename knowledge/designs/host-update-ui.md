@@ -10,7 +10,7 @@ tags:
 - sidebar
 - settings
 - design-plan
-timestamp: 2026-11-24T00:00:00-03:00
+timestamp: 2026-11-27T00:00:00-03:00
 ---
 
 # Overview
@@ -266,7 +266,8 @@ version there. `zz fleet install NAME` updates it.
 
 # Citations
 
-- `crates/zz/src/mux/client.rs` `install_zz_on_host`, `daemon_behind`, `execute_on_host`
+- `crates/zz/src/mux/client.rs` `daemon_behind`; `mux/client/connection.rs` `install_zz_on_host`;
+  `mux/client/commands.rs` `execute_on_host`
 - `crates/zz/src/mux/client/host_update.rs` `host_update`, `fetch_host_facts`,
   `request_host_updates`, `run_host_updates`, `HostUpdateQuestion`
 - `crates/zz/src/mux/nav.rs` `MuxTreeHost::install_offer`, `MuxTreeHost::indicator`,
