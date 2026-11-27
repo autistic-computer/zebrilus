@@ -1,6 +1,7 @@
 #[cfg(unix)]
 use super::test_support::{counted_value_job, engine_request, execute};
 use super::test_support::{request, settled};
+#[cfg(unix)]
 use super::*;
 use crate::daemon::status_jobs::tests::renderer;
 #[cfg(unix)]
