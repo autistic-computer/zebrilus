@@ -969,6 +969,9 @@ pub(crate) fn remove_fleet_host_live(name: &str, cx: &mut App) -> io::Result<boo
 }
 
 #[cfg(test)]
+mod test_support;
+
+#[cfg(test)]
 mod tests {
     use crate::keymap::ChromeOverride;
     use std::{env, fs, path::PathBuf};
@@ -977,6 +980,7 @@ mod tests {
         CursorStyle, TerminalAppearance,
     };
 
+    use super::test_support::*;
     use super::*;
     use zz_terminal::{
         AppearanceLoad, AppearanceSource, FontFeature, FontSyntheticStyle, TerminalColorScheme,
@@ -1080,13 +1084,6 @@ mod tests {
         assert_eq!(
             (defaults.chrome_tint_hue.value, defaults.chrome_tint.value),
             (theme.neutral.hue, theme.neutral.amount)
-        );
-    }
-
-    fn assert_f32_eq(actual: f32, expected: f32) {
-        assert!(
-            (actual - expected).abs() <= f32::EPSILON,
-            "expected {expected}, got {actual}"
         );
     }
 
