@@ -24,6 +24,7 @@ pub(super) fn load_buffer(
     let state = wait.start();
     let failed = Arc::clone(&state);
     let no_hooks = context.no_hooks;
+    let context = context.clone();
     let submitted = shared.client_file_operation(
         client,
         path,
@@ -55,7 +56,7 @@ pub(super) fn load_buffer(
                 shared.refresh_choose_buffers();
                 Ok(Execution::default())
             });
-            state.resolve(result);
+            state.resolve(shared.settle_client_file(client, &context, result));
         }),
     );
     if let Err(error) = submitted {
@@ -67,6 +68,7 @@ pub(super) fn load_buffer(
 pub(super) fn save_buffer(
     shared: &Arc<Shared>,
     client: Option<ClientId>,
+    context: &ExecutionContext,
     path: &Path,
     data: &Arc<[u8]>,
     append: bool,
@@ -74,6 +76,7 @@ pub(super) fn save_buffer(
     let wait = terminal_requests::CommandWait::new(shared);
     let state = wait.start();
     let failed = Arc::clone(&state);
+    let context = context.clone();
     if let Err(error) = shared.client_file_operation(
         client,
         path,
@@ -82,8 +85,9 @@ pub(super) fn save_buffer(
             data: data.to_vec(),
         },
         None,
-        Box::new(move |_, result| {
-            state.resolve(result.map(|_| Execution::default()));
+        Box::new(move |shared, result| {
+            let result = result.map(|_| Execution::default());
+            state.resolve(shared.settle_client_file(client, &context, result));
         }),
     ) {
         failed.resolve(Err(error));
@@ -303,6 +307,33 @@ impl Shared {
             .open(&path)
             .map_err(failed)?;
         file.write_all(&bytes).map_err(failed)?;
+        Ok(Execution::default())
+    }
+
+    fn settle_client_file(
+        self: &Arc<Self>,
+        client: Option<ClientId>,
+        context: &ExecutionContext,
+        result: Result<Execution, DaemonError>,
+    ) -> Result<Execution, DaemonError> {
+        let error = match result {
+            Ok(execution) => return Ok(execution),
+            Err(error) => error,
+        };
+        let Some((client, kind)) = client.and_then(|client| {
+            self.read_client(client, |c| c.and_then(|c| c.kind))
+                .map(|kind| (client, kind))
+        }) else {
+            return Err(error);
+        };
+        match kind {
+            ClientKind::Interactive => {
+                self.publish_background_command_error(client, context, &error, true);
+            }
+            ClientKind::Command | ClientKind::Control => {
+                self.route_source_error(client, kind, context.pane, &daemon_error_text(&error));
+            }
+        }
         Ok(Execution::default())
     }
 
