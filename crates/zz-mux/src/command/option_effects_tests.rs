@@ -1291,11 +1291,9 @@ fn copy_mode_current_line_style_republishes_the_status_formats() {
             ),
         )
         .unwrap();
-    assert!(
-        execution
-            .effects
-            .contains(&MuxEffect::StatusFormatsChanged { session: None }),
-        "{execution:?}"
+    assert_eq!(
+        execution.effects,
+        [MuxEffect::StatusFormatsChanged { session: None }]
     );
 }
 

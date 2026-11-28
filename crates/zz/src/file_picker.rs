@@ -753,14 +753,30 @@ mod tests {
 
         let entries = index.search("");
 
-        assert!(labels(&entries).contains(&"dev/empty"));
-        assert!(labels(&entries).contains(&"a/b/c/d/e/f/g/workspace"));
-        assert!(entries.iter().all(|entry| entry.absolute.is_dir()));
-        assert!(
-            entries
-                .iter()
-                .all(|entry| entry.absolute.starts_with(root.path()))
+        let mut names = labels(&entries);
+        names.sort_unstable();
+        assert_eq!(
+            names,
+            [
+                "a",
+                "a/b",
+                "a/b/c",
+                "a/b/c/d",
+                "a/b/c/d/e",
+                "a/b/c/d/e/f",
+                "a/b/c/d/e/f/g",
+                "a/b/c/d/e/f/g/workspace",
+                "dev",
+                "dev/empty",
+            ]
         );
+        for entry in &entries {
+            assert_eq!(
+                *entry.absolute,
+                *root.path().join(entry.relative.as_ref()),
+                "{entry:?}"
+            );
+        }
     }
 
     #[test]
@@ -850,9 +866,12 @@ mod tests {
         fs::set_permissions(&protected, fs::Permissions::from_mode(0o700)).unwrap();
         let index = result.unwrap();
         let entries = index.search("");
-        assert!(labels(&entries).contains(&"workspace"));
+        let mut names = labels(&entries);
+        names.sort_unstable();
         if unreadable {
-            assert!(!labels(&entries).contains(&"protected/secret"));
+            assert_eq!(names, ["protected", "workspace"]);
+        } else {
+            assert_eq!(names, ["protected", "protected/secret", "workspace"]);
         }
     }
 
@@ -865,8 +884,14 @@ mod tests {
             .err()
             .unwrap();
 
-        assert!(error.starts_with("Cannot read "));
-        assert!(error.contains(missing.to_str().unwrap()));
+        assert_eq!(
+            error,
+            format!(
+                "Cannot read {}: {}",
+                missing.display(),
+                fs::read_dir(&missing).unwrap_err()
+            )
+        );
     }
 
     #[test]
@@ -877,13 +902,27 @@ mod tests {
         let index = build_index(root.path(), FilePickerMode::Directories).unwrap();
         let entries = index.search("");
         let selected = &entries[0].absolute;
-        assert!(validate_selection(selected, FilePickerMode::Directories).is_ok());
-        assert!(validate_selection(selected, FilePickerMode::Files).is_err());
+        assert_eq!(**selected, *folder);
+        assert_eq!(
+            validate_selection(selected, FilePickerMode::Directories),
+            Ok(())
+        );
+        assert_eq!(
+            validate_selection(selected, FilePickerMode::Files),
+            Err(format!("{} is not a file.", folder.display()))
+        );
         fs::remove_dir(&folder).unwrap();
 
         let error = validate_selection(selected, FilePickerMode::Directories).unwrap_err();
 
-        assert!(error.contains(folder.to_str().unwrap()));
+        assert_eq!(
+            error,
+            format!(
+                "Cannot open {}: {}",
+                folder.display(),
+                fs::metadata(&folder).unwrap_err()
+            )
+        );
     }
 
     #[test]
@@ -988,15 +1027,28 @@ mod tests {
         }
         let index = build_index(root.path(), FilePickerMode::Directories).unwrap();
         let entries = index.search("");
-        let names = labels(&entries);
-        assert!(names.contains(&"Library"));
-        assert!(names.contains(&"Music"));
-        assert!(names.contains(&"dev/project/src"));
-        assert!(!names.iter().any(|name| name.contains("cache")
-            || name.contains("Media")
-            || name.contains("node_modules")
-            || name.contains("target")));
-        assert!(!names.contains(&"a/b/c/d/e/f/g/h/i"));
+        let mut names = labels(&entries);
+        names.sort_unstable();
+        assert_eq!(
+            names,
+            [
+                "Library",
+                "Music",
+                "a",
+                "a/b",
+                "a/b/c",
+                "a/b/c/d",
+                "a/b/c/d/e",
+                "a/b/c/d/e/f",
+                "a/b/c/d/e/f/g",
+                "a/b/c/d/e/f/g/h",
+                "dev",
+                "dev/project",
+                "dev/project/src",
+                "go",
+                "go/pkg",
+            ]
+        );
     }
 
     #[ala::test]

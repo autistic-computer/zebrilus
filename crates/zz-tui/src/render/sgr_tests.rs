@@ -85,22 +85,10 @@ fn styled_lines_send_named_and_indexed_colours_the_way_the_pin_does() {
     );
     let output = String::from_utf8(output).unwrap();
 
-    assert!(output.contains("\x1b[1m"));
-    assert!(output.contains("\x1b[4m"));
-    assert!(output.contains("\x1b[7m"));
-    assert!(output.contains("\x1b[31m"), "{output:?}");
-    assert!(output.contains("\x1b[48;2;1;2;3m"), "{output:?}");
-    assert!(output.contains("\x1b[38;5;42m"), "{output:?}");
-    assert!(output.contains("\x1b[92m"), "{output:?}");
-    let red = appearance.palette[1];
-    assert!(
-        !output.contains(&format!("38;2;{};{};{}", red.r, red.g, red.b)),
-        "a named colour must not be resolved against zz's own palette: {output:?}"
+    assert_eq!(
+        output,
+        "\u{1b}[1;1H\u{1b}[0m\u{1b}[1m\u{1b}[4m\u{1b}[7m\u{1b}[31m\u{1b}[48;2;1;2;3mX\u{1b}[0m\u{1b}[38;5;42m\u{1b}[48;2;1;2;3mY\u{1b}[0m\u{1b}[92m\u{1b}[48;2;1;2;3mZ\u{1b}[0m"
     );
-    assert!(output.contains('X'));
-    assert!(output.contains('Y'));
-    assert!(output.contains('Z'));
-    assert!(!output.contains("#["));
 }
 
 #[test]

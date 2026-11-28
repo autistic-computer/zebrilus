@@ -323,7 +323,10 @@ fn a_pane_mode_cursor_under_a_float_is_hidden() {
     let cursor = pane_mode::surface(&mode, content, &model.status.theme).cursor;
     let mut renderer = Renderer::new();
     renderer.place_pane_cursor(&model);
-    assert!(String::from_utf8_lossy(&renderer.output).ends_with("\x1b[?25h"));
+    assert_eq!(
+        String::from_utf8_lossy(&renderer.output),
+        "\u{1b}[12;10H\u{1b}[?25h"
+    );
 
     let covering = zz_protocol::FloatingPaneSnapshot {
         xoff: i32::from(cursor.0) - 1,
@@ -336,8 +339,7 @@ fn a_pane_mode_cursor_under_a_float_is_hidden() {
     let mut renderer = Renderer::new();
     renderer.place_pane_cursor(&model);
     let output = String::from_utf8_lossy(&renderer.output).into_owned();
-    assert!(!output.contains("\x1b[?25h"), "{output:?}");
-    assert!(output.ends_with("\x1b[?25l"), "{output:?}");
+    assert_eq!(output, "\u{1b}[12;10H\u{1b}[?25l");
 }
 
 #[test]

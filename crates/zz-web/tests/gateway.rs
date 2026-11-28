@@ -152,20 +152,23 @@ async fn gateway_serves_assets_and_rejects_foreign_hosts_and_path_escape() {
     let server = RunningGateway::start(&assets, &scratch.path().join("absent.sock")).await;
     let host = server.address.to_string();
     let index = server.http("/", &host).await;
-    assert!(index.starts_with("HTTP/1.1 200"));
-    assert!(index.ends_with("browser-client"));
-    assert!(index.contains("cross-origin-embedder-policy: require-corp"));
+    assert_eq!(status_line(&index), "HTTP/1.1 200 OK");
+    assert_eq!(body(&index), "browser-client");
+    assert_eq!(
+        header(&index, "cross-origin-embedder-policy"),
+        Some("require-corp")
+    );
     let wasm = server.http("/client.wasm", &host).await;
-    assert!(wasm.contains("content-type: application/wasm"));
-    assert!(
-        server
-            .http("/", "attacker.example")
-            .await
-            .starts_with("HTTP/1.1 403")
+    assert_eq!(header(&wasm, "content-type"), Some("application/wasm"));
+    assert_eq!(body(&wasm), "wasm");
+    assert_eq!(
+        status_line(&server.http("/", "attacker.example").await),
+        "HTTP/1.1 403 Forbidden"
     );
     for path in ["/../secret", "/%2e%2e/secret", "/%5csecret", "/escape"] {
-        assert!(
-            server.http(path, &host).await.starts_with("HTTP/1.1 404"),
+        assert_eq!(
+            status_line(&server.http(path, &host).await),
+            "HTTP/1.1 404 Not Found",
             "accepted {path}"
         );
     }
@@ -176,7 +179,11 @@ async fn gateway_serves_assets_and_rejects_foreign_hosts_and_path_escape() {
             None,
         )
         .await;
-    assert!(kept.contains("location: /?theme=dark&bare=\r\n"), "{kept}");
+    assert_eq!(
+        header(&kept, "location"),
+        Some("/?theme=dark&bare="),
+        "{kept}"
+    );
     let stranger = format!("zz-web-{}={}", server.address.port(), "0".repeat(64));
     for (path, cookie) in [
         ("/", None),
@@ -189,26 +196,53 @@ async fn gateway_serves_assets_and_rejects_foreign_hosts_and_path_escape() {
         ),
     ] {
         let response = server.http_with(path, &host, cookie).await;
-        assert!(
-            response.starts_with("HTTP/1.1 403"),
+        assert_eq!(
+            (status_line(&response), body(&response)),
+            (
+                "HTTP/1.1 403 Forbidden",
+                "Open the link zz-web printed when it started.\n"
+            ),
             "served {path} to {cookie:?}"
-        );
-        assert!(
-            response.ends_with("Open the link zz-web printed when it started.\n"),
-            "{response}"
         );
     }
 
-    assert!(
-        Gateway::bind(GatewayConfig {
-            bind: "0.0.0.0:0".parse().unwrap(),
-            assets,
-            socket: scratch.path().join("absent.sock"),
-            hosts: Vec::new(),
-        })
-        .await
-        .is_err()
+    let refused = Gateway::bind(GatewayConfig {
+        bind: "0.0.0.0:0".parse().unwrap(),
+        assets,
+        socket: scratch.path().join("absent.sock"),
+        hosts: Vec::new(),
+    })
+    .await
+    .err()
+    .map(|error| (error.kind(), error.to_string()));
+    assert_eq!(
+        refused,
+        Some((
+            std::io::ErrorKind::InvalidInput,
+            "the browser gateway must bind to a loopback address".to_owned()
+        ))
     );
+}
+
+fn status_line(response: &str) -> &str {
+    response.lines().next().unwrap_or_default()
+}
+
+fn header<'a>(response: &'a str, name: &str) -> Option<&'a str> {
+    response
+        .split("\r\n\r\n")
+        .next()
+        .unwrap_or_default()
+        .lines()
+        .skip(1)
+        .find_map(|line| {
+            let (key, value) = line.split_once(": ")?;
+            key.eq_ignore_ascii_case(name).then_some(value)
+        })
+}
+
+fn body(response: &str) -> &str {
+    response.split_once("\r\n\r\n").map_or("", |(_, body)| body)
 }
 
 #[tokio::test]

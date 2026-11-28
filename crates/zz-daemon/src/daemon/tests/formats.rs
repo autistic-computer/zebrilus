@@ -405,8 +405,16 @@ fn snapshots_expand_client_formats_for_each_session() {
     let mut snapshot = inner.engine.state.snapshot();
     stamp_snapshot_for_client(&inner, first_client, &mut snapshot, &presence);
     for (session, expected_label, expected_colour) in [
-        (first, "snapshot-first=1", TmuxColour::Basic(1)),
-        (second, "snapshot-second=0", TmuxColour::Basic(4)),
+        (
+            first,
+            "#[underscore]#[push-default]snapshot-first=1",
+            TmuxColour::Basic(1),
+        ),
+        (
+            second,
+            "#[underscore]#[push-default]snapshot-second=0",
+            TmuxColour::Basic(4),
+        ),
     ] {
         let session = snapshot
             .sessions
@@ -414,12 +422,14 @@ fn snapshots_expand_client_formats_for_each_session() {
             .find(|candidate| candidate.id == session)
             .expect("snapshot session");
         let window = session.windows.first().expect("snapshot window");
-        assert!(window.status_label.ends_with(expected_label));
-        assert!(
+        assert_eq!(window.status_label, expected_label);
+        assert_eq!(
             window
                 .panes
                 .values()
-                .all(|pane| pane.border_colour == Some(expected_colour))
+                .map(|pane| pane.border_colour)
+                .collect::<Vec<_>>(),
+            [Some(expected_colour)]
         );
     }
 }

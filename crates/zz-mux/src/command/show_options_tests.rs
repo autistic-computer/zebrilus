@@ -430,44 +430,76 @@ fn bare_status_option_listings_include_every_status_and_window_status_option() {
         .execute(&mut context, &command("show-options", &["-g"]))
         .unwrap()
         .output;
-    for name in [
-        "status-style",
-        "status-bg",
-        "status-fg",
-        "status-left-style",
-        "status-right-style",
-        "status-left-length",
-        "status-right-length",
-        "status-justify",
-        "status-position",
-    ] {
-        let prefix = format!("{name} ");
-        assert!(
-            session.lines().any(|line| line.starts_with(&prefix)),
-            "bare session listing omitted {name}"
-        );
-    }
+    let listed = |listing: &str, names: &[&str]| {
+        names
+            .iter()
+            .map(|name| {
+                let prefix = format!("{name} ");
+                listing
+                    .lines()
+                    .find(|line| line.starts_with(&prefix))
+                    .unwrap_or_default()
+                    .to_owned()
+            })
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        listed(
+            &session,
+            &[
+                "status-style",
+                "status-bg",
+                "status-fg",
+                "status-left-style",
+                "status-right-style",
+                "status-left-length",
+                "status-right-length",
+                "status-justify",
+                "status-position",
+            ]
+        ),
+        [
+            "status-style bg=themegreen,fg=themeblack",
+            "status-bg default",
+            "status-fg default",
+            "status-left-style default",
+            "status-right-style default",
+            "status-left-length 10",
+            "status-right-length 40",
+            "status-justify left",
+            "status-position bottom",
+        ]
+    );
 
     let window = engine
         .execute(&mut context, &command("show-options", &["-gw"]))
         .unwrap()
         .output;
-    for name in [
-        "window-status-format",
-        "window-status-current-format",
-        "window-status-separator",
-        "window-status-style",
-        "window-status-current-style",
-        "window-status-last-style",
-        "window-status-bell-style",
-        "window-status-activity-style",
-    ] {
-        let prefix = format!("{name} ");
-        assert!(
-            window.lines().any(|line| line.starts_with(&prefix)),
-            "bare window listing omitted {name}"
-        );
-    }
+    assert_eq!(
+        listed(
+            &window,
+            &[
+                "window-status-format",
+                "window-status-current-format",
+                "window-status-separator",
+                "window-status-style",
+                "window-status-current-style",
+                "window-status-last-style",
+                "window-status-bell-style",
+                "window-status-activity-style",
+            ]
+        ),
+        [
+            "window-status-format \"#I:#W#{?window_flags,#{window_flags}, }\"",
+            "window-status-current-format \"#I:#W#{?window_flags,#{window_flags}, }\"",
+            "window-status-separator \" \"",
+            "window-status-style default",
+            "window-status-current-style underscore",
+            "window-status-last-style default",
+            "window-status-bell-style reverse",
+            "window-status-activity-style reverse",
+        ]
+    );
 }
 
 #[test]

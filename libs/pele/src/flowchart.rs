@@ -2500,12 +2500,18 @@ mod tests {
             max_width: Some(640.0),
             ..RenderOptions::default()
         };
-        let result = render(source, &options).unwrap();
-        assert!(result.width <= 640.0, "{}", result.width);
-        assert!(result.height > result.width);
-        let fits = render("flowchart LR\n    A --> B --> C", &options).unwrap();
-        assert!(
-            fits.width > fits.height,
+        let fixed = RenderOptions {
+            auto_direction: false,
+            ..options.clone()
+        };
+        assert_eq!(
+            render(source, &options).unwrap(),
+            render(&source.replace("flowchart LR", "flowchart TD"), &fixed).unwrap()
+        );
+        let fits = "flowchart LR\n    A --> B --> C";
+        assert_eq!(
+            render(fits, &options).unwrap(),
+            render(fits, &fixed).unwrap(),
             "a flow that fits keeps its direction"
         );
     }

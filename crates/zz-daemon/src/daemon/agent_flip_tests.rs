@@ -175,7 +175,11 @@ fn a_terminal_running_the_cli_flips_into_a_chat_once_the_cli_exits() {
         client,
         &["agent-send", "-t", &pane.to_string(), "hi"],
     );
-    assert!(sent.is_ok(), "a chat takes agent-send: {sent:?}");
+    assert_eq!(
+        sent.map(|execution| execution.output.to_string())
+            .map_err(|error| error.to_string()),
+        Ok(pane.to_string())
+    );
     shared.request_shutdown();
 }
 
@@ -259,9 +263,14 @@ fn agent_send_refuses_a_terminal_running_the_cli() {
         &["agent-send", "-t", &pane.to_string(), "hi"],
     )
     .expect_err("a TUI takes no typed prompts");
-    assert!(
-        error.to_string().contains("flip the pane to chat first"),
-        "{error}"
+    let DaemonError::Server(ServerError::InvalidTarget(message)) = error else {
+        panic!("a TUI refuses agent-send as a bad target: {error:?}");
+    };
+    assert_eq!(
+        message,
+        format!(
+            "{pane} runs Codex in its terminal; flip the pane to chat first: flip-agent -t {pane}"
+        )
     );
     shared.request_shutdown();
 }

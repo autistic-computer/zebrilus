@@ -96,11 +96,10 @@ fn customize_search_wraps_backward_into_key_tables() {
         let mut expand = customize_expand;
         let _ = engine.customize_presentation(pane, &mode, &mut expand);
     }
-    assert!(
-        current_row(&engine, pane, &mode)
-            .name
-            .to_lowercase()
-            .contains("mouse")
+    let row = current_row(&engine, pane, &mode);
+    assert_eq!(
+        (row.id.as_str(), row.name.as_str()),
+        ("keys:root\0C-MouseDrag1Pane", "C-MouseDrag1Pane")
     );
 }
 

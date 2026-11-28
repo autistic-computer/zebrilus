@@ -428,8 +428,15 @@ mod tests {
     fn rejects_collisions_and_invalid_keys() {
         let current = binding("-", "split-window", &["-v"]);
         let bindings = [current.clone(), binding("s", "choose-tree", &[])];
-        for key in ["s", "bad-key-name", "x\nbind q kill-server", "Any", "None"] {
-            assert!(
+        let invalid = "Enter one tmux key, such as -, |, or C-s.";
+        for (key, expected) in [
+            ("s", "Prefix + s already has a binding."),
+            ("bad-key-name", invalid),
+            ("x\nbind q kill-server", invalid),
+            ("Any", invalid),
+            ("None", invalid),
+        ] {
+            assert_eq!(
                 update_split_binding(
                     "",
                     &bindings,
@@ -437,8 +444,9 @@ mod tests {
                     SplitDirection::Vertical,
                     key,
                     SplitPaneKind::Picker,
-                )
-                .is_err()
+                ),
+                Err(expected.to_owned()),
+                "{key:?}"
             );
         }
     }

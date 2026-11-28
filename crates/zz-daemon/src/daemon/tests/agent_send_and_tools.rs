@@ -4,10 +4,27 @@ use super::*;
 fn agent_send_notify_submits_and_refuses_wait() {
     let parsed =
         parse_agent_send_args(&["-t", "%2", "--notify", "go"].map(RawText::from)).expect("parse");
-    assert!(parsed.notify && parsed.submit && !parsed.wait);
-    assert!(parse_agent_send_args(&["--notify", "--wait", "go"].map(RawText::from)).is_err());
-    assert!(
-        parse_agent_send_args(&["--notify", "--timeout", "5", "go"].map(RawText::from)).is_err()
+    assert_eq!(
+        (
+            parsed.notify,
+            parsed.submit,
+            parsed.wait,
+            parsed.target.as_deref(),
+            parsed.text.as_slice()
+        ),
+        (true, true, false, Some("%2"), ["go".to_owned()].as_slice())
+    );
+    assert_eq!(
+        parse_agent_send_args(&["--notify", "--wait", "go"].map(RawText::from)).err(),
+        Some(ServerError::CommandParse(
+            "agent-send --notify and --wait cannot be combined".to_owned()
+        ))
+    );
+    assert_eq!(
+        parse_agent_send_args(&["--notify", "--timeout", "5", "go"].map(RawText::from)).err(),
+        Some(ServerError::CommandParse(
+            "agent-send --timeout needs --wait".to_owned()
+        ))
     );
 }
 
@@ -1067,10 +1084,11 @@ fn tools_catalog_accepts_sections_and_skill_flag() {
 #[test]
 fn tools_local_flags_are_refused_by_the_daemon() {
     for flag in WORKSPACE_TOOLS_LOCAL_FLAGS {
-        let error = workspace_tools_catalog(&[RawText::from(flag)]).expect_err(flag);
-        assert!(
-            error.to_string().contains("local zz CLI"),
-            "{flag}: {error}"
+        assert_eq!(
+            workspace_tools_catalog(&[RawText::from(flag)]).err(),
+            Some(ServerError::CommandParse(format!(
+                "tools {flag} runs in the local zz CLI"
+            )))
         );
     }
 }
@@ -1198,11 +1216,14 @@ fn host_verbs_point_a_prompt_user_at_the_shell() {
                 &CommandInvocation::new(verb, Vec::<RawText>::new()),
             )
             .expect_err(verb);
-        assert!(
-            error
-                .to_string()
-                .contains(&format!("run it from a shell as `zz {verb}`")),
-            "{verb}: {error}"
+        let DaemonError::Server(ServerError::InvalidCommand(message)) = error else {
+            panic!("{verb}: {error:?}");
+        };
+        assert_eq!(
+            message,
+            format!(
+                "{verb} runs in the zz CLI of the machine it acts for; run it from a shell as `zz {verb}`"
+            )
         );
     }
 }

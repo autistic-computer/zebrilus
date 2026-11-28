@@ -199,10 +199,11 @@ fn a_claude_tool_marked_background_leaves_the_turn() {
         None,
         Instant::now(),
     );
-    assert!(
+    assert_eq!(
         view(&shadow)
             .item(&ItemId::new("b1"))
-            .is_some_and(|item| item.status.is_open() && item.background)
+            .map(|item| (item.status.clone(), item.background)),
+        Some((ItemStatus::Running, true))
     );
 }
 
@@ -247,7 +248,10 @@ fn a_stale_codex_completion_leaves_the_running_turn_alone() {
     end_turn(&mut shadow, "t1");
     let view = view(&shadow);
     let item = view.item(&ItemId::new("cmd")).expect("cmd");
-    assert!(item.status.is_open() && !item.background);
+    assert_eq!(
+        (item.status.clone(), item.background),
+        (ItemStatus::Running, false)
+    );
 }
 
 #[test]
@@ -293,7 +297,10 @@ fn a_background_mark_reaches_a_child_still_waiting_for_its_parent() {
     end_turn(&mut shadow, "c1");
     let view = view(&shadow);
     let child = view.item(&ItemId::new("child")).expect("child");
-    assert!(child.status.is_open() && child.background);
+    assert_eq!(
+        (child.status.clone(), child.background),
+        (ItemStatus::Running, true)
+    );
 }
 
 #[test]
@@ -377,10 +384,11 @@ fn a_reset_while_loading_keeps_the_approvals_that_already_arrived() {
     });
     shadow.payload(&AgentStreamPayload::SessionReset { restoring: true });
     ready(&mut shadow);
-    assert!(
+    assert_eq!(
         view(&shadow)
             .request(RequestId(12))
-            .is_some_and(zz_protocol::chat::RequestView::is_open)
+            .map(|request| (request.item.clone(), request.close.clone())),
+        Some((Some(ItemId::new("t9")), None))
     );
 }
 

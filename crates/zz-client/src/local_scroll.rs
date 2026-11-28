@@ -521,6 +521,13 @@ impl RowProjection {
     }
 
     #[must_use]
+    pub fn source_row_at(self, display_row: u16) -> Option<u16> {
+        let last = self.count.checked_sub(1)?;
+        let offset = display_row.saturating_sub(self.destination_start).min(last);
+        Some(self.source_start.saturating_add(offset))
+    }
+
+    #[must_use]
     pub fn display_row(self, source_row: u16) -> Option<usize> {
         let offset = source_row.checked_sub(self.source_start)?;
         (offset < self.count).then(|| usize::from(self.destination_start.saturating_add(offset)))
@@ -1061,5 +1068,23 @@ mod tests {
 
         retained.viewport.mouse_tracking = true;
         assert!(!local_scroll_available(&retained));
+    }
+
+    #[test]
+    fn a_pointer_row_names_the_row_drawn_under_it_when_the_pane_outgrows_the_grid() {
+        let taller = RowProjection::new(18, 17, true);
+        assert_eq!(taller.display_row(12), Some(11));
+        assert_eq!(taller.source_row_at(11), Some(12));
+        assert_eq!(taller.source_row_at(16), Some(17));
+
+        let shorter = RowProjection::new(17, 18, true);
+        assert_eq!(shorter.source_row_at(0), Some(0));
+        assert_eq!(shorter.source_row_at(12), Some(11));
+
+        assert_eq!(
+            RowProjection::new(18, 17, false).source_row_at(20),
+            Some(16)
+        );
+        assert_eq!(RowProjection::new(0, 17, true).source_row_at(3), None);
     }
 }

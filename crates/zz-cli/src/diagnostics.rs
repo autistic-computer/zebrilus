@@ -854,9 +854,25 @@ mod tests {
                 .unwrap();
         }
 
-        let old = path.with_extension("log.old");
-        assert!(old.exists(), "previous generation was kept");
-        assert!(fs::metadata(&path).unwrap().len() <= 33 * 2);
+        let mut generations = fs::read_dir(&dir)
+            .unwrap()
+            .map(|entry| {
+                let entry = entry.unwrap();
+                (
+                    entry.file_name().into_string().unwrap(),
+                    fs::read(entry.path()).unwrap(),
+                )
+            })
+            .collect::<Vec<_>>();
+        generations.sort();
+        let line = b"0123456789abcdef0123456789abcdef\n".to_vec();
+        assert_eq!(
+            generations,
+            [
+                ("zz.app.log".to_owned(), line.clone()),
+                ("zz.app.log.old".to_owned(), line),
+            ]
+        );
         let _ = fs::remove_dir_all(dir);
     }
 }

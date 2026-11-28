@@ -295,7 +295,10 @@ mod tests {
 
         let error = capture_git_summary(scratch.path()).expect_err("not a worktree");
 
-        assert!(error.contains("not inside a git worktree"), "{error}");
+        assert_eq!(
+            error,
+            format!("{} is not inside a git worktree", scratch.path().display())
+        );
     }
 
     #[test]

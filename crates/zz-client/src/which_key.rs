@@ -689,17 +689,18 @@ mod tests {
     fn prefix_on_a_stock_key_keeps_that_key_stock() {
         let mut tables = default_tables();
         tables.set_prefix("C-o");
-        let rows = rows(&tables.snapshot(), "prefix", "C-o");
-        assert!(rows.iter().all(|row| !row.yours()));
+        let mut expected = rows(&default_tables().snapshot(), "prefix", "C-b");
+        expected.retain(|row| row.first_key() != "C-b");
+        assert_eq!(rows(&tables.snapshot(), "prefix", "C-o"), expected);
     }
 
     #[test]
     fn none_prefix_shows_no_row() {
         let mut tables = default_tables();
         tables.set_prefix("None");
-        let rows = rows(&tables.snapshot(), "prefix", "None");
-        assert!(rows.iter().all(|row| row.first_key() != "None"));
-        assert!(rows.iter().all(|row| !row.yours()));
+        let mut expected = rows(&default_tables().snapshot(), "prefix", "C-b");
+        expected.retain(|row| row.first_key() != "C-b");
+        assert_eq!(rows(&tables.snapshot(), "prefix", "None"), expected);
     }
 
     #[test]
@@ -876,21 +877,11 @@ mod tests {
             tables.bind("prefix", key, binding("select-pane", false, None));
         }
         let snapshot = tables.snapshot();
-        let all = |rows: Vec<WhichKeyRow>| {
-            rows.iter()
-                .flat_map(|row| row.keys.iter().flat_map(|set| set.keys.clone()))
-                .collect::<Vec<_>>()
-        };
-        assert!(
-            all(rows(&snapshot, "prefix", "C-b"))
-                .iter()
-                .all(|key| !is_mouse_key(key))
+        assert_eq!(
+            rows(&snapshot, "prefix", "C-b"),
+            rows(&default_tables().snapshot(), "prefix", "C-b")
         );
-        assert!(
-            all(rows(&snapshot, "root", "C-b"))
-                .iter()
-                .all(|key| !is_mouse_key(key))
-        );
+        assert_eq!(rows(&snapshot, "root", "C-b"), []);
     }
 
     #[test]

@@ -354,8 +354,14 @@ mod tests {
 
     #[test]
     fn ids_that_could_name_another_path_are_refused() {
-        assert!(checked_id("01a191e0-981a-7553").is_ok());
-        assert!(checked_id("../etc").is_err());
-        assert!(checked_id("").is_err());
+        assert_eq!(checked_id("01a191e0-981a-7553"), Ok("01a191e0-981a-7553"));
+        assert_eq!(
+            checked_id("../etc"),
+            Err("\"../etc\" is not a session or message id".to_owned())
+        );
+        assert_eq!(
+            checked_id(""),
+            Err("\"\" is not a session or message id".to_owned())
+        );
     }
 }

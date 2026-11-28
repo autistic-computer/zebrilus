@@ -581,30 +581,22 @@ fn cr_only_source_errors_use_utf16_columns_and_original_line_text() {
 fn explicit_responsiveness_overrides_source_use_max_width_configuration() {
     let source = "---\nconfig:\n  pie:\n    useMaxWidth: false\n---\npie\n \"A\": 1";
     let mut options = RenderOptions::default();
-    let fixed = render(source, &options).unwrap();
-    let doc = roxmltree::Document::parse(&fixed.svg).unwrap();
-    assert!(
-        !doc.root_element()
+    let style = |svg: &str| {
+        roxmltree::Document::parse(svg)
+            .unwrap()
+            .root_element()
             .attribute("style")
-            .unwrap_or("")
-            .contains("max-width")
-    );
+            .map(str::to_owned)
+    };
+    let fixed = render(source, &options).unwrap();
+    assert_eq!(style(&fixed.svg), None);
     options.responsive = Some(true);
     let fluid = render(source, &options).unwrap();
-    let doc = roxmltree::Document::parse(&fluid.svg).unwrap();
-    assert!(
-        doc.root_element()
-            .attribute("style")
-            .unwrap_or("")
-            .contains("max-width")
+    assert_eq!(
+        style(&fluid.svg).as_deref(),
+        Some("max-width:100%;height:auto")
     );
     options.responsive = Some(false);
     let explicit_fixed = render("pie\n \"A\": 1", &options).unwrap();
-    let doc = roxmltree::Document::parse(&explicit_fixed.svg).unwrap();
-    assert!(
-        !doc.root_element()
-            .attribute("style")
-            .unwrap_or("")
-            .contains("max-width")
-    );
+    assert_eq!(style(&explicit_fixed.svg), None);
 }

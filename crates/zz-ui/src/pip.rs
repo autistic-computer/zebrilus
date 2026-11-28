@@ -945,11 +945,14 @@ mod tests {
                 sy,
             })
         };
-        let largest = size(sx, sy);
-        assert!(largest.width <= LAYOUT.canvas.width - px(MARGIN * 2.0));
-        assert!(largest.height <= LAYOUT.canvas.height - px(MARGIN * 2.0));
-        assert!(size(sx + 1, sy).width > LAYOUT.canvas.width - px(MARGIN * 2.0));
-        assert!(size(sx, sy + 1).height > LAYOUT.canvas.height - px(MARGIN * 2.0));
+        assert_eq!((sx, sy), (75, 19));
+        assert_eq!(
+            size(sx, sy),
+            ala::size(
+                LAYOUT.canvas.width - px(MARGIN * 2.0),
+                px(19.0 * 16.0 + 16.0) + penna::PANE_HEADER_HEIGHT
+            )
+        );
     }
 
     #[test]

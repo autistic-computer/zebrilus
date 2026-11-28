@@ -969,7 +969,7 @@ mod tests {
         std::os::unix::fs::symlink(outside.path().join("secret"), dir.path().join("leak")).unwrap();
         let root = ArtifactRoot::Dir(dir.path().to_path_buf());
 
-        assert!(resolve(&root, "leak").is_err());
+        assert_eq!(resolve(&root, "leak"), Err("leak is not served".to_owned()));
     }
 
     #[test]
@@ -1344,8 +1344,11 @@ mod tests {
         std::os::unix::fs::symlink(dir.path().join(".ssh"), dir.path().join("keys")).unwrap();
         let root = ArtifactRoot::Dir(dir.path().to_path_buf());
 
-        assert!(resolve(&root, "env").is_err());
-        assert!(resolve(&root, "keys/id").is_err());
+        assert_eq!(resolve(&root, "env"), Err("env is not served".to_owned()));
+        assert_eq!(
+            resolve(&root, "keys/id"),
+            Err("keys/id is not served".to_owned())
+        );
     }
 
     #[test]
@@ -1377,6 +1380,13 @@ mod tests {
         let file = fs::File::create(&path).unwrap();
         file.set_len(u64::from(MAX_ARTIFACT_BYTES) + 1).unwrap();
 
-        assert!(read_target(&Target::File(path)).is_err());
+        assert_eq!(
+            read_target(&Target::File(path.clone())).err(),
+            Some(format!(
+                "{} is {} bytes; a page file may be at most {MAX_ARTIFACT_BYTES}",
+                path.display(),
+                u64::from(MAX_ARTIFACT_BYTES) + 1
+            ))
+        );
     }
 }

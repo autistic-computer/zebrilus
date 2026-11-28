@@ -302,15 +302,18 @@ mod tests {
 
     #[test]
     fn a_transparent_document_paints_no_canvas() {
+        let open = "<svg xmlns=\"http://www.w3.org/2000/svg\" class=\"pele pele-flowchart\" viewBox=\"0 0 100 100\" width=\"100\" height=\"100\" font-family=\"sans-serif\" font-size=\"16\" fill=\"#1f1f1f\" color=\"#1f1f1f\" role=\"graphics-document document\" aria-roledescription=\"flowchart\" style=\"max-width:100%;height:auto\">";
         let painted = document("flowchart", 100.0, 100.0, &RenderOptions::default(), "");
-        assert!(painted.contains("<rect width=\"100%\" height=\"100%\" fill=\"#ffffff\"/>"));
+        assert_eq!(
+            painted,
+            format!("{open}<rect width=\"100%\" height=\"100%\" fill=\"#ffffff\"/></svg>")
+        );
         let options = RenderOptions {
             transparent: true,
             ..RenderOptions::default()
         };
         let bare = document("flowchart", 100.0, 100.0, &options, "");
-        assert!(!bare.contains("<rect"));
-        assert!(bare.ends_with("></svg>"));
+        assert_eq!(bare, format!("{open}</svg>"));
     }
 
     #[test]
@@ -321,7 +324,9 @@ mod tests {
         };
         let rich = text::label("before <code>value</code>", 13.0, None);
         let output = label_with_options(&rich, 50.0, 20.0, "", &options);
-        assert!(output.contains("font-family=\"Iosevka, &quot;unsafe&quot;\""));
-        assert!(!output.contains("var("));
+        assert_eq!(
+            output,
+            "<text font-size=\"13\" text-anchor=\"middle\" xml:space=\"preserve\"><tspan x=\"50\" y=\"24.55\">before </tspan><tspan font-family=\"Iosevka, &quot;unsafe&quot;\">value</tspan></text>"
+        );
     }
 }

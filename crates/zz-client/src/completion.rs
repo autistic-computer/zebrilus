@@ -876,6 +876,13 @@ mod tests {
 
     #[test]
     fn index_option_completions_follow_table_declared_scope() {
+        let option_values = |completions: Vec<CompletionSuggestion>| {
+            completions
+                .into_iter()
+                .filter(|item| item.kind == CompletionKind::Value)
+                .map(|item| item.label)
+                .collect::<BTreeSet<_>>()
+        };
         let set = complete_command(
             "set-option ",
             "set-option ".len(),
@@ -883,9 +890,13 @@ mod tests {
             &snapshot(),
             PaneKindAvailability::default(),
         );
-        for option in ["base-index", "pane-base-index", "renumber-windows"] {
-            assert!(set.iter().any(|item| item.label == option));
-        }
+        assert_eq!(
+            option_values(set),
+            SET_OPTIONS
+                .iter()
+                .map(|option| (*option).to_owned())
+                .collect::<BTreeSet<_>>()
+        );
 
         let setw = complete_command(
             "set-window-option ",
@@ -894,10 +905,14 @@ mod tests {
             &snapshot(),
             PaneKindAvailability::default(),
         );
-        for option in ["base-index", "pane-base-index", "renumber-windows"] {
-            assert!(setw.iter().any(|item| item.label == option));
-        }
-        assert!(!setw.iter().any(|item| item.label == "history-trickle"));
+        assert_eq!(
+            option_values(setw),
+            SET_OPTIONS
+                .iter()
+                .filter(|option| **option != "history-trickle")
+                .map(|option| (*option).to_owned())
+                .collect::<BTreeSet<_>>()
+        );
 
         let values = complete_command(
             "set-option -g renumber-windows ",
@@ -906,8 +921,14 @@ mod tests {
             &snapshot(),
             PaneKindAvailability::default(),
         );
-        assert!(values.iter().any(|item| item.label == "on"));
-        assert!(values.iter().any(|item| item.label == "off"));
+        assert_eq!(
+            values
+                .iter()
+                .filter(|item| item.kind == CompletionKind::Value)
+                .map(|item| item.label.as_str())
+                .collect::<Vec<_>>(),
+            ["on", "off"]
+        );
     }
 
     #[test]
@@ -935,8 +956,15 @@ mod tests {
             &snapshot(),
             PaneKindAvailability::default(),
         );
-        assert!(!completions.iter().any(|item| item.label == "-Z"));
-        assert!(completions.iter().any(|item| item.label == "-t"));
+        assert_eq!(
+            completions
+                .iter()
+                .map(|item| item.label.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "-t", "-T", "-P", "-D", "-L", "-M", "-R", "-U", "-d", "-e", "-g", "-l", "-m"
+            ]
+        );
     }
 
     #[test]
@@ -1078,12 +1106,7 @@ mod tests {
             "tools",
         ] {
             let completions = complete_command(command, command.len(), &[], &snapshot(), available);
-            assert!(
-                completions
-                    .iter()
-                    .any(|completion| completion.label == command),
-                "missing {command}"
-            );
+            assert_eq!(completions[0].label, command);
         }
 
         let agent_options = complete_command(
@@ -1093,19 +1116,22 @@ mod tests {
             &snapshot(),
             available,
         );
-        for option in ["--context", "--submit", "--timeout"] {
-            assert!(
-                agent_options
-                    .iter()
-                    .any(|completion| completion.label == option),
-                "missing {option}"
-            );
-        }
-
-        assert!(
+        assert_eq!(
             agent_options
                 .iter()
-                .all(|completion| completion.label != "--target")
+                .map(|completion| completion.label.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "--wait",
+                "--json",
+                "--final",
+                "--submit",
+                "--notify",
+                "--timeout",
+                "--context",
+                "--progress",
+                "--on-block",
+            ]
         );
 
         let targets = complete_command(
@@ -1115,7 +1141,13 @@ mod tests {
             &snapshot(),
             available,
         );
-        assert!(targets.iter().any(|completion| completion.label == "%3"));
+        assert_eq!(
+            targets
+                .iter()
+                .map(|completion| completion.label.as_str())
+                .collect::<Vec<_>>(),
+            ["%3"]
+        );
     }
 
     #[test]

@@ -901,16 +901,49 @@ mod tests {
 
     #[test]
     fn rejects_invalid_coordinates_styles_and_unclosed_labels() {
-        for source in [
-            "quadrantChart\n A: [1.2, 0.4]",
-            "quadrantChart\n A: [0.2, 0.4",
-            "quadrantChart\n A: [-0.2, 0.4]",
-            "quadrantChart\n A: [0.2, 0.4] radius: big",
-            "quadrantChart\n A: [0.2, 0.4] color: red",
-            "quadrantChart\n classDef c fill:#fff",
-            "quadrantChart\n \"A: [0.2, 0.4]",
+        for (source, code, message) in [
+            (
+                "quadrantChart\n A: [1.2, 0.4]",
+                crate::ErrorCode::Syntax,
+                "Expected comma between quadrant coordinates",
+            ),
+            (
+                "quadrantChart\n A: [0.2, 0.4",
+                crate::ErrorCode::Syntax,
+                "Expected ']' after quadrant coordinates",
+            ),
+            (
+                "quadrantChart\n A: [-0.2, 0.4]",
+                crate::ErrorCode::Syntax,
+                "Quadrant coordinates must start with 0 or 1",
+            ),
+            (
+                "quadrantChart\n A: [0.2, 0.4] radius: big",
+                crate::ErrorCode::Semantic,
+                "value for radius big is invalid, please use a valid number",
+            ),
+            (
+                "quadrantChart\n A: [0.2, 0.4] color: red",
+                crate::ErrorCode::Semantic,
+                "value for color red is invalid, please use a valid hex code",
+            ),
+            (
+                "quadrantChart\n classDef c fill:#fff",
+                crate::ErrorCode::Semantic,
+                "style named fill is not supported.",
+            ),
+            (
+                "quadrantChart\n \"A: [0.2, 0.4]",
+                crate::ErrorCode::Syntax,
+                "Unterminated quadrant label or description",
+            ),
         ] {
-            assert!(parse(source).is_err(), "{source}");
+            let error = parse(source).unwrap_err();
+            assert_eq!(
+                (error.code, error.message.as_str()),
+                (code, message),
+                "{source}"
+            );
         }
     }
 

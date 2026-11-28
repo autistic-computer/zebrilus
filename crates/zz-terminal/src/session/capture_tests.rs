@@ -693,9 +693,8 @@ fn output_byte_cap_trims_whole_leading_lines() {
     output.push_str(&line);
 
     let (clamped, dropped) = clamp_output_bytes(output);
-    assert!(clamped.len() <= MAX_LAST_COMMAND_BYTES);
-    assert!(dropped > 0);
-    assert!(clamped.lines().all(|row| row.len() == 1024));
+    assert_eq!(dropped, 146);
+    assert_eq!(clamped, vec![line.as_str(); 255].join("\n"));
 }
 
 #[test]

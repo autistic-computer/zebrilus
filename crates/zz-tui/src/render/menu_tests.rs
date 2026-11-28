@@ -24,13 +24,8 @@ fn menu_paints_title_rows_shortcuts_selection_and_disabled_style() {
     renderer.paint_menu(&model);
     let output = String::from_utf8(renderer.output).unwrap();
 
-    assert!(output.contains("\x1b[3;6H"), "{output:?}");
-    assert!(output.contains("Actions"));
-    assert!(output.contains("界 item"));
-    assert!(output.contains("(q)"));
-    assert!(output.contains('┌'));
-    assert!(output.contains('├'));
-    assert!(output.contains('┘'));
-    assert!(output.contains("\x1b[1m"));
-    assert!(output.contains("\x1b[2m"));
+    assert_eq!(
+        output,
+        "\u{1b}[3;6H\u{1b}[0m\u{1b}[31m\u{1b}[49m┌──────────────────┐\u{1b}[0m\u{1b}[3;8H\u{1b}[0m\u{1b}[31m\u{1b}[49mActions─────────\u{1b}[0m\u{1b}[4;6H\u{1b}[0m\u{1b}[31m\u{1b}[49m│\u{1b}[0m\u{1b}[1m\u{1b}[30m\u{1b}[43m 界 item      (q) \u{1b}[0m\u{1b}[31m\u{1b}[49m│\u{1b}[0m\u{1b}[5;6H\u{1b}[0m\u{1b}[31m\u{1b}[49m├──────────────────┤\u{1b}[0m\u{1b}[6;6H\u{1b}[0m\u{1b}[31m\u{1b}[49m│\u{1b}[0m\u{1b}[37m\u{1b}[44m \u{1b}[0m\u{1b}[2m\u{1b}[37m\u{1b}[44mDisabled\u{1b}[0m\u{1b}[37m\u{1b}[44m         \u{1b}[0m\u{1b}[31m\u{1b}[49m│\u{1b}[0m\u{1b}[7;6H\u{1b}[0m\u{1b}[31m\u{1b}[49m└──────────────────┘\u{1b}[0m"
+    );
 }

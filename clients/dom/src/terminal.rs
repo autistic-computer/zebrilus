@@ -458,25 +458,30 @@ impl Client {
             contrast: &mut self.views.contrast,
         };
         let images = &self.images;
-        Some(
-            render(
-                retained,
-                appearance,
-                view,
-                output,
-                grid_rows,
-                hidden,
-                &mut painter,
-                |image, generation| {
-                    images
-                        .ready
-                        .get(&(pane, image))
-                        .filter(|ready| ready.generation == generation)
-                        .map(|ready| (ready.width, ready.height))
-                },
-            )
-            .to_string(),
-        )
+        let (frame, projection) = render(
+            retained,
+            appearance,
+            view,
+            output,
+            grid_rows,
+            hidden,
+            &mut painter,
+            |image, generation| {
+                images
+                    .ready
+                    .get(&(pane, image))
+                    .filter(|ready| ready.generation == generation)
+                    .map(|ready| (ready.width, ready.height))
+            },
+        );
+        if let Some(view) = if output {
+            Some(&mut self.views.output)
+        } else {
+            self.views.panes.get_mut(&pane)
+        } {
+            view.grid.row_projection = Some(projection);
+        }
+        Some(frame.to_string())
     }
 
     pub fn pane_status(&self, pane: f64) -> String {
@@ -642,6 +647,7 @@ impl Client {
                 scale,
                 columns: columns as u16,
                 rows: rows as u16,
+                row_projection: view.grid.row_projection,
             };
         }
         if let [left, top, width, height] = surface[..] {
@@ -1802,7 +1808,7 @@ fn render(
     hidden: u16,
     painter: &mut Painter<'_>,
     image_size: impl Fn(u32, u64) -> Option<(u32, u32)>,
-) -> Value {
+) -> (Value, RowProjection) {
     let viewport = &retained.viewport;
     let target = view
         .filter(|_| !output)
@@ -2026,7 +2032,7 @@ fn render(
             "enabled": status.is_some_and(|status| status.total > 0 && !status.pending() && !status.invalid_pattern()),
         })
     });
-    json!({
+    let frame = json!({
         "columns": viewport.columns,
         "rows": viewport.rows,
         "foreground": hex(viewport.foreground),
@@ -2054,5 +2060,6 @@ fn render(
         "mouseTracking": viewport.mouse_tracking,
         "kittyKeyboard": viewport.kitty_keyboard,
         "unseen": viewport.unseen_output,
-    })
+    });
+    (frame, projection)
 }

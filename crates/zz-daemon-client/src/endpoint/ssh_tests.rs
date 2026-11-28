@@ -155,47 +155,6 @@ fn a_user_master_keeps_its_own_persistence() {
     }
 }
 
-#[cfg(unix)]
-#[test]
-fn every_ssh_child_shares_one_multiplexing_master() {
-    let endpoint = test_ssh_endpoint(Some("user"), Some(2222));
-    let commands = [
-        command_args(&ssh_probe_command(&endpoint, test_session(), None)),
-        command_args(&ssh_daemon_start_command(
-            &endpoint,
-            test_session(),
-            Path::new("/run/zz.sock"),
-        )),
-        command_args(&ssh_forward_command(
-            &endpoint,
-            test_session(),
-            Path::new("/tmp/local.sock"),
-            Path::new("/run/zz.sock"),
-            Some(41_080),
-        )),
-    ];
-    for arguments in &commands {
-        assert!(
-            arguments.contains(&"ControlMaster=auto".to_owned()),
-            "{arguments:?}"
-        );
-        assert!(
-            arguments.contains(&"ControlPath=/tmp/zz-ssh/c0".to_owned()),
-            "{arguments:?}",
-        );
-        assert!(
-            arguments.contains(&"ControlPersist=600".to_owned()),
-            "{arguments:?}",
-        );
-        assert!(
-            !arguments
-                .iter()
-                .any(|argument| argument.contains("BatchMode")),
-            "{arguments:?}",
-        );
-    }
-}
-
 #[test]
 fn a_session_without_a_master_uses_platform_safe_options() {
     let endpoint = test_ssh_endpoint(None, None);
@@ -372,33 +331,38 @@ fn a_login_the_zz_key_won_and_a_batch_login_reach_every_later_command() {
         ]
         .map(|command| command_args(&command))
     };
+    let login = |arguments: &[String]| {
+        arguments
+            .iter()
+            .filter(|argument| {
+                [
+                    "Identit",
+                    "PreferredAuthentications",
+                    "BatchMode",
+                    "PubkeyAccepted",
+                ]
+                .iter()
+                .any(|option| argument.starts_with(option))
+            })
+            .cloned()
+            .collect::<Vec<_>>()
+    };
     for arguments in commands(signed_in) {
-        assert!(
-            arguments.contains(&format!("IdentityFile=\"{}\"", identity.display())),
-            "{arguments:?}"
-        );
-        assert!(
-            arguments.contains(&"BatchMode=yes".to_owned()),
-            "{arguments:?}"
-        );
-        assert!(
-            !arguments.contains(&NO_SECURITY_KEYS.to_owned()),
+        assert_eq!(
+            login(&arguments),
+            [
+                "IdentitiesOnly=yes".to_owned(),
+                format!("IdentityFile=\"{}\"", identity.display()),
+                "PreferredAuthentications=publickey".to_owned(),
+                "BatchMode=yes".to_owned(),
+            ],
             "{arguments:?}"
         );
     }
     for arguments in commands(batch) {
-        assert!(
-            arguments.contains(&"BatchMode=yes".to_owned()),
-            "{arguments:?}"
-        );
-        assert!(
-            arguments.contains(&NO_SECURITY_KEYS.to_owned()),
-            "{arguments:?}"
-        );
-        assert!(
-            !arguments
-                .iter()
-                .any(|argument| argument.starts_with("IdentityFile")),
+        assert_eq!(
+            login(&arguments),
+            ["BatchMode=yes", NO_SECURITY_KEYS],
             "{arguments:?}"
         );
     }
@@ -624,21 +588,16 @@ fn askpass_reaches_every_ssh_child_through_the_environment() {
             Some(41_080),
         ),
     ] {
-        let envs = command_envs(&command);
-        assert!(
-            envs.contains(&("SSH_ASKPASS".to_owned(), Some("/opt/zz/bin/zz".to_owned()))),
-            "{envs:?}",
-        );
-        assert!(
-            envs.contains(&("SSH_ASKPASS_REQUIRE".to_owned(), Some("force".to_owned()))),
-            "{envs:?}",
-        );
-        assert!(
-            envs.contains(&(
-                "ZZ_ASKPASS_SOCKET".to_owned(),
-                Some("/tmp/zz-ssh/a1".to_owned()),
-            )),
-            "{envs:?}",
+        let mut envs = command_envs(&command);
+        envs.sort();
+        assert_eq!(
+            envs,
+            [
+                ("SSH_ASKPASS", "/opt/zz/bin/zz"),
+                ("SSH_ASKPASS_REQUIRE", "force"),
+                ("ZZ_ASKPASS_SOCKET", "/tmp/zz-ssh/a1"),
+            ]
+            .map(|(name, value)| (name.to_owned(), Some(value.to_owned())))
         );
     }
 }
@@ -692,9 +651,12 @@ fn every_remote_script_looks_where_the_installer_puts_the_cli() {
         remote_install_script(Some(Path::new("/run/zz.sock")), true),
     ];
     for script in scripts {
-        for dir in ["$HOME/.local/bin", "/opt/homebrew/bin", "/usr/local/bin"] {
-            assert!(script.contains(dir), "{dir} missing from: {script}");
-        }
+        let unquoted = script.strip_prefix('\'').unwrap_or(&script);
+        assert_eq!(
+            unquoted.split_once(" export PATH; ").map(|(path, _)| path),
+            Some("PATH=\"$PATH:$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin\";"),
+            "{script}"
+        );
     }
 }
 
@@ -759,11 +721,11 @@ fn remote_probe_and_proxy_select_the_builds_executable() {
     for (script, expected) in [
         (
             remote_socket_probe(None),
-            format!("zz-probe-protocol={name}\n"),
+            format!("zz-probe-protocol={name}"),
         ),
         (
             shell_quote(&remote_proxy_script(Path::new("/tmp/explicit.sock"))),
-            format!("{name}\n"),
+            name.to_owned(),
         ),
     ] {
         let output = Command::new("/bin/sh")
@@ -772,8 +734,8 @@ fn remote_probe_and_proxy_select_the_builds_executable() {
             .env("HOME", home.path())
             .output()
             .expect("run remote script");
-        assert!(output.status.success());
-        assert!(String::from_utf8_lossy(&output.stdout).ends_with(&expected));
+        assert_eq!(output.status.code(), Some(0), "{output:?}");
+        assert_eq!(last_line(&output.stdout), expected);
     }
 }
 
@@ -813,8 +775,11 @@ fn remote_scripts_prefer_the_managed_copy_over_an_earlier_path_zz() {
         String::from_utf8_lossy(&output.stdout).into_owned()
     };
 
-    assert!(run(remote_socket_probe(None)).ends_with("zz-probe-protocol=managed\n"));
-    assert!(run(shell_quote(&remote_proxy_script(&socket))).ends_with("managed\n"));
+    assert_eq!(
+        last_line(run(remote_socket_probe(None)).as_bytes()),
+        "zz-probe-protocol=managed"
+    );
+    assert_eq!(run(shell_quote(&remote_proxy_script(&socket))), "managed\n");
     run(shell_quote(&remote_daemon_start_script(&socket)));
     let started = home.path().join("managed-ran");
     let deadline = std::time::Instant::now() + Duration::from_secs(5);
@@ -1377,11 +1342,11 @@ fn remote_scripts_fall_back_to_the_mac_app_bundle_cli() {
     for (script, expected) in [
         (
             remote_socket_probe(None),
-            "zz-probe-protocol=bundle protocol-version\n",
+            "zz-probe-protocol=bundle protocol-version",
         ),
         (
             shell_quote(&remote_proxy_script(Path::new("/tmp/explicit.sock"))),
-            "bundle proxy\n",
+            "bundle proxy",
         ),
     ] {
         let output = Command::new("/bin/sh")
@@ -1390,36 +1355,32 @@ fn remote_scripts_fall_back_to_the_mac_app_bundle_cli() {
             .env("HOME", home.path())
             .output()
             .expect("run remote script");
-        assert!(output.status.success());
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        assert!(stdout.ends_with(expected), "{script}\n{stdout}");
+        assert_eq!(output.status.code(), Some(0), "{output:?}");
+        assert_eq!(last_line(&output.stdout), expected, "{script}");
     }
 }
 
 #[test]
 fn autostart_script_starts_the_daemon_on_the_resolved_socket() {
     let script = remote_daemon_start_script(Path::new("/run/user/1000/zz/default.sock"));
-    assert!(
-        script.starts_with(&format!(
-            "{}command -v \"$zz_cli\" >/dev/null 2>&1 || exit 127;",
+    assert_eq!(
+        script,
+        format!(
+            "{}command -v \"$zz_cli\" >/dev/null 2>&1 || exit 127; \
+             if setsid true >/dev/null 2>&1; \
+             then setsid \"$zz_cli\" daemon --socket '/run/user/1000/zz/default.sock' \
+             >/dev/null 2>&1 </dev/null & \
+             else nohup \"$zz_cli\" daemon --socket '/run/user/1000/zz/default.sock' \
+             >/dev/null 2>&1 </dev/null & fi; \
+             if sleep 0.1 2>/dev/null; then delay=0.1; attempts=50; \
+             else delay=1; attempts=5; fi; \
+             attempt=0; \
+             while [ \"$attempt\" -lt \"$attempts\" ]; do \
+             if [ -S '/run/user/1000/zz/default.sock' ]; then exit 0; fi; \
+             sleep \"$delay\"; attempt=$((attempt + 1)); done; \
+             exit 3",
             remote_path_fallback(),
-        )),
-        "missing zz needs its own exit status before anything but the PATH line runs: {script}"
-    );
-    assert!(
-        script.contains(
-            "setsid \"$zz_cli\" daemon --socket '/run/user/1000/zz/default.sock' >/dev/null \
-                 2>&1 </dev/null &"
-        ) && script.contains(
-            "nohup \"$zz_cli\" daemon --socket '/run/user/1000/zz/default.sock' >/dev/null \
-                 2>&1 </dev/null &"
-        ),
-        "the daemon must be detached and pinned to the resolved socket by either arm: \
-             {script}"
-    );
-    assert!(
-        script.ends_with("exit 3"),
-        "a daemon that never listens needs its own exit status: {script}"
+        )
     );
 }
 
@@ -1432,22 +1393,14 @@ fn ssh_hosts_may_not_open_with_a_dash() {
     ] {
         let error = Endpoint::parse(input).expect_err(input);
         assert!(
-            error.to_string().contains("must not start with `-`"),
-            "{input}: {error}"
+            matches!(
+                &error,
+                EndpointError::UriParse { input: refused, reason }
+                    if refused == input && reason == "ssh host must not start with `-`"
+            ),
+            "{input}: {error:?}"
         );
     }
-}
-
-#[test]
-fn autostart_script_starts_the_daemon_without_trusting_an_existing_socket_file() {
-    let script = remote_daemon_start_script(Path::new("/run/user/1000/zz/default.sock"));
-    let start = script
-        .find("\"$zz_cli\" daemon")
-        .expect("the script must start the daemon");
-    assert!(
-        !script[..start].contains("[ -S "),
-        "nothing may short-circuit the start on the socket file alone: {script}"
-    );
 }
 
 #[test]
@@ -1488,24 +1441,28 @@ fn classifies_ssh_stderr_into_actionable_hints() {
     for (stderr, expected) in [
         (
             "user@host: Permission denied (publickey).",
-            "rejected the login",
+            "ssh rejected the login: add your key to the host or start an ssh agent",
         ),
-        ("Host key verification failed.", "known_hosts"),
+        (
+            "Host key verification failed.",
+            "known_hosts has no matching key for the host: verify the host before connecting",
+        ),
         (
             "ssh: Could not resolve hostname desk: Name or service not known",
-            "did not resolve",
+            "the host name did not resolve",
         ),
         (
             "ssh: connect to host desk port 22: Connection refused",
-            "Remote Login",
+            "nothing accepted the ssh connection: start sshd there, or on a Mac turn on Remote \
+             Login in System Settings › General › Sharing",
         ),
         (
             "ssh: connect to host desk port 22: Operation timed out",
-            "timed out",
+            "the ssh connection timed out",
         ),
         (
             "ssh: connect to host desk port 22: No route to host",
-            "not reachable",
+            "the host is not reachable from this network",
         ),
         (
             "sign_and_send_pubkey: signing failed for ED25519-SK \"/Users/f/.ssh/id_ed25519_sk\": \
@@ -1517,10 +1474,10 @@ fn classifies_ssh_stderr_into_actionable_hints() {
             "the security key was not touched",
         ),
     ] {
-        let reason = ssh_failure_reason(stderr, "exit status: 255");
-        assert!(
-            reason.contains(expected),
-            "{stderr:?} should mention {expected:?}, got {reason:?}"
+        assert_eq!(
+            ssh_failure_reason(stderr, "exit status: 255"),
+            expected,
+            "{stderr:?}"
         );
     }
 }
@@ -1743,10 +1700,23 @@ fn only_empty_settled_legacy_directories_are_removed() {
             .unwrap();
     }
     remove_legacy_ssh_dirs(root.path());
-    assert!(!stale.exists());
-    for directory in [&busy, &fresh].into_iter().chain(&live) {
-        assert!(directory.exists(), "{directory:?}");
-    }
+    let mut kept = fs::read_dir(root.path())
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+        .collect::<Vec<_>>();
+    kept.sort();
+    assert_eq!(
+        kept,
+        [
+            "zz-dev-ssh-501",
+            "zz-other",
+            "zz-ssh-100000",
+            "zz-ssh-501",
+            "zz-ssh-501-Mn78Op",
+            "zz-ssh-Ef34Gh",
+            "zz-ssh-Ij56Kl",
+        ]
+    );
 }
 
 #[cfg(unix)]
@@ -2030,4 +2000,13 @@ fn command_envs(command: &Command) -> Vec<(String, Option<String>)> {
             )
         })
         .collect()
+}
+
+#[cfg(unix)]
+fn last_line(stdout: &[u8]) -> String {
+    String::from_utf8_lossy(stdout)
+        .lines()
+        .last()
+        .unwrap_or_default()
+        .to_owned()
 }

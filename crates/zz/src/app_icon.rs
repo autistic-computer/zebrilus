@@ -264,11 +264,9 @@ mod tests {
             .filter(|pixel| pixel[3] > 0 && pixel[3] < 255)
             .collect::<Vec<_>>();
         assert!(!translucent.is_empty());
-        assert!(
-            translucent
-                .iter()
-                .all(|pixel| pixel[0] >= 250 && pixel[1] >= 250 && pixel[2] >= 250)
-        );
+        for pixel in translucent {
+            assert_eq!(pixel.0[..3], [255, 255, 255], "{pixel:?}");
+        }
     }
 
     #[test]

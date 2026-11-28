@@ -249,12 +249,25 @@ mod tests {
 
     #[test]
     fn unavailable_facts_keep_static_actions() {
-        let rows = menu(None, false);
-        let new_session = TrayEvent::NewSession.action();
-        assert!(
-            rows.iter()
-                .any(|row| matches!(row, MenuEntry::Item { action, .. } if *action == new_session))
+        let item = |label: &str, action: Option<&str>| MenuEntry::Item {
+            label: label.to_owned(),
+            action: action.map(str::to_owned),
+            checked: None,
+        };
+        assert_eq!(
+            menu(None, false),
+            [
+                item("Show zz", Some("toggle")),
+                MenuEntry::Separator,
+                item("New Session", Some("new-session")),
+                MenuEntry::Separator,
+                item("Daemon unavailable", None),
+                MenuEntry::Separator,
+                item("Settings…", Some("settings")),
+                item("Open Logs", Some("logs")),
+                MenuEntry::Separator,
+                item("Quit and Stop Sessions", Some("quit")),
+            ]
         );
-        assert!(!rows.iter().any(|row| matches!(row, MenuEntry::Item { label, .. } if label == "Sessions" || label == "Needs attention")));
     }
 }

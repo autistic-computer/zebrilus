@@ -2096,9 +2096,16 @@ mod tests {
             }],
             ..ItemBody::default()
         };
-        assert!(validate_payload(&started(ItemKind::User, shot)).is_ok());
+        let user = started(ItemKind::User, shot);
+        assert_eq!(
+            validate_payload(&user).map_err(|error| error.to_string()),
+            Ok(serde_json::to_vec(&user).expect("encodes").len())
+        );
         let long = ItemBody::text("a".repeat(2 * MAX_AGENT_RESULT_BYTES));
-        assert!(validate_payload(&started(ItemKind::Agent, long)).is_err());
+        assert_eq!(
+            validate_payload(&started(ItemKind::Agent, long)).map_err(|error| error.to_string()),
+            Err("Internal error: \"agent stream item exceeds the 1048576 byte limit\"".to_owned())
+        );
     }
 
     #[test]

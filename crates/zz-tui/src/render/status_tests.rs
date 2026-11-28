@@ -66,16 +66,10 @@ fn status_block_paints_daemon_rows_and_blank_rows_carry_base_style() {
     renderer.paint_status_block(&model, true);
     let output = String::from_utf8(renderer.output).unwrap();
 
-    assert!(output.contains("\x1b[9;1H"), "row 8 paints: {output:?}");
-    assert!(
-        output.contains("\x1b[10;1H"),
-        "blank row 9 paints: {output:?}"
+    assert_eq!(
+        output,
+        "\u{1b}[9;1H\u{1b}[0m\u{1b}[1m\u{1b}[31m\u{1b}[44mHOT\u{1b}[0m\u{1b}[39m\u{1b}[44m                                     \u{1b}[0m\u{1b}[10;1H\u{1b}[0m\u{1b}[39m\u{1b}[44m                                        \u{1b}[0m"
     );
-    assert!(output.contains("HOT"));
-    assert!(output.contains("\x1b[1m"));
-    assert!(output.contains("\x1b[44m"), "{output:?}");
-    assert!(output.contains("\x1b[31m"), "{output:?}");
-    assert!(!output.contains("#["));
 }
 
 #[test]
@@ -88,8 +82,10 @@ fn status_position_top_paints_the_block_at_row_zero() {
     renderer.paint_status_block(&model, true);
     let output = String::from_utf8(renderer.output).unwrap();
 
-    assert!(output.contains("\x1b[1;1H"), "{output:?}");
-    assert!(output.contains("TOPROW"));
+    assert_eq!(
+        output,
+        "\u{1b}[1;1H\u{1b}[0m\u{1b}[39m\u{1b}[49mTOPROW                                  \u{1b}[0m"
+    );
 }
 
 #[test]
@@ -103,9 +99,10 @@ fn a_client_message_replaces_the_message_line_row() {
     renderer.paint_status_block(&model, true);
     let output = String::from_utf8(renderer.output).unwrap();
 
-    assert!(output.contains("hello message"));
-    assert!(output.contains("ROWZERO"));
-    assert!(!output.contains("ROWONE"), "{output:?}");
+    assert_eq!(
+        output,
+        "\u{1b}[9;1H\u{1b}[0m\u{1b}[39m\u{1b}[49mROWZERO                                 \u{1b}[0m\u{1b}[10;1H\u{1b}[0m\u{1b}[39m\u{1b}[49mhello message\u{1b}[0m\u{1b}[39m\u{1b}[49m                           \u{1b}[0m"
+    );
 }
 
 #[test]
@@ -159,11 +156,10 @@ fn a_message_with_status_off_paints_one_virtual_row() {
     renderer.paint_status_block(&model, true);
     let output = String::from_utf8(renderer.output).unwrap();
 
-    assert!(
-        output.contains("\x1b[10;1H"),
-        "bottom virtual row: {output:?}"
+    assert_eq!(
+        output,
+        "\u{1b}[10;1H\u{1b}[0m\u{1b}[39m\u{1b}[49mvirtual                                 \u{1b}[0m"
     );
-    assert!(output.contains("virtual"));
 }
 
 #[test]

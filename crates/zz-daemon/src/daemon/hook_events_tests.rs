@@ -456,7 +456,7 @@ fn literal_display_keeps_target_conflict_and_delay_error_precedence() {
 
 #[cfg(debug_assertions)]
 #[test]
-#[should_panic(expected = "facts were withheld")]
+#[should_panic(expected = "a command whose facts were withheld expanded a format")]
 fn a_format_read_with_withheld_facts_is_caught() {
     let facts = FormatHookFacts::default();
     let mut hooks = DaemonFormatHooks::command(&facts).withhold_facts(true);
@@ -589,13 +589,7 @@ fn an_attached_client_is_detached_by_the_journal_when_its_session_goes() {
             &CommandInvocation::new("kill-session", ["-t", "detach-journal"]),
         )
         .expect("kill-session");
-    assert!(
-        messages(&shared)
-            .iter()
-            .any(|message| message == "detached client-detached"),
-        "{:?}",
-        messages(&shared)
-    );
+    assert_eq!(messages(&shared), ["detached client-detached"]);
 }
 
 fn subscriber(shared: &Arc<Shared>) -> (ClientId, Arc<OutboundMailbox>, Vec<KeyTableSnapshot>) {

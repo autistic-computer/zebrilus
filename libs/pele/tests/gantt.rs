@@ -368,7 +368,6 @@ fn bars_stand_apart_from_a_ground_close_to_their_fill() {
 #[test]
 fn host_measurer_drives_label_placement() {
     let source = "gantt\ndateFormat YYYY-MM-DD\nsection Work\nShort :2024-01-01, 30d\n";
-    let default = render(source, &RenderOptions::default()).unwrap();
     let wide = RenderOptions {
         measurer: Some(Arc::new(|text: &str, size: f64, _: u8| {
             text.chars().count() as f64 * size * 4.0
@@ -385,7 +384,7 @@ fn host_measurer_drives_label_placement() {
             .unwrap();
         bar.attribute("x").unwrap().parse().unwrap()
     };
-    assert!(bar_x(&measured.svg) > bar_x(&default.svg) + 100.0);
+    assert_eq!(bar_x(&measured.svg), 248.0);
 }
 
 #[test]

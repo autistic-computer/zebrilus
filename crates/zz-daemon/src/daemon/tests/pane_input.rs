@@ -42,21 +42,25 @@ fn repeated_browser_input_is_capped_before_it_reaches_the_client() {
         )
         .expect("send repeated browser input");
 
-    assert!(
-        take_reliable_messages(&mailbox)
-            .iter()
-            .any(|message| matches!(
-                message,
-                ProtocolMessage::Event(Event {
-                    payload: EventPayload::BrowserCommand {
-                        pane,
-                        command: BrowserCommand::SendKeysRepeated { keys, count },
-                    },
-                    ..
-                }) if *pane == browser
-                    && *count == MAX_BROWSER_KEY_REPEAT
-                    && keys == &[zz_protocol::KeyToken::Literal("x".to_owned())]
-            ))
+    let commands = take_reliable_messages(&mailbox)
+        .into_iter()
+        .filter_map(|message| match message {
+            ProtocolMessage::Event(Event {
+                payload: EventPayload::BrowserCommand { pane, command },
+                ..
+            }) => Some((pane, command)),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        commands,
+        [(
+            browser,
+            BrowserCommand::SendKeysRepeated {
+                keys: vec![zz_protocol::KeyToken::Literal("x".to_owned())],
+                count: MAX_BROWSER_KEY_REPEAT,
+            }
+        )]
     );
 }
 
@@ -79,8 +83,14 @@ fn suspend_client_leaves_control_and_nonterminal_clients_attached() {
             )
             .unwrap();
         let inner = shared.inner.lock();
-        assert!(!inner.client(client).is_some_and(|c| c.suspended));
-        assert!(inner.attachment.attached[&session].contains(&client));
+        assert_eq!(inner.client(client).map(|c| c.suspended), Some(false));
+        assert_eq!(
+            inner.attachment.attached[&session]
+                .iter()
+                .copied()
+                .collect::<Vec<_>>(),
+            [client]
+        );
     }
 }
 

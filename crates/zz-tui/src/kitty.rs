@@ -1041,7 +1041,10 @@ mod tests {
             std::iter::empty::<(PaneId, Rect, &[KittyPlacement])>(),
             &mut output,
         );
-        assert!(String::from_utf8_lossy(&output).contains("\x1b_Ga=d,d=i"));
+        assert_eq!(
+            String::from_utf8_lossy(&output),
+            "\u{1b}_Ga=d,d=i,i=1,p=1,q=2\u{1b}\\"
+        );
     }
 
     #[test]

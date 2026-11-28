@@ -893,13 +893,16 @@ fn snapshot_publication_prunes_destroyed_latest_windows() {
 
     shared.publish_snapshot_state();
 
-    assert!(
-        !shared
+    assert_eq!(
+        shared
             .inner
             .lock()
             .attachment
             .window_latest_clients
-            .contains_key(&destroyed)
+            .keys()
+            .copied()
+            .collect::<Vec<_>>(),
+        []
     );
 }
 
@@ -1871,14 +1874,16 @@ fn event_hooks_are_fully_dropped_inside_hooks() {
             &CommandInvocation::new("select-window", ["-t", &second_window.to_string()]),
         )
         .expect("select window");
-    assert!(
+    assert_eq!(
         shared
             .inner
             .lock()
             .history
             .message_log
             .iter()
-            .all(|message| message.text != "event-layout-fired")
+            .map(|message| message.text.clone())
+            .collect::<Vec<_>>(),
+        Vec::<String>::new()
     );
 }
 

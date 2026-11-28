@@ -2339,10 +2339,10 @@ fn a_waiting_agent_send_from_an_interactive_client_is_refused() {
             ),
         )
         .expect_err("an interactive client cannot park on a reply");
-    assert!(
-        format!("{error:?}").contains("command client"),
-        "unexpected error: {error:?}"
-    );
+    let DaemonError::Server(ServerError::InvalidCommand(message)) = error else {
+        panic!("unexpected error: {error:?}");
+    };
+    assert_eq!(message, "agent-send --wait needs a command client");
 }
 
 #[test]

@@ -297,12 +297,15 @@ fn compressed_history_reads_back_whole() {
             ..super::CaptureOptions::default()
         })
         .expect("capture the whole history");
-    for row in [0, 1500, 2999] {
-        assert!(
-            capture.contains(&format!("compressed history row {row:05}")),
-            "row {row} survived compression"
-        );
-    }
+    assert_eq!(
+        capture
+            .lines()
+            .filter(|line| line.starts_with("compressed history row"))
+            .collect::<Vec<_>>(),
+        (0..3000)
+            .map(|row| format!("compressed history row {row:05}"))
+            .collect::<Vec<_>>()
+    );
 }
 
 #[test]
@@ -321,10 +324,7 @@ fn a_cleared_screen_survives_idle_compression() {
     let capture = session
         .capture(super::CaptureOptions::default())
         .expect("capture the visible screen");
-    assert!(
-        capture.contains("ZZ_CLEARED"),
-        "the cleared screen survived compression: {capture:?}"
-    );
+    assert_eq!(capture, "ZZ_CLEARED\n\n\n\n\n\n\n");
 }
 
 #[cfg(all(unix, not(target_os = "linux")))]

@@ -288,7 +288,7 @@ fn empty_control_expansion_resolvers_complete_without_the_state_lock() {
     drop(inner);
     worker.join().expect("empty expansion worker");
     let (values, homes) = result.expect("empty resolvers do not acquire the state lock");
-    assert!(values.is_empty() && homes.is_empty());
+    assert_eq!((values, homes), (Vec::new(), Vec::new()));
 }
 
 #[cfg(unix)]

@@ -976,12 +976,19 @@ mod workspace_tests {
     fn workspace_identity_is_injected_for_the_pane() {
         let agent = AcpAgent::from_str("npx -y example").expect("valid command");
         let agent = with_workspace_environment(agent, &workspace());
-        let environment = environment(&agent);
-        assert!(environment.contains(&("ZZ_PANE".to_owned(), "%4".to_owned())));
-        assert!(environment.contains(&("ZZ_SESSION".to_owned(), "work".to_owned())));
-        assert!(environment.contains(&("ZZ_SOCKET".to_owned(), "/tmp/zz/default.sock".to_owned())));
-        assert!(environment.contains(&("TMUX".to_owned(), "/tmp/zz/default.sock,99,4".to_owned())));
-        assert!(environment.contains(&("TMUX_PANE".to_owned(), "%4".to_owned())));
+        let mut environment = environment(&agent);
+        environment.sort();
+        assert_eq!(
+            environment,
+            [
+                ("TMUX", "/tmp/zz/default.sock,99,4"),
+                ("TMUX_PANE", "%4"),
+                ("ZZ_PANE", "%4"),
+                ("ZZ_SESSION", "work"),
+                ("ZZ_SOCKET", "/tmp/zz/default.sock"),
+            ]
+            .map(|(name, value)| (name.to_owned(), value.to_owned()))
+        );
     }
 
     #[test]
@@ -1131,24 +1138,38 @@ mod workspace_tests {
         let path = format!("{}:/usr/bin", directory.path().display());
         let expected = claude.to_string_lossy().into_owned();
 
+        let sorted = |agent: &AcpAgent| {
+            let mut environment = environment(agent);
+            environment.sort();
+            environment
+        };
+
         let agent = AcpAgent::from_str("npx -y example").expect("valid command");
         let agent = with_executable_path(agent, Some(&path));
-        assert!(environment(&agent).contains(&("CLAUDE_CODE_EXECUTABLE".to_owned(), expected)));
+        assert_eq!(
+            sorted(&agent),
+            [
+                ("CLAUDE_CODE_EXECUTABLE".to_owned(), expected),
+                ("PATH".to_owned(), path.clone()),
+            ]
+        );
 
         let agent = AcpAgent::from_str("CLAUDE_CODE_EXECUTABLE=/opt/claude npx -y example")
             .expect("valid configured command");
         let agent = with_executable_path(agent, Some(&path));
-        assert!(environment(&agent).contains(&(
-            "CLAUDE_CODE_EXECUTABLE".to_owned(),
-            "/opt/claude".to_owned()
-        )));
+        assert_eq!(
+            sorted(&agent),
+            [
+                (
+                    "CLAUDE_CODE_EXECUTABLE".to_owned(),
+                    "/opt/claude".to_owned()
+                ),
+                ("PATH".to_owned(), path.clone()),
+            ]
+        );
 
         let agent = AcpAgent::from_str("npx -y example").expect("valid command");
         let agent = with_executable_path(agent, Some("/usr/bin"));
-        assert!(
-            !environment(&agent)
-                .iter()
-                .any(|(name, _)| name == "CLAUDE_CODE_EXECUTABLE")
-        );
+        assert_eq!(sorted(&agent), [("PATH".to_owned(), "/usr/bin".to_owned())]);
     }
 }
