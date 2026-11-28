@@ -138,15 +138,18 @@ fn interactive_clean_eof_executes_received_input_and_drains_its_reply() {
     let mut bytes = Vec::new();
     peer.read_to_end(&mut bytes).unwrap();
     let mut inbound = Inbound { bytes, offset: 0 };
-    let mut replied = false;
+    let mut errors = Vec::new();
     while let Some(message) = inbound.next().unwrap() {
-        replied |= matches!(
-            message,
-            ProtocolMessage::CommandResponse(CommandResponse::Error { .. })
-        );
+        if let ProtocolMessage::CommandResponse(CommandResponse::Error {
+            request_id, error, ..
+        }) = message
+        {
+            errors.push((request_id, error));
+        }
     }
-    assert!(
-        replied,
+    assert_eq!(
+        errors,
+        [(0, ServerError::PaneNotAttached(PaneId(999)))],
         "accepted input reaches the session before detachment"
     );
 }
@@ -201,15 +204,9 @@ fn parked_worker_has_bounded_pending_messages() {
         event_loop.read_ready(token, &shared);
     }
     assert!(
-        event_loop
-            .connections
-            .get(&token)
-            .is_none_or(|connection| connection.read_closed),
-        "excess pending admission closes the client"
+        !event_loop.connections.contains_key(&token),
+        "excess pending admission removes the client"
     );
-    until(&mut event_loop, &shared, |event_loop| {
-        !event_loop.connections.contains_key(&token)
-    });
 }
 
 #[test]

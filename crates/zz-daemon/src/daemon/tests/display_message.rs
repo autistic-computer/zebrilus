@@ -29,34 +29,35 @@ fn display_message_is_published_only_to_the_requesting_client() {
         )
         .expect("display message");
 
-    assert!(
-        take_reliable_messages(&requesting_mailbox)
-            .iter()
-            .any(|message| matches!(
-                message,
+    let timed = |mailbox: &OutboundMailbox| {
+        take_reliable_messages(mailbox)
+            .into_iter()
+            .filter_map(|message| match message {
                 ProtocolMessage::Event(Event {
-                    payload: EventPayload::TimedClientMessage {
-                        pane: None,
-                        kind: ClientMessageKind::Info,
-                        text,
-                        duration_ms: 750,
-                        ..
-                    },
+                    payload:
+                        EventPayload::TimedClientMessage {
+                            pane,
+                            kind,
+                            text,
+                            duration_ms,
+                            ..
+                        },
                     ..
-                }) if text == "hello client"
-            ))
+                }) => Some((pane, kind, text, duration_ms)),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        timed(&requesting_mailbox),
+        [(
+            None,
+            ClientMessageKind::Info,
+            "hello client".to_owned(),
+            750
+        )]
     );
-    assert!(
-        take_reliable_messages(&observing_mailbox)
-            .iter()
-            .all(|message| !matches!(
-                message,
-                ProtocolMessage::Event(Event {
-                    payload: EventPayload::TimedClientMessage { .. },
-                    ..
-                })
-            ))
-    );
+    assert_eq!(timed(&observing_mailbox), []);
 }
 
 #[test]

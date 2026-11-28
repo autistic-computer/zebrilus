@@ -406,7 +406,23 @@ fn sourced_alias_keeps_raw_stdout_claim_across_a_file_reply() {
             .iter()
             .any(|message| matches!(message, ProtocolMessage::ExecExit(_)))
     });
-    assert!(output.iter().any(|message| matches!(message, ProtocolMessage::CommandResponse(CommandResponse::Success { output, exit_code: 1, .. }) if output == "first\n")));
+    let responses = output
+        .into_iter()
+        .filter_map(|message| match message {
+            ProtocolMessage::CommandResponse(response) => Some(response),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        responses,
+        [CommandResponse::Success {
+            request_id: 1,
+            output: RawText::from("first\n"),
+            exit_code: 1,
+            stderr: "Bad file descriptor: -\n".to_owned(),
+            stdout_claim: zz_protocol::StdoutClaim::Raw,
+        }]
+    );
     event_loop.remove(token, &shared);
 }
 

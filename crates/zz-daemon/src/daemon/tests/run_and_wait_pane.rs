@@ -1884,9 +1884,13 @@ fn send_text_submits_a_paste_codex_folds_into_a_placeholder() {
             &CommandInvocation::new("send-text", ["-t", &target, "a long brief"]),
         )
         .expect("the placeholder counts as the echo");
-    wait_for_capture(&shared, client, &target, |screen| {
+    let screen = wait_for_capture(&shared, client, &target, |screen| {
         screen.contains("submitted")
     });
+    assert_eq!(
+        screen.trim_end(),
+        "zz-ready\n[Pasted Content 1200 chars]\nsubmitted"
+    );
 }
 
 #[test]

@@ -1614,8 +1614,10 @@ fn tmux_reimport_ignores_marker_comments_inside_the_donor() {
     let donor = "# zz-import-tmux-end: /old\nset -g prefix C-a\n";
     let first = replace_tmux_import("# tail\n", Path::new("/old"), donor).unwrap();
     let next = replace_tmux_import(&first, Path::new("/new"), "set -g prefix C-x\n").unwrap();
-    assert!(!next.contains("prefix C-a"));
-    assert!(next.ends_with("# tail\n"));
+    assert_eq!(
+        next,
+        "# zz-import-tmux-begin: /new\nset -g prefix C-x\n# zz-import-tmux-end: /new\n# tail\n"
+    );
 }
 
 #[test]
@@ -1642,7 +1644,10 @@ fn tmux_import_missing_path_reports_the_path() {
             &ExecutionContext::default(),
         )
         .unwrap_err();
-    assert!(error.to_string().contains(missing.to_str().unwrap()));
+    let DaemonError::Server(ServerError::InvalidCommand(message)) = error else {
+        panic!("{error:?}");
+    };
+    assert_eq!(message, format!("{}: entity not found", missing.display()));
 }
 
 #[test]
@@ -2771,21 +2776,14 @@ fn startup_config_preview_is_safe_utf8_and_explicitly_truncated() {
     )];
     let preview = startup_config_preview(&causes);
 
-    assert!(preview.len() <= MAX_STARTUP_CONFIG_PREVIEW_BYTES);
-    assert!(preview.starts_with("BEGIN"));
-    assert!(
-        preview.ends_with(
-            "\n... startup diagnostics truncated; restart in Control mode for full output"
+    assert_eq!(
+        preview,
+        format!(
+            "BEGIN\u{fffd}\u{fffd}\u{fffd}\t\n{}\n... startup diagnostics truncated; restart in Control mode for full output",
+            "界".repeat(21_815)
         )
     );
-    assert!(!preview.contains("END"));
-    assert!(
-        preview
-            .chars()
-            .filter(|character| character.is_control())
-            .all(|character| matches!(character, '\n' | '\t'))
-    );
-    assert!(std::str::from_utf8(preview.as_bytes()).is_ok());
+    assert_eq!(preview.len(), MAX_STARTUP_CONFIG_PREVIEW_BYTES);
 }
 
 #[test]

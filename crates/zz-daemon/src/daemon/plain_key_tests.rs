@@ -66,10 +66,10 @@ fn wait_for_screen(
 #[test]
 fn an_unbound_letter_takes_the_short_path_to_the_pane() {
     let (shared, client, mut context, pane, _) = key_table_fixture("plain");
-    assert!(
-        shared
-            .plain_key_generation(client, pane, &letter('q'))
-            .is_some()
+    let generation = shared.inner.lock().engine.state.generation();
+    assert_eq!(
+        shared.plain_key_generation(client, pane, &letter('q')),
+        Some(generation)
     );
     press(&shared, client, pane, letter('q'));
     press(&shared, client, pane, letter('w'));

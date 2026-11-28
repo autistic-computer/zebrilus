@@ -30,7 +30,7 @@ fn status_option_snapshot_retargets_every_loop_after_the_engine_is_released() {
         .state
         .split_pane(first_pane, Axis::Horizontal, PaneKind::Terminal)
         .unwrap();
-    let (second_window, _) = engine
+    let (second_window, second_window_pane) = engine
         .state
         .create_window_at(
             attached,
@@ -40,7 +40,7 @@ fn status_option_snapshot_retargets_every_loop_after_the_engine_is_released() {
             false,
         )
         .unwrap();
-    let (other, _, _) = engine.state.create_session("other").unwrap();
+    let (other, other_window, other_pane) = engine.state.create_session("other").unwrap();
     let mut context =
         zz_mux::ExecutionContext::new(Some(attached), Some(first_window), Some(first_pane));
     let second_window = second_window.to_string();
@@ -101,26 +101,33 @@ fn status_option_snapshot_retargets_every_loop_after_the_engine_is_released() {
         &["set-option", "status-left-length", "100"],
     );
     let request = engine_request(1, &engine, Some(attached));
-    assert!(
-        request
-            .option_snapshot
-            .sessions
-            .contains_key(&other.to_string())
-    );
-    assert!(request.option_snapshot.windows.contains_key(&second_window));
-    assert!(
-        request
-            .option_snapshot
-            .panes
-            .contains_key(&second_pane.to_string())
+    assert_eq!(
+        (
+            request.option_snapshot.sessions.keys().collect::<Vec<_>>(),
+            request.option_snapshot.windows.keys().collect::<Vec<_>>(),
+            request.option_snapshot.panes.keys().collect::<Vec<_>>(),
+        ),
+        (
+            vec![&attached.to_string(), &other.to_string()],
+            vec![
+                &first_window.to_string(),
+                &second_window,
+                &other_window.to_string()
+            ],
+            vec![
+                &first_pane,
+                &second_pane.to_string(),
+                &second_window_pane.to_string(),
+                &other_pane.to_string()
+            ],
+        )
     );
     drop(engine);
 
     let status = StatusRenderer::default().render_initial(&request);
-    assert!(
-        status.left.contains("OPTCHAIN:1:10:01:01"),
-        "{}",
-        status.left
+    assert_eq!(
+        status.left,
+        "#[bg=themegreen,fg=themeblack]#[default]#[push-default]OPTCHAIN:1:10:01:01"
     );
 }
 
@@ -404,14 +411,12 @@ fn per_window_status_overrides_style_the_rendered_row() {
     let status =
         StatusRenderer::default().render_initial(&engine_request(1, &engine, Some(session)));
     let row = status.rows.first().expect("status row");
-    assert!(row.contains("OVERRIDE"), "row: {row}");
-    assert!(
-        !row.contains("0:main"),
-        "the current window's default label must be replaced: {row}"
-    );
-    assert!(
-        row.contains("1:other"),
-        "windows without overrides keep the global format: {row}"
+    let (left, _) = row
+        .split_once("#[nolist align=right")
+        .expect("the window list ends before status-right");
+    assert_eq!(
+        left,
+        "#[align=left range=left default]#[push-default][work] #[pop-default]#[norange default]#[list=on align=left]#[list=left-marker]<#[list=right-marker]>#[list=on]#[range=window|0 list=focus underscore]#[push-default]OVERRIDE#[pop-default]#[norange list=on default] #[range=window|1 default]#[push-default]1:other #[pop-default]#[norange default]"
     );
 }
 

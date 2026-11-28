@@ -590,7 +590,7 @@ fn window_style_reaches_a_detached_pane() {
         assert!(Instant::now() < deadline, "no OSC 11 reply: {answer:?}");
         thread::sleep(Duration::from_millis(10));
     };
-    assert!(answer.contains("rgb:ffff/0000/0000"), "{answer:?}");
+    assert_eq!(answer, "\u{1b}]11;rgb:ffff/0000/0000\u{1b}\\");
     shared.request_shutdown();
 }
 

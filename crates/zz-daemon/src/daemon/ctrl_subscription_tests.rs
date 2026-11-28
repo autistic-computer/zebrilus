@@ -139,7 +139,23 @@ fn new_full_subscriber_does_not_hide_pending_key_patch() {
         compact_registered(&shared, zz_protocol::Subscriptions::default());
     shared.send_compact_keys(second, &second_mailbox);
     shared.publish_key_tables_if_changed();
-    assert!(reliable_children(&first_mailbox).iter().any(|message| matches!(message, ProtocolMessage::Event(Event { payload: EventPayload::KeyTablesPatched { tables, .. }, .. }) if tables.iter().any(|table| table.name == "ctrl-test"))));
+    let patched = reliable_children(&first_mailbox)
+        .into_iter()
+        .filter_map(|message| match message {
+            ProtocolMessage::Event(Event {
+                payload: EventPayload::KeyTablesPatched { tables, removed },
+                ..
+            }) => Some((
+                tables
+                    .into_iter()
+                    .map(|table| table.name)
+                    .collect::<Vec<_>>(),
+                removed,
+            )),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(patched, [(vec!["ctrl-test".to_owned()], Vec::new())]);
 }
 
 #[test]
@@ -201,30 +217,22 @@ fn hash_subscriber_receives_bounded_mouse_hash_without_full_bindings() {
         &["-T", "root", "x", "display-message", "changed"],
     );
     let messages = bounded_reliable_children(&mailbox, 80);
-    assert!(!messages.iter().any(|message| matches!(
-        message,
-        ProtocolMessage::Event(Event {
-            payload: EventPayload::KeyTablesChanged { .. } | EventPayload::KeyTablesPatched { .. },
-            ..
-        })
-    )));
-    let hash = messages
-        .iter()
-        .find(|message| {
-            matches!(
-                message,
-                ProtocolMessage::Event(Event {
-                    payload: EventPayload::KeyTablesHashChanged { .. },
-                    ..
-                })
-            )
-        })
-        .expect("hash");
+    let (generation, mouse) = {
+        let inner = shared.inner.lock();
+        (
+            inner.engine.keys.generation(),
+            zz_protocol::MouseBindings::from_key_tables(&inner.engine.keys),
+        )
+    };
     assert!(
-        zz_protocol::encode_protocol_message(hash)
-            .expect("encode")
-            .len()
-            <= 80
+        matches!(
+            messages.as_slice(),
+            [ProtocolMessage::Event(Event {
+                payload: EventPayload::KeyTablesHashChanged { hash, mouse: sent },
+                ..
+            })] if *hash == generation && *sent == mouse
+        ),
+        "{messages:?}"
     );
 }
 
@@ -366,19 +374,16 @@ fn an_unattached_tree_client_sees_another_sessions_agent_finish() {
     shared.send_compact_state(client, &mailbox, true);
     reliable_children(&mailbox);
 
-    pane_summary::apply_pane_status(
-        &mut shared.inner.lock(),
-        pane,
-        Some(PaneStatus {
-            state: PaneStatusState::Done,
-            kind: None,
-            progress: None,
-            app: "codex".to_owned(),
-            title: String::new(),
-            message: "All tests pass".to_owned(),
-        }),
-        unix_timestamp(),
-    );
+    let done = PaneStatus {
+        state: PaneStatusState::Done,
+        kind: None,
+        progress: None,
+        app: "codex".to_owned(),
+        title: String::new(),
+        message: "All tests pass".to_owned(),
+    };
+    let now = unix_timestamp();
+    pane_summary::apply_pane_status(&mut shared.inner.lock(), pane, Some(done.clone()), now);
     shared.publish_snapshot_state();
     let ops = reliable_children(&mailbox)
         .into_iter()
@@ -390,20 +395,22 @@ fn an_unattached_tree_client_sees_another_sessions_agent_finish() {
             _ => Vec::new(),
         })
         .collect::<Vec<_>>();
-    assert!(
-        ops.iter().any(|op| matches!(
-            op,
-            zz_protocol::TreeOp::PaneStatus { pane: changed, status: Some(status), .. }
-                if *changed == pane && status.state == PaneStatusState::Done
-        )),
-        "{ops:?}"
-    );
-    assert!(
-        ops.iter().any(|op| matches!(
-            op,
-            zz_protocol::TreeOp::PaneSummary { pane: changed, summary, .. }
-                if *changed == pane && summary.unseen && summary.changed_at > 0
-        )),
-        "{ops:?}"
-    );
+    let status = ops.iter().find_map(|op| match op {
+        zz_protocol::TreeOp::PaneStatus {
+            pane: changed,
+            status,
+            ..
+        } if *changed == pane => Some(status.clone()),
+        _ => None,
+    });
+    assert_eq!(status, Some(Some(done)), "{ops:?}");
+    let stamp = ops.iter().find_map(|op| match op {
+        zz_protocol::TreeOp::PaneSummary {
+            pane: changed,
+            summary,
+            ..
+        } if *changed == pane => Some((summary.unseen, summary.changed_at)),
+        _ => None,
+    });
+    assert_eq!(stamp, Some((true, now)), "{ops:?}");
 }
