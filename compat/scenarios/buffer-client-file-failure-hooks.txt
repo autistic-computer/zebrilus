@@ -1,0 +1,16 @@
+set-environment -g LOAD_HOOK no
+set-environment -g SAVE_HOOK no
+set-environment -g ERROR_HOOK no
+set-hook -g after-load-buffer "set-environment -g LOAD_HOOK yes"
+set-hook -g after-save-buffer "set-environment -g SAVE_HOOK yes"
+set-hook -g command-error "set-environment -g ERROR_HOOK yes"
+err: load-buffer -b missing /nonexistent/zz-compat/input
+out: show-environment -g LOAD_HOOK
+set-buffer -b saved payload
+err: save-buffer -b saved /nonexistent/zz-compat/output
+out: show-environment -g SAVE_HOOK
+out: show-environment -g ERROR_HOOK
+out: list-buffers -F #{buffer_name}
+set-hook -gu after-load-buffer
+set-hook -gu after-save-buffer
+set-hook -gu command-error

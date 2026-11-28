@@ -276,7 +276,7 @@ impl Shared {
                 }
                 let path = buffer_file_path(&self.inner.lock(), invoking_client, &path);
                 let append = parsed.has('a');
-                file_commands::save_buffer(self, invoking_client, &path, &data, append)
+                file_commands::save_buffer(self, invoking_client, context, &path, &data, append)
             }
             "delete-buffer" | "deleteb" => {
                 let parsed = parse_buffer_command_args(name, args, &['b'], &[])?;

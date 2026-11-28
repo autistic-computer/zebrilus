@@ -51,7 +51,7 @@ kill-pane -t w:0.1
 set-hook -g pane-created "set -gF @pcc '#{hook_pane_command}^#{hook_pane_current_path}'"
 split-window -d -c /tmp -t w:0 'sleep 100'
 out: show -gv @pcc
-new-window -d -c / -t w:7 sleep 99
+new-window -d -n payload -c / -t w:7 sleep 99
 out: show -gv @pcc
 set-hook -gu pane-created
 set -gu @pcc

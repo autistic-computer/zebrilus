@@ -343,6 +343,17 @@ fn load_and_save_buffers_preserve_binary_bytes_and_append() {
     assert_eq!(fs::read(&output).expect("appended bytes"), expected);
 }
 
+fn reported_failure(shared: &Shared, client: ClientId) -> (String, u8) {
+    shared
+        .inner
+        .lock()
+        .client_entry(client)
+        .command_streams
+        .replace(CommandStreams::default())
+        .map(|streams| (streams.stderr, streams.exit_code))
+        .unwrap_or_default()
+}
+
 #[test]
 fn save_buffer_fails_instead_of_writing_locally_when_the_command_client_is_gone() {
     let directory = tempfile::tempdir().expect("temporary directory");
@@ -363,8 +374,9 @@ fn save_buffer_fails_instead_of_writing_locally_when_the_command_client_is_gone(
     let mailbox = OutboundMailbox::new();
     let _writer = ClientWriterRegistrationGuard::new(&shared, client, Arc::clone(&mailbox));
     mailbox.close();
+    reported_failure(&shared, client);
 
-    let error = shared
+    shared
         .buffer_command_for_client(
             Some(client),
             ClientKind::Command,
@@ -372,12 +384,11 @@ fn save_buffer_fails_instead_of_writing_locally_when_the_command_client_is_gone(
             "save-buffer",
             &args,
         )
-        .expect_err("a closed writer cannot take the write");
-    assert!(matches!(
-        error,
-        DaemonError::Server(ServerError::InvalidCommand(message))
-            if message.contains("the invoking client is gone")
-    ));
+        .expect("a failed write is reported to the client, not returned");
+    assert_eq!(
+        reported_failure(&shared, client),
+        (format!("the invoking client is gone: {path}\n"), 1)
+    );
     assert!(!output.exists());
     assert!(shared.inner.lock().transfers.client_file_waiters.is_empty());
 }
@@ -676,8 +687,10 @@ fn buffer_file_paths_expand_once_in_the_selected_client_context() {
         .expect("formatted empty load");
     assert!(resolve_buffer(&shared.inner.lock(), Some(""), BufferMissing::NoBuffer).is_err());
 
+    let reason = |error: std::io::Error| zz_daemon_client::strerror_text(&error);
     let missing_path = directory.path().join("missing-target-session");
-    let error = shared
+    reported_failure(&shared, command_client);
+    shared
         .execute(
             command_client,
             ClientKind::Command,
@@ -695,32 +708,42 @@ fn buffer_file_paths_expand_once_in_the_selected_client_context() {
                 ],
             ),
         )
-        .expect_err("expanded missing path");
-    assert!(matches!(
-        error,
-        DaemonError::Server(ServerError::InvalidCommand(message))
-            if message.contains(missing_path.to_string_lossy().as_ref())
-                && !message.contains("#{session_name}")
-    ));
+        .expect("a missing load path is reported to the client");
+    assert_eq!(
+        reported_failure(&shared, command_client),
+        (
+            format!(
+                "{}: {}\n",
+                reason(fs::read(&missing_path).expect_err("missing fixture")),
+                missing_path.display()
+            ),
+            1
+        )
+    );
 
     command_context
         .format_variables
         .insert("path".to_owned(), String::new());
-    let error = shared
+    let working_directory = buffer_file_path(&shared.inner.lock(), Some(command_client), "");
+    shared
         .execute(
             command_client,
             ClientKind::Command,
             &mut command_context,
             &CommandInvocation::new("load-buffer", ["#{path}"]),
         )
-        .expect_err("empty expanded load path");
-    assert!(matches!(
-        error,
-        DaemonError::Server(ServerError::InvalidCommand(message))
-            if message
-                .split_once(": ")
-                .is_some_and(|(_, path)| path.is_empty() || Path::new(path).is_absolute())
-    ));
+        .expect("an empty load path is reported to the client");
+    assert_eq!(
+        reported_failure(&shared, command_client),
+        (
+            format!(
+                "{}: {}\n",
+                reason(fs::read(&working_directory).expect_err("a directory is not readable")),
+                working_directory.display()
+            ),
+            1
+        )
+    );
     command_context
         .format_variables
         .insert("path".to_owned(), "-".to_owned());
@@ -750,21 +773,28 @@ fn buffer_file_paths_expand_once_in_the_selected_client_context() {
     command_context
         .format_variables
         .insert("path".to_owned(), String::new());
-    let error = shared
+    shared
         .execute(
             command_client,
             ClientKind::Command,
             &mut command_context,
             &CommandInvocation::new("save-buffer", ["-b", "saved", "#{path}"]),
         )
-        .expect_err("empty expanded save path");
-    assert!(matches!(
-        error,
-        DaemonError::Server(ServerError::InvalidCommand(message))
-            if message
-                .split_once(": ")
-                .is_some_and(|(_, path)| path.is_empty() || Path::new(path).is_absolute())
-    ));
+        .expect("an empty save path is reported to the client");
+    assert_eq!(
+        reported_failure(&shared, command_client),
+        (
+            format!(
+                "{}: {}\n",
+                reason(
+                    fs::write(&working_directory, b"saved payload")
+                        .expect_err("a directory is not writable")
+                ),
+                working_directory.display()
+            ),
+            1
+        )
+    );
     command_context.format_variables.remove("path");
     let origin_output = directory.path().join("source-session-save-buffer-origin");
     shared

@@ -3,6 +3,22 @@ set -euo pipefail
 while IFS= read -r credential; do unset "$credential"; done < <(compgen -e | grep -E 'TOKEN|SECRET|PASSWORD|API_KEY|CREDENTIAL')
 set +B
 
+utf8_locale=""
+installed_locales="$(locale -a 2>/dev/null | tr -d '-' || true)"
+for candidate in C.UTF-8 en_US.UTF-8; do
+  if grep -qixF -- "$(printf '%s' "$candidate" | tr -d '-')" <<<"$installed_locales"; then
+    utf8_locale="$candidate"
+    break
+  fi
+done
+if [ -z "$utf8_locale" ]; then
+  echo "diff-scenario.sh: neither C.UTF-8 nor en_US.UTF-8 is installed" >&2
+  exit 2
+fi
+unset LC_ALL LANGUAGE
+export LANG="$utf8_locale" LC_CTYPE="$utf8_locale"
+export LC_TIME=C LC_NUMERIC=C LC_MESSAGES=C LC_MONETARY=C LC_COLLATE=C
+
 COMPAT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 SCENARIOS_DIR="$COMPAT_DIR/scenarios"
 RESULTS_DIR="$COMPAT_DIR/results"

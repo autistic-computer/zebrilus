@@ -4,12 +4,14 @@ title: Running the tmux compatibility harness
 description: Run a differential against the pinned tmux, interpret its five result channels and register an exception.
 resource: compat/run.sh
 tags: [tmux, compatibility, differential-testing, geometry, playbook]
-timestamp: 2026-11-24T00:00:00-03:00
+timestamp: 2026-11-27T00:00:00-03:00
 ---
 
 # Running the corpus
 
 Run from the repository root with modern Bash on PATH. On macOS with Homebrew Bash installed, `export PATH="$(brew --prefix bash)/bin:$PATH"` also selects it for subprocesses that call `bash`. The harness builds `zz_cli` and fetches tmux 3.8 at `7f2a35ad3321f9ba57a1062ca73b1f3ff26aca53`. It checks the source checkout, binary and build stamp. `ZZ_COMPAT_TMUX` can select an existing build from that recipe. `ZZ_COMPAT_ZZ` selects a prebuilt zz executable. A scenario marked `corpus: required` also needs the pinned plugin checkouts from `compat/fetch-corpus.sh` or its verified `ZZ_COMPAT_CORPUS` directory.
+
+`compat/diff-scenario.sh` runs both sides under one locale whatever the caller's is: `LANG` and `LC_CTYPE` are `C.UTF-8`, or `en_US.UTF-8` where that is not installed, and time, numbers, messages, money and collation are `C`. Both sides therefore see a UTF-8 client and print English month names. A scenario that needs another locale sets it in its own fixture.
 
 | What to check | Command |
 | --- | --- |
