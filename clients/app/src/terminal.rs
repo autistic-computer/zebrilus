@@ -15,7 +15,8 @@ use zz_client::{
     ChromeAction, ClientCore, CoreEvent, TERMINAL_TABLE,
     local_scroll::{
         LOCAL_SCROLL_DEBOUNCE, LOCAL_SCROLL_TIMEOUT, LocalScrollEffect, LocalScrollState,
-        LocalScrollStep, LocalScrollSync, local_scroll_available, scroll_fraction_offset,
+        LocalScrollStep, LocalScrollSync, RowProjection, local_scroll_available,
+        scroll_fraction_offset,
     },
     scrollback::RetainedTerminalViewport,
     terminal_view::{
@@ -256,6 +257,7 @@ pub struct TerminalPane {
     moving: Rc<Cell<bool>>,
     extra_height: Pixels,
     content_offset: Pixels,
+    row_projection: Option<RowProjection>,
     scroll_rows: f32,
     scroll: LocalScrollState,
     overscroll: ala::RubberBand,
@@ -425,6 +427,7 @@ impl TerminalPane {
             moving: Rc::default(),
             extra_height: Pixels::ZERO,
             content_offset: Pixels::ZERO,
+            row_projection: None,
             scroll_rows: 0.,
             scroll: LocalScrollState::default(),
             overscroll: ala::RubberBand::default(),
@@ -1086,6 +1089,7 @@ impl TerminalPane {
             scale: self.scale,
             columns: self.geometry.map_or(0, |(grid, _)| grid.columns),
             rows: self.geometry.map_or(0, |(grid, _)| grid.rows),
+            row_projection: self.row_projection,
         }
         .input(
             f32::from(position.x),
@@ -1789,6 +1793,7 @@ impl TerminalPane {
         self.cell_width = geometry.cell_width;
         self.line_height = geometry.line_height;
         self.content_offset = geometry.content_offset;
+        self.row_projection = Some(geometry.row_projection);
         self.scale = window.scale_factor();
         let input_bounds = paint.geometry.input_bounds.unwrap_or(geometry.grid_bounds);
         if self.search.is_none() && self.cursor_bounds != input_bounds {

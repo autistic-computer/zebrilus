@@ -24,7 +24,8 @@ use zz_client::{
     ChromeAction, TERMINAL_TABLE,
     local_scroll::{
         LOCAL_SCROLL_DEBOUNCE, LOCAL_SCROLL_TIMEOUT, LocalScrollEffect, LocalScrollState,
-        LocalScrollStep, LocalScrollSync, local_scroll_available, scroll_fraction_offset,
+        LocalScrollStep, LocalScrollSync, RowProjection, local_scroll_available,
+        scroll_fraction_offset,
     },
     terminal_view::{oversized_paste_warning, selection_has_extent},
 };
@@ -343,6 +344,7 @@ struct HitGrid {
     cell_width: Pixels,
     line_height: Pixels,
     content_offset: Pixels,
+    row_projection: RowProjection,
     scrollbar_gutter: Pixels,
 }
 
@@ -1268,6 +1270,7 @@ impl TerminalView {
         cell_width: Pixels,
         line_height: Pixels,
         content_offset: Pixels,
+        row_projection: RowProjection,
         cursor_bounds: Option<Bounds<Pixels>>,
         link_hover_bounds: Option<Bounds<Pixels>>,
         cx: &mut Context<Self>,
@@ -1314,6 +1317,7 @@ impl TerminalView {
             cell_width,
             line_height,
             content_offset,
+            row_projection,
             scrollbar_gutter: penna::components::scroll::GUTTER_WIDTH
                 .to_pixels(cx.theme().font_size),
         });
@@ -1829,9 +1833,10 @@ impl TerminalView {
             clippy::cast_sign_loss,
             reason = "hit coordinates are floored and clamped to the terminal u16 grid"
         )]
+        let (column, row) = (column as u16, row as u16);
         Some(PointerCellEvent {
-            column: column as u16,
-            row: row as u16,
+            column,
+            row: grid.row_projection.source_row_at(row)?,
             click_count: u8::try_from(click_count).unwrap_or(u8::MAX),
             rectangle: modifiers.alt,
         })
@@ -1907,15 +1912,17 @@ impl TerminalView {
                 .round()
                 .clamp(0.0, u32::MAX as f32)) as u32
         };
+        let y = (position.y - grid.bounds.origin.y - grid.content_offset)
+            .clamp(px(0.0), grid.bounds.size.height);
+        let drawn_row = (y / grid.line_height)
+            .floor()
+            .min(f32::from(grid.rows.saturating_sub(1)));
         Some(TerminalMouseInput::new(
             phase,
             button,
             cell,
             physical((position.x - grid.bounds.origin.x).clamp(px(0.0), grid.bounds.size.width)),
-            physical(
-                (position.y - grid.bounds.origin.y - grid.content_offset)
-                    .clamp(px(0.0), grid.bounds.size.height),
-            ),
+            physical(y + grid.line_height * (f32::from(cell.row) - drawn_row)),
             physical(grid.bounds.size.width),
             physical(grid.bounds.size.height),
             physical(grid.cell_width).max(1),

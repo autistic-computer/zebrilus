@@ -188,6 +188,7 @@ pub struct TerminalGeometry {
     pub cell_width: Pixels,
     pub line_height: Pixels,
     pub content_offset: Pixels,
+    pub row_projection: RowProjection,
     pub input_bounds: Option<Bounds<Pixels>>,
     pub link_hover_bounds: Option<Bounds<Pixels>>,
 }
@@ -1185,6 +1186,7 @@ impl RowRenderCache {
                 cell_width,
                 line_height,
                 content_offset: scroll_shift,
+                row_projection,
                 input_bounds,
                 link_hover_bounds,
             },

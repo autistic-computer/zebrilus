@@ -592,7 +592,7 @@ fn split_drag_defers_terminal_resize_until_override_release(cx: &mut TestAppCont
 
     let terminal = workspace.read_with(cx, |workspace, _| workspace.terminals[&PaneId(0)].clone());
     let sent = mux.update(cx, |mux, _| mux.record_input_for_test());
-    let update_geometry = |grid_size, cx: &mut ala::VisualTestContext| {
+    let update_geometry = |grid_size: GridSize, cx: &mut ala::VisualTestContext| {
         terminal.update(cx, |terminal, cx| {
             terminal.update_geometry(
                 grid_size,
@@ -601,6 +601,7 @@ fn split_drag_defers_terminal_resize_until_override_release(cx: &mut TestAppCont
                 px(8.0),
                 px(16.0),
                 px(0.0),
+                zz_client::local_scroll::RowProjection::new(grid_size.rows, grid_size.rows, false),
                 None,
                 None,
                 cx,

@@ -295,6 +295,7 @@ fn a_zoomed_float_reports_its_grid_like_a_tile(cx: &mut TestAppContext) {
                 px(8.0),
                 px(16.0),
                 px(0.0),
+                zz_client::local_scroll::RowProjection::new(24, 24, false),
                 None,
                 None,
                 cx,
