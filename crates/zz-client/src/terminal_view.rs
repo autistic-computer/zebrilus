@@ -8,7 +8,7 @@ use zz_terminal::{
     TerminalViewAction,
 };
 
-use crate::{ChromeAction, ChromeKeymap, TERMINAL_TABLE};
+use crate::{ChromeAction, ChromeKeymap, TERMINAL_TABLE, local_scroll::RowProjection};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct PointerGrid {
@@ -22,6 +22,7 @@ pub struct PointerGrid {
     pub scale: f32,
     pub columns: u16,
     pub rows: u16,
+    pub row_projection: Option<RowProjection>,
 }
 
 impl PointerGrid {
@@ -47,13 +48,19 @@ impl PointerGrid {
         let x = (x - self.left).clamp(0., self.width);
         let y = (y - self.top).clamp(0., self.height);
         let column = (x / self.cell_width) as u16;
-        let row = ((y - self.content_offset).max(0.) / self.line_height) as u16;
+        let drawn_row = (((y - self.content_offset).max(0.) / self.line_height) as u16)
+            .min(self.rows.saturating_sub(1));
+        let row = self
+            .row_projection
+            .and_then(|projection| projection.source_row_at(drawn_row))
+            .unwrap_or(drawn_row);
+        let y = y + (f32::from(row) - f32::from(drawn_row)) * self.line_height;
         TerminalMouseInput::new(
             phase,
             button,
             PointerCellEvent {
                 column: column.min(self.columns.saturating_sub(1)),
-                row: row.min(self.rows.saturating_sub(1)),
+                row,
                 click_count: click_count.min(3) as u8,
                 rectangle: modifiers.alt(),
             },
@@ -289,6 +296,7 @@ mod tests {
             scale: 2.,
             columns: 10,
             rows: 2,
+            row_projection: None,
         };
         let input = grid.input(
             27.,

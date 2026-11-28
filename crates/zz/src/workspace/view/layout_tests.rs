@@ -100,6 +100,7 @@ fn attached_pane_measurement_floors_below_the_laid_out_box(cx: &mut TestAppConte
             cell_width,
             line_height,
             px(0.0),
+            zz_client::local_scroll::RowProjection::new(drawn.rows, drawn.rows, false),
             None,
             None,
             cx,

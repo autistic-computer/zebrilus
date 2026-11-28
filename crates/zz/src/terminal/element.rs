@@ -169,6 +169,7 @@ impl Element for TerminalElement {
                 geometry.cell_width,
                 geometry.line_height,
                 geometry.content_offset,
+                geometry.row_projection,
                 geometry.input_bounds,
                 geometry.link_hover_bounds,
                 cx,

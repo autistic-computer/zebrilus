@@ -54,6 +54,7 @@ fn visible_scrollbar_strip_is_not_part_of_the_terminal_hit_grid() {
         cell_width: px(8.0),
         line_height: px(19.0),
         content_offset: px(0.0),
+        row_projection: RowProjection::new(24, 24, false),
         scrollbar_gutter: px(16.0),
     };
     let scrollable = ScrollbarState {
@@ -118,6 +119,7 @@ fn trackpad_scrollback_stays_local_and_syncs_the_daemon_before_a_press(
             px(8.0),
             px(20.0),
             content_offset,
+            RowProjection::new(24, 24, false),
             None,
             None,
             cx,
