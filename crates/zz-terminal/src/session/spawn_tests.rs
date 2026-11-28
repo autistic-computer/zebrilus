@@ -131,19 +131,21 @@ fn live_command_applies_spawn_environment_additions_and_removals() {
     });
     session.send_text("ready\n");
 
-    let viewport = wait_for_test_viewport(&session, |viewport| {
+    wait_for_test_viewport(&session, |viewport| {
         let mut contents = String::new();
         for cell in viewport.cells.iter() {
             viewport.push_glyph(*cell, &mut contents);
         }
-        contents.contains("ZZ_PHASE4D_REMOVE")
+        contents.contains("ZZ_PHASE4D_REMOVE=")
     });
-    let mut contents = String::new();
-    for cell in viewport.cells.iter() {
-        viewport.push_glyph(*cell, &mut contents);
-    }
-    assert!(contents.contains("ZZ_PHASE4D_SET=session"), "{contents:?}");
-    assert!(contents.contains("ZZ_PHASE4D_REMOVE=unset"), "{contents:?}");
+    let capture = session.capture(CaptureOptions::default()).expect("capture");
+    assert_eq!(
+        capture
+            .lines()
+            .filter(|line| line.starts_with("ZZ_PHASE4D_"))
+            .collect::<Vec<_>>(),
+        ["ZZ_PHASE4D_SET=session", "ZZ_PHASE4D_REMOVE=unset"]
+    );
 }
 
 #[cfg(windows)]
@@ -220,37 +222,45 @@ fn pane_environment_seeds_term_and_truecolor_and_spawn_environment_overrides_the
                 },
             );
         attach_streaming(&session, TerminalViewId(view));
-        let viewport = wait_for_test_viewport(&session, |viewport| {
+        wait_for_test_viewport(&session, |viewport| {
             let mut contents = String::new();
             for cell in viewport.cells.iter() {
                 viewport.push_glyph(*cell, &mut contents);
             }
-            contents.contains("ZZ_TERM:")
+            contents.contains("ZZ_TRUECOLOR:")
         });
-        let mut contents = String::new();
-        for cell in viewport.cells.iter() {
-            viewport.push_glyph(*cell, &mut contents);
-        }
-        contents
+        session
+            .capture(CaptureOptions::default())
+            .expect("capture")
+            .lines()
+            .find(|line| line.starts_with("ZZ_TERM:"))
+            .unwrap_or_default()
+            .trim_end()
+            .to_owned()
     };
 
-    let default = capture(47, None, Vec::new());
-    assert!(default.contains("ZZ_TERM:tmux-256color"), "{default:?}");
-    assert!(default.contains("ZZ_TRUECOLOR:1"), "{default:?}");
-    assert!(capture(48, Some("zz-term"), Vec::new()).contains("ZZ_TERM:zz-term"));
-    assert!(
+    assert_eq!(
+        capture(47, None, Vec::new()),
+        "ZZ_TERM:tmux-256color ZZ_TRUECOLOR:1"
+    );
+    assert_eq!(
+        capture(48, Some("zz-term"), Vec::new()),
+        "ZZ_TERM:zz-term ZZ_TRUECOLOR:1"
+    );
+    assert_eq!(
         capture(
             49,
             Some("zz-term"),
             vec![("TERM".into(), Some("override".into()))]
-        )
-        .contains("ZZ_TERM:override")
+        ),
+        "ZZ_TERM:override ZZ_TRUECOLOR:1"
     );
-    let unset = capture(
-        50,
-        None,
-        vec![("CLAUDE_CODE_TMUX_TRUECOLOR".into(), Some("".into()))],
+    assert_eq!(
+        capture(
+            50,
+            None,
+            vec![("CLAUDE_CODE_TMUX_TRUECOLOR".into(), Some("".into()))],
+        ),
+        "ZZ_TERM:tmux-256color ZZ_TRUECOLOR:"
     );
-    assert!(unset.contains("ZZ_TERM:"), "{unset:?}");
-    assert!(!unset.contains("ZZ_TRUECOLOR:1"), "{unset:?}");
 }

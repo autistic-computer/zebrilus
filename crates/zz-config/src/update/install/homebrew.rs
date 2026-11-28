@@ -329,9 +329,17 @@ mod tests {
         })
         .expect("upgrade succeeds");
 
-        assert!(seen.contains(&Progress::Running {
-            detail: "==> Downloading zz".to_owned(),
-        }));
+        assert_eq!(
+            seen,
+            [
+                Progress::Running {
+                    detail: String::new(),
+                },
+                Progress::Running {
+                    detail: "==> Downloading zz".to_owned(),
+                },
+            ]
+        );
     }
 
     #[test]

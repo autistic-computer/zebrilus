@@ -687,10 +687,9 @@ mod tests {
             Trailing::Pane { reaches_edge: true },
         );
         let text = String::from_utf8_lossy(&output).replace('\u{1b}', "ESC");
-        assert!(text.contains("ESC[2m"), "the row lost its dim runs: {text}");
-        assert!(
-            text.contains("ESC[38;2;13;13;13mESC[48;2;184;134;11mcli "),
-            "the row lost the selection style: {text}"
+        assert_eq!(
+            text,
+            "ESC[1;1HESC[0mESC[38;2;13;13;13mESC[48;2;184;134;11mcli ESC[0mESC[2mESC[38;2;13;13;13mESC[48;2;184;134;11m2 windowsESC[0mESC[38;2;13;13;13mESC[48;2;184;134;11m attached ESC[0mESC[2mESC[38;2;13;13;13mESC[48;2;184;134;11mwinESC[0mESC[39mESC[48;2;184;134;11mESC[KESC[0mESC[2;1HESC[0mESC[39mESC[49mESC[KESC[0mESC[3;1HESC[0mESC[39mESC[49mESC[KESC[0mESC[4;1HESC[0mESC[38;2;13;13;13mESC[48;2;184;134;11m(search) ESC[0mESC[39mESC[49mESC[KESC[0m"
         );
     }
 }

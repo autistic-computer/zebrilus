@@ -174,15 +174,14 @@ fn a_v1_string_keeps_existing_floats_at_the_root() {
     state
         .select_layout_string(window, "c195,80x24,0,0[80x12,0,0,0,80x11,0,13,1]")
         .unwrap();
-    assert!(state.validate().is_ok());
-    let dump = layout(&state, LayoutFormat::V2);
-    assert!(dump.starts_with(
-        r#"{"V":2,"L":{"t":"v","w":80,"h":24,"x":0,"y":0,"c":[{"t":"p","w":80,"h":12"#
-    ));
-    assert!(dump.ends_with(&format!(
-        r#"{{"t":"p","w":10,"h":5,"x":3,"y":3,"a":true,"i":2,"z":0,"I":"%{}"}}]}}}}"#,
-        floated.0
-    )));
+    assert_eq!(state.validate(), Ok(()));
+    assert_eq!(
+        layout(&state, LayoutFormat::V2),
+        format!(
+            r#"{{"V":2,"L":{{"t":"v","w":80,"h":24,"x":0,"y":0,"c":[{{"t":"p","w":80,"h":12,"x":0,"y":0,"l":1,"i":0,"I":"%0"}},{{"t":"p","w":80,"h":11,"x":0,"y":13,"l":0,"i":1,"I":"%1"}},{{"t":"p","w":10,"h":5,"x":3,"y":3,"a":true,"i":2,"z":0,"I":"%{}"}}]}}}}"#,
+            floated.0
+        )
+    );
 }
 
 #[test]

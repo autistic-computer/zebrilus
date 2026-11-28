@@ -529,14 +529,13 @@ fn output_sink_sees_bytes_only_while_it_takes_output() {
     session.send_raw_input(Arc::from(b"second\n".as_slice()));
     let deadline = Instant::now() + Duration::from_secs(2);
     let mut bytes = Vec::new();
-    while !bytes.windows(5).any(|window| window == b"AFTER") {
+    while !bytes.ends_with(b"AFTER\x01\x02\r\n") {
         let chunk = output
             .recv_deadline(deadline)
             .expect("post-arm terminal output");
         bytes.extend_from_slice(&chunk);
     }
-    assert!(!bytes.windows(6).any(|window| window == b"BEFORE"));
-    assert!(bytes.windows(7).any(|window| window == b"AFTER\x01\x02"));
+    assert_eq!(bytes, b"second\r\nAFTER\x01\x02\r\n");
 
     sink.take(false);
     while output.try_recv().is_ok() {}
@@ -548,9 +547,5 @@ fn output_sink_sees_bytes_only_while_it_takes_output() {
         }
         contents.contains("LATER")
     });
-    assert!(
-        output
-            .try_iter()
-            .all(|chunk| !chunk.windows(5).any(|w| w == b"LATER"))
-    );
+    assert_eq!(output.try_iter().count(), 0);
 }
