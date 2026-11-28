@@ -10,6 +10,7 @@
 | behavior-options | 12 | yes | 0 | yes | yes | yes |
 | break-pane | 37 | yes | 0 | yes | yes | yes |
 | buffer-binary-streams | 2 | yes | 0 | yes | yes | yes |
+| buffer-client-file-failure-hooks | 16 | yes | 0 | yes | yes | yes |
 | buffer-client-file-load | 3 | yes | 0 | yes | yes | yes |
 | buffer-client-file-save | 3 | yes | 0 | yes | yes | yes |
 | buffer-missing-target-error | 2 | yes | 0 | yes | yes | yes |
@@ -288,7 +289,7 @@
 ## Attached-client fixture
 
 Status: `PASS`
-Recorded at: `18d5b94f066e`
+Recorded at: `2438c15ea09d`
 
 ## Retries
 
