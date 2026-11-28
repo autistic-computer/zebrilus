@@ -390,14 +390,18 @@ fn a_prompt_would_reach_the_command_dispatcher_if_askpass_mode_did_not_come_firs
 
 #[test]
 fn socket_flag_requires_a_non_empty_path() {
-    assert!(
-        application_arguments(["--socket".into()], PathBuf::from("/tmp/default.sock")).is_err()
-    );
-    assert!(
-        application_arguments(["--socket=".into()], PathBuf::from("/tmp/default.sock")).is_err()
-    );
-    assert!(application_arguments(["--host".into()], PathBuf::from("/tmp/default.sock")).is_err());
-    assert!(application_arguments(["--host=".into()], PathBuf::from("/tmp/default.sock")).is_err());
+    for (flag, message) in [
+        ("--socket", "--socket requires a path"),
+        ("--socket=", "--socket requires a non-empty path"),
+        ("--host", "--host requires a name"),
+        ("--host=", "--host requires a non-empty name"),
+    ] {
+        assert_eq!(
+            application_arguments([flag.into()], PathBuf::from("/tmp/default.sock")).err(),
+            Some(ApplicationArgumentError::Message(message.to_owned())),
+            "{flag}"
+        );
+    }
 }
 
 #[cfg(not(windows))]

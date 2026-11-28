@@ -395,9 +395,15 @@ fn command_aliases_are_offered_only_on_the_host_they_came_from() {
         true,
         "clean=kill-window",
     ));
-    assert!(rows(&mut palette, "clean", &[], &recents).contains(&"  clean".to_owned()));
+    assert_eq!(
+        rows(&mut palette, "clean", &[], &recents),
+        ["Actions", "  clean"]
+    );
     palette.chips = vec![chip_for(&fleet, Place::host(1)).expect("xps chip")];
-    assert!(!rows(&mut palette, "clean", &[], &recents).contains(&"  clean".to_owned()));
+    assert_eq!(
+        rows(&mut palette, "clean", &[], &recents),
+        Vec::<String>::new()
+    );
 }
 
 fn file_hit(rel: &str, score: i64) -> (FileRow, i64) {

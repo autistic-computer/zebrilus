@@ -249,7 +249,10 @@ mod tests {
     #[test]
     fn svg_is_refused_with_a_reason() {
         let pasted = Image::from_bytes(ImageFormat::Svg, b"<svg/>".to_vec());
-        assert!(normalize(&pasted).is_err());
+        assert_eq!(
+            normalize(&pasted).err(),
+            Some(Cow::Borrowed("SVG images cannot be sent to an agent"))
+        );
     }
 
     #[test]

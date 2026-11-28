@@ -1308,11 +1308,7 @@ mod tests {
                 &json!({ "itemId": "c", "delta": chunk }),
             );
         }
-        assert!(
-            translator.commands["c"].len() <= 4 * MAX_OUTPUT_CHARS,
-            "{} bytes kept",
-            translator.commands["c"].len()
-        );
+        assert_eq!(translator.commands["c"].len(), 2 * MAX_OUTPUT_CHARS + 1);
         let updates = translator.notification(
             "item/commandExecution/outputDelta",
             &json!({ "itemId": "c", "delta": "end\n" }),
@@ -1320,8 +1316,12 @@ mod tests {
         let shown = updates[0]["content"][0]["content"]["text"]
             .as_str()
             .unwrap();
-        assert!(shown.trim_end().ends_with("x\nend"));
-        assert!(shown.chars().count() >= MAX_OUTPUT_CHARS - 1);
+        assert!(
+            shown.trim_end() == format!("{}\nend", "x".repeat(MAX_OUTPUT_CHARS - 5)),
+            "{} chars shown, ending {:?}",
+            shown.chars().count(),
+            &shown[shown.len().saturating_sub(16)..]
+        );
     }
 
     fn replay() -> Vec<Value> {
@@ -1505,10 +1505,16 @@ mod tests {
             "item/completed",
             &spawn("spawn-s", "main", "completed", &["c"]),
         );
-        assert!(
+        assert_eq!(
             updates
                 .iter()
-                .any(|update| update["toolCallId"] == "spawn-s" && update["status"] == "completed")
+                .filter(|update| update["toolCallId"] == "spawn-s")
+                .map(|update| (update["sessionUpdate"].clone(), update["status"].clone()))
+                .collect::<Vec<_>>(),
+            [
+                (json!("tool_call_update"), json!("completed")),
+                (json!("tool_call_update"), json!("completed"))
+            ]
         );
     }
 
@@ -1517,10 +1523,16 @@ mod tests {
         let mut translator = Translator::new(PathBuf::from("/work"));
         let item = spawn("spawn-r", "main", "completed", &["r"]);
         let updates = translator.history_item(&item["item"]);
-        assert!(
+        assert_eq!(
             updates
                 .iter()
-                .any(|update| update["toolCallId"] == "spawn-r" && update["status"] == "completed")
+                .filter(|update| update["toolCallId"] == "spawn-r")
+                .map(|update| (update["sessionUpdate"].clone(), update["status"].clone()))
+                .collect::<Vec<_>>(),
+            [
+                (json!("tool_call"), json!("in_progress")),
+                (json!("tool_call_update"), json!("completed"))
+            ]
         );
     }
 

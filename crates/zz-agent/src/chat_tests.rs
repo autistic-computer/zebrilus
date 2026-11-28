@@ -1018,40 +1018,28 @@ fn a_finished_item_stays_stale_after_hundreds_of_later_items() {
 
 #[test]
 fn a_request_on_a_backgrounded_child_still_waiting_for_its_parent_survives_the_turn() {
-    let mut chat = Chat::ready();
-    running_turn(&mut chat, 1, "c1");
-    chat.ok(&start("child", Some("agent"), ItemKind::Execute));
-    chat.ok(&Fact::ItemBackgrounded {
-        item: ItemId::new("child"),
-    });
-    chat.ok(&ask(6, Some("child")));
-    let effects = chat.ok(&ended("c1", End::Completed));
-    assert!(
-        !effects
-            .iter()
-            .any(|effect| matches!(effect, Effect::Withdraw { .. })),
-        "{effects:?}"
-    );
-    assert_eq!(chat.close(6), None);
-}
-
-#[test]
-fn an_approval_that_names_an_item_nobody_has_seen_yet_does_not_die_with_the_turn() {
-    let mut chat = Chat::ready();
-    running_turn(&mut chat, 1, "c1");
-    chat.ok(&ask(11, Some("child")));
-    chat.ok(&start("child", Some("agent"), ItemKind::Execute));
-    chat.ok(&Fact::ItemBackgrounded {
-        item: ItemId::new("child"),
-    });
-    let effects = chat.ok(&ended("c1", End::Completed));
-    assert!(
-        !effects
-            .iter()
-            .any(|effect| matches!(effect, Effect::Withdraw { .. })),
-        "{effects:?}"
-    );
-    assert_eq!(chat.close(11), None);
+    for (request, asked_before_the_item_started) in [(6, false), (11, true)] {
+        let mut chat = Chat::ready();
+        running_turn(&mut chat, 1, "c1");
+        if asked_before_the_item_started {
+            chat.ok(&ask(request, Some("child")));
+        }
+        chat.ok(&start("child", Some("agent"), ItemKind::Execute));
+        chat.ok(&Fact::ItemBackgrounded {
+            item: ItemId::new("child"),
+        });
+        if !asked_before_the_item_started {
+            chat.ok(&ask(request, Some("child")));
+        }
+        let effects = chat.ok(&ended("c1", End::Completed));
+        assert!(
+            !effects
+                .iter()
+                .any(|effect| matches!(effect, Effect::Withdraw { .. })),
+            "{request}: {effects:?}"
+        );
+        assert_eq!(chat.close(request), None, "{request}");
+    }
 }
 
 #[test]

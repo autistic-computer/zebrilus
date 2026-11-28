@@ -1014,13 +1014,20 @@ mod tests {
             .expect("write record");
         }
         sweep_stale_records_in(directory.path()).expect("sweep");
-        assert!(directory.path().join("0.json").exists());
-        assert!(!directory.path().join(format!("{}.json", u32::MAX)).exists());
-        assert!(
-            directory
-                .path()
-                .join(format!("{}.json", std::process::id()))
-                .exists()
+        let mut kept = fs::read_dir(directory.path())
+            .expect("registry listing")
+            .map(|entry| {
+                entry
+                    .expect("registry entry")
+                    .file_name()
+                    .into_string()
+                    .expect("utf-8 name")
+            })
+            .collect::<Vec<_>>();
+        kept.sort();
+        assert_eq!(
+            kept,
+            ["0.json".to_owned(), format!("{}.json", std::process::id())]
         );
     }
 }

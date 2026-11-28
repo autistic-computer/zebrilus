@@ -1200,13 +1200,32 @@ fn dispatch_publishes_running_with_a_turn_boundary_before_the_agent_speaks() {
     {
         std::thread::sleep(Duration::from_millis(2));
     }
-    assert!(
-        fixture
-            .recorder
-            .states
-            .lock()
-            .iter()
-            .any(|(state, has_item)| { state.phase == AgentConnectionPhase::Running && *has_item })
+    let published = fixture
+        .recorder
+        .states
+        .lock()
+        .iter()
+        .map(|(state, has_item)| (state.phase, *has_item))
+        .collect::<Vec<_>>();
+    let running = published
+        .iter()
+        .position(|(phase, _)| *phase == AgentConnectionPhase::Running)
+        .expect("a running state is published");
+    let boundary = published[..running]
+        .iter()
+        .filter(|(_, has_item)| *has_item)
+        .count();
+    assert_eq!(
+        (
+            published[running].1,
+            fixture
+                .recorder
+                .items()
+                .get(boundary)
+                .map(|item| item.payload.clone())
+        ),
+        (true, Some(AgentStreamPayload::TurnStarted { turn_id: 1 })),
+        "{published:?}"
     );
     fixture.close();
 }

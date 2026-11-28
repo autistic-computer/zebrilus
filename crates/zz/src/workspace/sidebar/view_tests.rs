@@ -8,11 +8,6 @@ use super::test_support::*;
 use super::*;
 
 #[ala::test]
-fn workspace_tree_key_bindings_register(cx: &mut TestAppContext) {
-    cx.update(init);
-}
-
-#[ala::test]
 fn tree_model_tracks_snapshot_focus_and_attachment_revisions(cx: &mut TestAppContext) {
     let mux = cx.new(|cx| {
         MuxClient::new(

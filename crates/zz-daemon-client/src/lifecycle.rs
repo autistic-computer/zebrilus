@@ -637,7 +637,11 @@ mod tests {
             #[cfg(unix)]
             effective_user_id: None,
         };
-        assert!(select_target_pid(peer, Some(&identity)).is_err());
+        assert!(matches!(
+            select_target_pid(peer, Some(&identity)),
+            Err(DaemonRecoveryError::UnsafeTarget(message))
+                if message == "socket peer pid 41 does not match identity pid 42"
+        ));
     }
 
     #[test]
@@ -651,8 +655,15 @@ mod tests {
             },
             contents: Vec::new(),
         };
-        assert!(validate_identity_start_time(Some(&identity), 42, 101).is_err());
-        assert!(validate_identity_start_time(Some(&identity), 42, 100).is_ok());
+        assert!(matches!(
+            validate_identity_start_time(Some(&identity), 42, 101),
+            Err(DaemonRecoveryError::UnsafeTarget(message))
+                if message == "identity start time 100 does not match pid 42 start time 101"
+        ));
+        assert!(matches!(
+            validate_identity_start_time(Some(&identity), 42, 100),
+            Ok(())
+        ));
     }
 
     #[test]
@@ -758,7 +769,7 @@ mod tests {
         drop(socket);
 
         cleanup_socket_if_unchanged(&path, identity, 42).unwrap();
-        assert!(!path.exists());
+        assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 0);
     }
 
     #[cfg(unix)]
@@ -772,7 +783,11 @@ mod tests {
         let identity = identity_path(&socket);
         fs::write(&identity, b"not-an-identity").unwrap();
         fs::set_permissions(&identity, fs::Permissions::from_mode(0o600)).unwrap();
-        assert!(read_identity_file(&socket).is_err());
+        assert!(matches!(
+            read_identity_file(&socket),
+            Err(DaemonRecoveryError::UnsafeTarget(message))
+                if message == "daemon identity has an invalid header"
+        ));
 
         fs::write(
             &identity,
@@ -785,7 +800,11 @@ mod tests {
         )
         .unwrap();
         fs::set_permissions(&identity, fs::Permissions::from_mode(0o644)).unwrap();
-        assert!(read_identity_file(&socket).is_err());
+        assert!(matches!(
+            read_identity_file(&socket),
+            Err(DaemonRecoveryError::UnsafeTarget(message))
+                if message == "daemon identity is accessible by another user or group"
+        ));
         drop(listener);
     }
 
